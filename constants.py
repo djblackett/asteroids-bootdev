@@ -37,7 +37,8 @@ SLOW_MOTION_FACTOR = 0.4  # asteroids move at 40% speed
 # MEGA POWER - activates ALL power-ups at once!
 MEGA_POWER_DURATION = 10.0  # seconds
 MEGA_POWER_MUSIC_SPEED = 1.26  # Pitch shift up 4 semitones (2^(4/12))
-MEGA_POWER_MUSIC_SPEEDUP_ENABLED = False  # Toggle for music speed-up feature during MEGA POWER
+# Toggle for music speed-up feature during MEGA POWER
+MEGA_POWER_MUSIC_SPEEDUP_ENABLED = False
 
 # Scoring system
 POINTS_LARGE_ASTEROID = 10  # 60 radius
@@ -60,7 +61,8 @@ SCREEN_SHAKE_MEDIUM = 5  # pixels for medium asteroids
 SCREEN_SHAKE_SMALL = 2  # pixels for small asteroids
 SCREEN_SHAKE_DECAY = 8.0  # how fast shake decays per second
 SCREEN_SHAKE_MAX = 12  # maximum screen shake (prevents stacking too high)
-SCREEN_SHAKE_COOLDOWN = 0.1  # minimum seconds between shake additions (prevents rapid stacking)
+# minimum seconds between shake additions (prevents rapid stacking)
+SCREEN_SHAKE_COOLDOWN = 0.1
 
 # Asteroid death animation
 ASTEROID_DEATH_DURATION = 0.15  # seconds
@@ -80,6 +82,32 @@ BOUNDARY_SHAKE_AMOUNT = 4  # Screen shake intensity for wall hits
 
 # Exhaust particle effects
 EXHAUST_PARTICLE_SPAWN_RATE = 0.05  # seconds between exhaust particles
-EXHAUST_PARTICLE_SPEED = 80  # pixels per second (slower than regular particles)
+# pixels per second (slower than regular particles)
+EXHAUST_PARTICLE_SPEED = 80
 EXHAUST_PARTICLE_LIFETIME = 0.3  # seconds (shorter lifetime for trail effect)
 EXHAUST_PARTICLE_SPREAD = 20  # degrees of angular spread
+
+# Death taunt messages
+DEATH_TAUNTS = [
+    "You suck",
+    "git gud",
+    "skill issue",
+    "Try again, noob",
+    "Is this your first time?",
+    "My grandma plays better",
+    "Press F to pay respects",
+    "Maybe gaming isn't for you",
+    "Oof",
+    "rekt",
+    "yikes...",
+    "even the asteroids are laughing",
+    "controllers are on sale",
+    "Have you tried the tutorial?",
+    "Try again when you're sober",
+    "Suck my fat one"
+]
+
+# Death taunt animation
+TAUNT_DURATION = 2.5  # seconds the taunt stays on screen
+TAUNT_FADE_IN = 0.3  # seconds to fade in
+TAUNT_FADE_OUT = 0.5  # seconds to fade out

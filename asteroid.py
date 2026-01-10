@@ -109,8 +109,14 @@ class Asteroid(CircleShape):
         child_vector2 = self.velocity.rotate(-random_rotation)
 
         new_radius = self.radius - ASTEROID_MIN_RADIUS
-        child1 = Asteroid(self.position.x, self.position.y, new_radius)
-        child2 = Asteroid(self.position.x, self.position.y, new_radius)
+        # Spawn children offset from parent to avoid immediate collision with player
+        # Use the velocity directions to push them away from the collision point
+        offset_distance = new_radius * 1.5  # Offset by 1.5x the child radius
+        offset1 = child_vector.normalize() * offset_distance
+        offset2 = child_vector2.normalize() * offset_distance
+
+        child1 = Asteroid(self.position.x + offset1.x, self.position.y + offset1.y, new_radius)
+        child2 = Asteroid(self.position.x + offset2.x, self.position.y + offset2.y, new_radius)
         child1.velocity = child_vector * 1.2
         child2.velocity = child_vector2 * 1.2
         

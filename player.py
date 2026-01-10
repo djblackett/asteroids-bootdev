@@ -85,9 +85,10 @@ class Player(CircleShape):
             self.mega_power_timer -= dt
             if self.mega_power_timer <= 0:
                 self.mega_power_active = False
-                # Deactivate all power-ups when mega power ends
+                # Deactivate timed power-ups when mega power ends
                 self.rapid_fire_active = False
                 self.multi_shot_active = False
+                # Note: shield_active is NOT deactivated here because shields last until hit
 
         # Update rapid fire timer (unless mega power is active)
         if self.rapid_fire_active and not self.mega_power_active:
@@ -104,17 +105,58 @@ class Player(CircleShape):
         # Track if player is moving this frame
         self.is_moving = False
 
-        if keys[pygame.K_a]:
-            self.rotate(-dt)
-        if keys[pygame.K_d]:
-            self.rotate(dt)
-        if keys[pygame.K_w]:
-            self.move(dt)
+        # Get gamepad input
+        joystick_rotate = 0
+        joystick_move = 0
+        joystick_shoot = False
+
+        if pygame.joystick.get_count() > 0:
+            joystick = pygame.joystick.Joystick(0)
+
+            # Left stick horizontal for rotation (axis 0)
+            left_stick_x = joystick.get_axis(0)
+            # Apply deadzone to avoid drift
+            if abs(left_stick_x) > 0.15:
+                joystick_rotate = left_stick_x
+
+            # Left stick vertical for movement (axis 1)
+            left_stick_y = joystick.get_axis(1)
+            # Apply deadzone and invert (pygame joystick returns -1 for up)
+            if abs(left_stick_y) > 0.15:
+                joystick_move = -left_stick_y
+
+            # Right trigger for shooting (axis 5, or button 0 as fallback)
+            # Try right trigger first (axis 5), value ranges from -1 to 1
+            try:
+                right_trigger = joystick.get_axis(5)
+                joystick_shoot = right_trigger > 0.5
+            except:
+                pass
+
+            # Also check A button (button 0) for shooting
+            if joystick.get_button(0):
+                joystick_shoot = True
+
+        # Handle rotation (keyboard or gamepad)
+        if keys[pygame.K_a] or joystick_rotate < 0:
+            rotation_amount = joystick_rotate if joystick_rotate < 0 else -1
+            self.rotate(rotation_amount * dt)
+        if keys[pygame.K_d] or joystick_rotate > 0:
+            rotation_amount = joystick_rotate if joystick_rotate > 0 else 1
+            self.rotate(rotation_amount * dt)
+
+        # Handle movement (keyboard or gamepad)
+        if keys[pygame.K_w] or joystick_move > 0:
+            move_amount = joystick_move if joystick_move > 0 else 1
+            self.move(move_amount * dt)
             self.is_moving = True
-        if keys[pygame.K_s]:
-            self.move(-dt)
+        if keys[pygame.K_s] or joystick_move < 0:
+            move_amount = joystick_move if joystick_move < 0 else -1
+            self.move(move_amount * dt)
             self.is_moving = True
-        if keys[pygame.K_SPACE]:
+
+        # Handle shooting (keyboard or gamepad)
+        if keys[pygame.K_SPACE] or joystick_shoot:
             self.shoot()
 
     def move(self, dt):
