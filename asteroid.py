@@ -3,8 +3,9 @@ import pygame
 from circleshape import CircleShape
 import random
 from constants import (ASTEROID_MIN_RADIUS, POINTS_LARGE_ASTEROID, POINTS_MEDIUM_ASTEROID,
-                      POINTS_SMALL_ASTEROID, ASTEROID_DEATH_DURATION, ASTEROID_SHAKE_INTENSITY,
-                      PARTICLE_COUNT_LARGE, PARTICLE_COUNT_MEDIUM, PARTICLE_COUNT_SMALL, PARTICLE_SPEED)
+                      POINTS_SMALL_ASTEROID, ASTEROID_DEATH_DURATION, ASTEROID_DEATH_DURATION_MAX,
+                      ASTEROID_SHAKE_INTENSITY, PARTICLE_COUNT_LARGE, PARTICLE_COUNT_MEDIUM,
+                      PARTICLE_COUNT_SMALL, PARTICLE_SPEED)
 from soundeffects import play_explosion_sound
 
 
@@ -14,6 +15,7 @@ class Asteroid(CircleShape):
         self.size_category = self.get_size_category()
         self.dying = False
         self.death_timer = 0
+        self.death_timer_real = 0  # Real-world time for capping duration
         self.shake_offset = pygame.Vector2(0, 0)
 
     def get_size_category(self):
@@ -48,17 +50,27 @@ class Asteroid(CircleShape):
 
         pygame.draw.circle(screen, color, draw_pos, self.radius, 2)
     
-    def update(self, dt):
+    def update(self, dt, real_dt=None):
         if self.dying:
-            # Update death animation
+            # Update death animation using scaled time
             self.death_timer += dt
+
+            # Update real-world timer (if provided, otherwise use scaled dt)
+            if real_dt is not None:
+                self.death_timer_real += real_dt
+            else:
+                self.death_timer_real += dt
+
             # Random shake effect
             self.shake_offset = pygame.Vector2(
                 random.uniform(-ASTEROID_SHAKE_INTENSITY, ASTEROID_SHAKE_INTENSITY),
                 random.uniform(-ASTEROID_SHAKE_INTENSITY, ASTEROID_SHAKE_INTENSITY)
             )
 
-            if self.death_timer >= ASTEROID_DEATH_DURATION:
+            # End death animation if either condition is met:
+            # 1. Normal death duration reached, OR
+            # 2. Maximum real-world duration reached (prevents indefinite shaking in slow games)
+            if self.death_timer >= ASTEROID_DEATH_DURATION or self.death_timer_real >= ASTEROID_DEATH_DURATION_MAX:
                 # Actually destroy the asteroid now
                 self.kill()
                 self.spawn_children()

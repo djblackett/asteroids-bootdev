@@ -13,6 +13,7 @@ from asteroidfield import AsteroidField
 from shot import Shot
 from soundeffects import start_background_music, init_sounds, set_music_speed, reset_music_speed
 from powerup import PowerUp
+from laserbeam import LaserBeam
 from particle import Particle
 from taunt import TauntAnimation
 from startscreen import draw_start_screen
@@ -28,11 +29,13 @@ def draw_scores(screen, player1, player2):
     # Player 1 - Top left
     p1_color = (100, 200, 255) if player1.lives > 0 else (100, 100, 100)
     p1_score_text = font.render(f"P1: {player1.score}", True, p1_color)
-    screen.blit(p1_score_text, (10, 10))
+    p1_score_rect = p1_score_text.get_rect(topleft=(10, 10))
+    screen.blit(p1_score_text, p1_score_rect)
 
     # Player 1 lives
     lives_text = font.render(f"Lives: {player1.lives}", True, p1_color)
-    screen.blit(lives_text, (10, 45))
+    lives_rect = lives_text.get_rect(topleft=(10, 45))
+    screen.blit(lives_text, lives_rect)
 
     # Player 2 - Top right
     p2_color = (255, 200, 100) if player2.lives > 0 else (100, 100, 100)
@@ -88,6 +91,32 @@ def draw_powerup_indicator(screen, player, slow_motion_active, slow_motion_timer
     font_large = pygame.font.Font(None, 40)
     y_offset = 80  # Moved down to make room for lives display
 
+    # Draw laser beam shots remaining
+    laser_color = (100, 200, 255) if player.laser_shots_remaining > 0 else (100, 100, 100)
+    laser_text = font.render(f"LASER: {player.laser_shots_remaining}/{LASER_BEAM_MAX_SHOTS}", True, laser_color)
+    laser_rect = laser_text.get_rect(topleft=(10, y_offset))
+    screen.blit(laser_text, laser_rect)
+    y_offset += 30
+
+    # Draw boost status
+    if player.boost_active:
+        time_left = int(player.boost_timer) + 1
+        boost_text = font.render(f"BOOST: {time_left}s", True, (255, 100, 255))
+        boost_rect = boost_text.get_rect(topleft=(10, y_offset))
+        screen.blit(boost_text, boost_rect)
+        y_offset += 30
+    elif player.boost_cooldown > 0:
+        cooldown_left = int(player.boost_cooldown) + 1
+        boost_text = font.render(f"BOOST: {cooldown_left}s CD", True, (150, 150, 150))
+        boost_rect = boost_text.get_rect(topleft=(10, y_offset))
+        screen.blit(boost_text, boost_rect)
+        y_offset += 30
+    else:
+        boost_text = font.render("BOOST: READY", True, (100, 255, 100))
+        boost_rect = boost_text.get_rect(topleft=(10, y_offset))
+        screen.blit(boost_text, boost_rect)
+        y_offset += 30
+
     # MEGA POWER gets special treatment - larger, rainbow text
     if player.mega_power_active:
         time_left = int(player.mega_power_timer) + 1
@@ -98,31 +127,36 @@ def draw_powerup_indicator(screen, player, slow_motion_active, slow_motion_timer
         r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
         mega_color = (int(r * 255), int(g * 255), int(b * 255))
         powerup_text = font_large.render(f"*** MEGA POWER: {time_left}s ***", True, mega_color)
-        screen.blit(powerup_text, (10, y_offset))
+        powerup_rect = powerup_text.get_rect(topleft=(10, y_offset))
+        screen.blit(powerup_text, powerup_rect)
         y_offset += 45
     else:
         # Show individual power-ups only if MEGA POWER is not active
         if player.rapid_fire_active:
             time_left = int(player.rapid_fire_timer) + 1
             powerup_text = font.render(f"RAPID FIRE: {time_left}s", True, (255, 255, 0))
-            screen.blit(powerup_text, (10, y_offset))
+            powerup_rect = powerup_text.get_rect(topleft=(10, y_offset))
+            screen.blit(powerup_text, powerup_rect)
             y_offset += 30
 
         if player.multi_shot_active:
             time_left = int(player.multi_shot_timer) + 1
             powerup_text = font.render(f"MULTI-SHOT: {time_left}s", True, (255, 165, 0))
-            screen.blit(powerup_text, (10, y_offset))
+            powerup_rect = powerup_text.get_rect(topleft=(10, y_offset))
+            screen.blit(powerup_text, powerup_rect)
             y_offset += 30
 
         if player.shield_active:
             powerup_text = font.render("SHIELD: ACTIVE", True, (0, 255, 255))
-            screen.blit(powerup_text, (10, y_offset))
+            powerup_rect = powerup_text.get_rect(topleft=(10, y_offset))
+            screen.blit(powerup_text, powerup_rect)
             y_offset += 30
 
         if slow_motion_active:
             time_left = int(slow_motion_timer) + 1
             powerup_text = font.render(f"SLOW MOTION: {time_left}s", True, (255, 0, 255))
-            screen.blit(powerup_text, (10, y_offset))
+            powerup_rect = powerup_text.get_rect(topleft=(10, y_offset))
+            screen.blit(powerup_text, powerup_rect)
 
 
 def draw_pause_screen(screen):
@@ -153,7 +187,7 @@ def draw_pause_screen(screen):
     screen.blit(quit_text, quit_rect)
 
 
-def draw_game_over_screen(screen, player1, player2, retry_delay=0, show_high_scores=False):
+def draw_game_over_screen(screen, player1, player2, retry_delay=0, show_high_scores=False, p1_rank=None, p2_rank=None):
     """Draw the game over screen with retry button and optional high scores"""
     # Semi-transparent overlay
     overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -196,9 +230,17 @@ def draw_game_over_screen(screen, player1, player2, retry_delay=0, show_high_sco
         # Display top 5 high scores
         y_offset = SCREEN_HEIGHT // 2 - 60
         for i, entry in enumerate(high_scores):
-            rank_color = (255, 215, 0) if i == 0 else (200, 200, 200)
+            rank = i + 1
+            # Highlight if this is player 1's or player 2's rank
+            if rank == p1_rank:
+                rank_color = (100, 200, 255)  # Player 1 color
+            elif rank == p2_rank:
+                rank_color = (255, 200, 100)  # Player 2 color
+            else:
+                rank_color = (200, 200, 200)  # Default gray
+
             score_text = font_tiny.render(
-                f"{i+1}. {entry['player']}: {entry['score']}",
+                f"{rank}. {entry['player']}: {entry['score']}",
                 True,
                 rank_color
             )
@@ -241,6 +283,11 @@ def draw_game_over_screen(screen, player1, player2, retry_delay=0, show_high_sco
     instruction_rect = instruction_text.get_rect(
         center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 220))
     screen.blit(instruction_text, instruction_rect)
+
+    # Quit instruction
+    quit_text = font_tiny.render("Press Q to Quit", True, (180, 180, 180))
+    quit_rect = quit_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 260))
+    screen.blit(quit_text, quit_rect)
 
     return button_rect
 
@@ -322,6 +369,7 @@ def main():
     asteroids = pygame.sprite.Group()
     shots = pygame.sprite.Group()
     powerups = pygame.sprite.Group()
+    laser_beams = []  # List to track active laser beams
 
     Player.containers = (updatable, drawable)
     Asteroid.containers = (asteroids, updatable, drawable)
@@ -341,6 +389,8 @@ def main():
     game_over = False
     game_over_retry_delay = 0  # Delay before accepting retry input
     show_high_scores = False  # Whether to show high scores on game over screen
+    p1_highscore_rank = None  # Player 1's rank on high score board
+    p2_highscore_rank = None  # Player 2's rank on high score board
     paused = False  # Track if game is paused
     button_rect = None
     slow_motion_active = False
@@ -364,6 +414,11 @@ def main():
 
     # Taunt animation
     taunt_animation = None
+
+    # Progressive difficulty
+    game_time = 0.0
+    difficulty_timer = 0.0
+    asteroid_speed_multiplier = 1.0
 
     # Main game loop
     running = True
@@ -417,6 +472,8 @@ def main():
                     game_over = False
                     game_over_retry_delay = 0
                     show_high_scores = False
+                    p1_highscore_rank = None
+                    p2_highscore_rank = None
                     combo_count = 0
                     combo_timer = 0.0
                     slow_motion_active = False
@@ -425,6 +482,10 @@ def main():
                     screen_shake_cooldown = 0.0
                     particles = []
                     taunt_animation = None
+                    game_time = 0.0
+                    difficulty_timer = 0.0
+                    asteroid_speed_multiplier = 1.0
+                    laser_beams = []
                     if music_sped_up:
                         reset_music_speed()
                         music_sped_up = False
@@ -439,6 +500,8 @@ def main():
                     game_over = False
                     game_over_retry_delay = 0
                     show_high_scores = False
+                    p1_highscore_rank = None
+                    p2_highscore_rank = None
                     combo_count = 0
                     combo_timer = 0.0
                     slow_motion_active = False
@@ -447,9 +510,16 @@ def main():
                     screen_shake_cooldown = 0.0
                     particles = []
                     taunt_animation = None
+                    game_time = 0.0
+                    difficulty_timer = 0.0
+                    asteroid_speed_multiplier = 1.0
+                    laser_beams = []
                     if music_sped_up:
                         reset_music_speed()
                         music_sped_up = False
+                # Handle quit from game over screen
+                elif event.key == pygame.K_q:
+                    running = False
 
             # Handle retry - gamepad button (A button, only if delay has expired)
             if game_over and game_over_retry_delay <= 0 and event.type == pygame.JOYBUTTONDOWN:
@@ -461,6 +531,8 @@ def main():
                     game_over = False
                     game_over_retry_delay = 0
                     show_high_scores = False
+                    p1_highscore_rank = None
+                    p2_highscore_rank = None
                     combo_count = 0
                     combo_timer = 0.0
                     slow_motion_active = False
@@ -469,6 +541,10 @@ def main():
                     screen_shake_cooldown = 0.0
                     particles = []
                     taunt_animation = None
+                    game_time = 0.0
+                    difficulty_timer = 0.0
+                    asteroid_speed_multiplier = 1.0
+                    laser_beams = []
                     if music_sped_up:
                         reset_music_speed()
                         music_sped_up = False
@@ -490,6 +566,15 @@ def main():
         elif not game_over:
             # Only update game logic if not paused
             if not paused:
+                # Update game time and difficulty
+                game_time += dt
+                difficulty_timer += dt
+
+                # Increase asteroid speed every DIFFICULTY_INCREASE_INTERVAL seconds
+                if difficulty_timer >= DIFFICULTY_INCREASE_INTERVAL:
+                    difficulty_timer = 0.0
+                    asteroid_speed_multiplier += DIFFICULTY_SPEED_INCREMENT
+                    print(f"Difficulty increased! Asteroid speed multiplier: {asteroid_speed_multiplier:.2f}x")
                 # Handle MEGA POWER music speed - ensure music state matches power-up state
                 if MEGA_POWER_MUSIC_SPEEDUP_ENABLED:
                     should_have_fast_music = player1.mega_power_active or player2.mega_power_active
@@ -532,6 +617,14 @@ def main():
                 # Update both players at normal speed
                 player1.update(dt)
                 player2.update(dt)
+
+                # Check for new laser beams from players
+                if player1.pending_laser:
+                    laser_beams.append(player1.pending_laser)
+                    player1.pending_laser = None
+                if player2.pending_laser:
+                    laser_beams.append(player2.pending_laser)
+                    player2.pending_laser = None
 
                 # Check for boundary bounce effects for player 1
                 if player1.bounce_info:
@@ -600,12 +693,13 @@ def main():
                 for shot in shots:
                     shot.update(dt)
 
-                # Apply slow motion effect to dt for asteroids only
-                asteroid_dt = dt * SLOW_MOTION_FACTOR if slow_motion_active else dt
+                # Apply slow motion effect and difficulty multiplier to dt for asteroids
+                base_dt = dt * asteroid_speed_multiplier
+                asteroid_dt = base_dt * SLOW_MOTION_FACTOR if slow_motion_active else base_dt
 
-                # Update asteroids at potentially slowed speed
+                # Update asteroids at potentially slowed speed with difficulty
                 for asteroid in asteroids:
-                    asteroid.update(asteroid_dt)
+                    asteroid.update(asteroid_dt, dt)
 
                 # Update power-ups at normal speed
                 for powerup in powerups:
@@ -619,110 +713,208 @@ def main():
 
                     # Player 1 collision
                     if player1.lives > 0 and player1.check_collision(asteroid):
-                        # Use take_damage to check if shield absorbed hit
-                        if player1.take_damage():
-                            print(f"Player 1 hit! Lives remaining: {player1.lives}")
-                            if player1.lives > 0:
-                                # Respawn player 1
-                                player1.respawn(p1_spawn_x, p1_spawn_y)
+                        # If player is boosting, ram through the asteroid
+                        if player1.boost_active:
+                            # Increase combo
+                            combo_count += 1
+                            combo_timer = COMBO_TIMEOUT
+
+                            # Calculate points with combo multiplier
+                            base_points = asteroid.get_points()
+                            multiplier = COMBO_MULTIPLIERS.get(combo_count, COMBO_MULTIPLIERS[5])
+                            points_earned = int(base_points * multiplier)
+
+                            # Award points
+                            player1.score += points_earned
+
+                            # Visual feedback
+                            if combo_count > 1:
+                                print(f"Player 1: +{points_earned} points! ({combo_count}x COMBO) [BOOST RAM]")
                             else:
-                                print("Player 1 eliminated!")
-                                # Check if both players are dead
-                                if player2.lives <= 0:
-                                    print("Game over!")
-                                    print(f"Player 1 Final Score: {player1.score}")
-                                    print(f"Player 2 Final Score: {player2.score}")
-                                    game_over = True
-                                    game_over_retry_delay = 1.5  # 1.5 second delay
-                                    taunt_animation = TauntAnimation()
+                                print(f"Player 1: +{points_earned} points [BOOST RAM]")
 
-                                    # Check if scores qualify for high score board BEFORE saving
-                                    p1_is_high = is_high_score(player1.score) if player1.score > 0 else False
-                                    p2_is_high = is_high_score(player2.score) if player2.score > 0 else False
+                            # Destroy the asteroid
+                            effect_info = asteroid.split()
+                            if effect_info:
+                                if screen_shake_cooldown <= 0:
+                                    screen_shake = min(screen_shake + effect_info['shake_amount'], SCREEN_SHAKE_MAX)
+                                    screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
 
-                                    # Save high scores
-                                    if player1.score > 0:
-                                        rank = add_score("Player 1", player1.score)
-                                        if rank:
-                                            print(f"Player 1 achieved high score rank #{rank}!")
-                                    if player2.score > 0:
-                                        rank = add_score("Player 2", player2.score)
-                                        if rank:
-                                            print(f"Player 2 achieved high score rank #{rank}!")
+                                # Spawn particles
+                                for i in range(effect_info['particle_count']):
+                                    angle = (360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
+                                    velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
+                                    particle = Particle(effect_info['position'].x, effect_info['position'].y, velocity)
+                                    particles.append(particle)
 
-                                    # Show high scores if either player got one
-                                    show_high_scores = (p1_is_high or p2_is_high)
-                                    break
+                            # Chance to spawn power-up (if enabled)
+                            if POWERUP_SPAWN_ENABLED:
+                                if random.random() < MEGA_POWER_SPAWN_CHANCE:
+                                    PowerUp(asteroid.position.x, asteroid.position.y, PowerUp.MEGA_POWER)
+                                elif random.random() < POWERUP_SPAWN_CHANCE:
+                                    powerup_types = [PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
+                                    chosen_type = random.choice(powerup_types)
+                                    PowerUp(asteroid.position.x, asteroid.position.y, chosen_type)
                         else:
-                            print("Player 1 shield absorbed hit!")
+                            # Normal collision - take damage
+                            # Use take_damage to check if shield absorbed hit
+                            if player1.take_damage():
+                                print(f"Player 1 hit! Lives remaining: {player1.lives}")
+                                if player1.lives > 0:
+                                    # Respawn player 1
+                                    player1.respawn(p1_spawn_x, p1_spawn_y)
+                                else:
+                                    print("Player 1 eliminated!")
+                                    # Check if both players are dead
+                                    if player2.lives <= 0:
+                                        print("Game over!")
+                                        print(f"Player 1 Final Score: {player1.score}")
+                                        print(f"Player 2 Final Score: {player2.score}")
+                                        game_over = True
+                                        game_over_retry_delay = 1.5  # 1.5 second delay
+                                        taunt_animation = TauntAnimation()
 
-                        # Destroy the asteroid that hit the player
-                        effect_info = asteroid.split()
-                        if effect_info:
-                            if screen_shake_cooldown <= 0:
-                                screen_shake = min(screen_shake + effect_info['shake_amount'] * 0.5, SCREEN_SHAKE_MAX)
-                                screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
+                                        # Check if scores qualify for high score board BEFORE saving
+                                        p1_is_high = is_high_score(player1.score) if player1.score > 0 else False
+                                        p2_is_high = is_high_score(player2.score) if player2.score > 0 else False
 
-                            # Spawn particles
-                            for i in range(effect_info['particle_count']):
-                                angle = (360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
-                                velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
-                                particle = Particle(effect_info['position'].x, effect_info['position'].y, velocity)
-                                particles.append(particle)
+                                        # Save high scores and store ranks
+                                        if player1.score > 0:
+                                            p1_highscore_rank = add_score("Player 1", player1.score)
+                                            if p1_highscore_rank:
+                                                print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
+                                        else:
+                                            p1_highscore_rank = None
+
+                                        if player2.score > 0:
+                                            p2_highscore_rank = add_score("Player 2", player2.score)
+                                            if p2_highscore_rank:
+                                                print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
+                                        else:
+                                            p2_highscore_rank = None
+
+                                        # Show high scores if either player got one
+                                        show_high_scores = (p1_is_high or p2_is_high)
+                                        break
+                            else:
+                                print("Player 1 shield absorbed hit!")
+
+                            # Destroy the asteroid that hit the player
+                            effect_info = asteroid.split()
+                            if effect_info:
+                                if screen_shake_cooldown <= 0:
+                                    screen_shake = min(screen_shake + effect_info['shake_amount'] * 0.5, SCREEN_SHAKE_MAX)
+                                    screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
+
+                                # Spawn particles
+                                for i in range(effect_info['particle_count']):
+                                    angle = (360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
+                                    velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
+                                    particle = Particle(effect_info['position'].x, effect_info['position'].y, velocity)
+                                    particles.append(particle)
                         continue
 
                     # Player 2 collision
                     if player2.lives > 0 and player2.check_collision(asteroid):
-                        # Use take_damage to check if shield absorbed hit
-                        if player2.take_damage():
-                            print(f"Player 2 hit! Lives remaining: {player2.lives}")
-                            if player2.lives > 0:
-                                # Respawn player 2
-                                player2.respawn(p2_spawn_x, p2_spawn_y)
+                        # If player is boosting, ram through the asteroid
+                        if player2.boost_active:
+                            # Increase combo
+                            combo_count += 1
+                            combo_timer = COMBO_TIMEOUT
+
+                            # Calculate points with combo multiplier
+                            base_points = asteroid.get_points()
+                            multiplier = COMBO_MULTIPLIERS.get(combo_count, COMBO_MULTIPLIERS[5])
+                            points_earned = int(base_points * multiplier)
+
+                            # Award points
+                            player2.score += points_earned
+
+                            # Visual feedback
+                            if combo_count > 1:
+                                print(f"Player 2: +{points_earned} points! ({combo_count}x COMBO) [BOOST RAM]")
                             else:
-                                print("Player 2 eliminated!")
-                                # Check if both players are dead
-                                if player1.lives <= 0:
-                                    print("Game over!")
-                                    print(f"Player 1 Final Score: {player1.score}")
-                                    print(f"Player 2 Final Score: {player2.score}")
-                                    game_over = True
-                                    game_over_retry_delay = 1.5  # 1.5 second delay
-                                    taunt_animation = TauntAnimation()
+                                print(f"Player 2: +{points_earned} points [BOOST RAM]")
 
-                                    # Check if scores qualify for high score board BEFORE saving
-                                    p1_is_high = is_high_score(player1.score) if player1.score > 0 else False
-                                    p2_is_high = is_high_score(player2.score) if player2.score > 0 else False
+                            # Destroy the asteroid
+                            effect_info = asteroid.split()
+                            if effect_info:
+                                if screen_shake_cooldown <= 0:
+                                    screen_shake = min(screen_shake + effect_info['shake_amount'], SCREEN_SHAKE_MAX)
+                                    screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
 
-                                    # Save high scores
-                                    if player1.score > 0:
-                                        rank = add_score("Player 1", player1.score)
-                                        if rank:
-                                            print(f"Player 1 achieved high score rank #{rank}!")
-                                    if player2.score > 0:
-                                        rank = add_score("Player 2", player2.score)
-                                        if rank:
-                                            print(f"Player 2 achieved high score rank #{rank}!")
+                                # Spawn particles
+                                for i in range(effect_info['particle_count']):
+                                    angle = (360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
+                                    velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
+                                    particle = Particle(effect_info['position'].x, effect_info['position'].y, velocity)
+                                    particles.append(particle)
 
-                                    # Show high scores if either player got one
-                                    show_high_scores = (p1_is_high or p2_is_high)
-                                    break
+                            # Chance to spawn power-up (if enabled)
+                            if POWERUP_SPAWN_ENABLED:
+                                if random.random() < MEGA_POWER_SPAWN_CHANCE:
+                                    PowerUp(asteroid.position.x, asteroid.position.y, PowerUp.MEGA_POWER)
+                                elif random.random() < POWERUP_SPAWN_CHANCE:
+                                    powerup_types = [PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
+                                    chosen_type = random.choice(powerup_types)
+                                    PowerUp(asteroid.position.x, asteroid.position.y, chosen_type)
                         else:
-                            print("Player 2 shield absorbed hit!")
+                            # Normal collision - take damage
+                            # Use take_damage to check if shield absorbed hit
+                            if player2.take_damage():
+                                print(f"Player 2 hit! Lives remaining: {player2.lives}")
+                                if player2.lives > 0:
+                                    # Respawn player 2
+                                    player2.respawn(p2_spawn_x, p2_spawn_y)
+                                else:
+                                    print("Player 2 eliminated!")
+                                    # Check if both players are dead
+                                    if player1.lives <= 0:
+                                        print("Game over!")
+                                        print(f"Player 1 Final Score: {player1.score}")
+                                        print(f"Player 2 Final Score: {player2.score}")
+                                        game_over = True
+                                        game_over_retry_delay = 1.5  # 1.5 second delay
+                                        taunt_animation = TauntAnimation()
 
-                        # Destroy the asteroid that hit the player
-                        effect_info = asteroid.split()
-                        if effect_info:
-                            if screen_shake_cooldown <= 0:
-                                screen_shake = min(screen_shake + effect_info['shake_amount'] * 0.5, SCREEN_SHAKE_MAX)
-                                screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
+                                        # Check if scores qualify for high score board BEFORE saving
+                                        p1_is_high = is_high_score(player1.score) if player1.score > 0 else False
+                                        p2_is_high = is_high_score(player2.score) if player2.score > 0 else False
 
-                            # Spawn particles
-                            for i in range(effect_info['particle_count']):
-                                angle = (360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
-                                velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
-                                particle = Particle(effect_info['position'].x, effect_info['position'].y, velocity)
-                                particles.append(particle)
+                                        # Save high scores and store ranks
+                                        if player1.score > 0:
+                                            p1_highscore_rank = add_score("Player 1", player1.score)
+                                            if p1_highscore_rank:
+                                                print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
+                                        else:
+                                            p1_highscore_rank = None
+
+                                        if player2.score > 0:
+                                            p2_highscore_rank = add_score("Player 2", player2.score)
+                                            if p2_highscore_rank:
+                                                print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
+                                        else:
+                                            p2_highscore_rank = None
+
+                                        # Show high scores if either player got one
+                                        show_high_scores = (p1_is_high or p2_is_high)
+                                        break
+                            else:
+                                print("Player 2 shield absorbed hit!")
+
+                            # Destroy the asteroid that hit the player
+                            effect_info = asteroid.split()
+                            if effect_info:
+                                if screen_shake_cooldown <= 0:
+                                    screen_shake = min(screen_shake + effect_info['shake_amount'] * 0.5, SCREEN_SHAKE_MAX)
+                                    screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
+
+                                # Spawn particles
+                                for i in range(effect_info['particle_count']):
+                                    angle = (360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
+                                    velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
+                                    particle = Particle(effect_info['position'].x, effect_info['position'].y, velocity)
+                                    particles.append(particle)
                         continue
 
                 # Update particles
@@ -773,17 +965,80 @@ def main():
 
                             shot.kill()
 
-                            # Chance to spawn power-up
-                            # First check for rare MEGA POWER
-                            if random.random() < MEGA_POWER_SPAWN_CHANCE:
-                                PowerUp(asteroid.position.x, asteroid.position.y, PowerUp.MEGA_POWER)
-                            elif random.random() < POWERUP_SPAWN_CHANCE:
-                                # Randomly choose a normal power-up type
-                                powerup_types = [PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
-                                chosen_type = random.choice(powerup_types)
-                                PowerUp(asteroid.position.x, asteroid.position.y, chosen_type)
+                            # Chance to spawn power-up (if enabled)
+                            if POWERUP_SPAWN_ENABLED:
+                                # First check for rare MEGA POWER
+                                if random.random() < MEGA_POWER_SPAWN_CHANCE:
+                                    PowerUp(asteroid.position.x, asteroid.position.y, PowerUp.MEGA_POWER)
+                                elif random.random() < POWERUP_SPAWN_CHANCE:
+                                    # Randomly choose a normal power-up type
+                                    powerup_types = [PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
+                                    chosen_type = random.choice(powerup_types)
+                                    PowerUp(asteroid.position.x, asteroid.position.y, chosen_type)
 
                             break
+
+                # Update and check laser beam collisions
+                laser_beams_to_remove = []
+                for laser in laser_beams:
+                    if not laser.update(dt):
+                        laser_beams_to_remove.append(laser)
+                        continue
+
+                    # Check collisions with all asteroids
+                    for asteroid in asteroids:
+                        if asteroid.dying:
+                            continue
+
+                        if laser.check_hit(asteroid):
+                            # Increase combo
+                            combo_count += 1
+                            combo_timer = COMBO_TIMEOUT
+
+                            # Calculate points with combo multiplier
+                            base_points = asteroid.get_points()
+                            multiplier = COMBO_MULTIPLIERS.get(combo_count, COMBO_MULTIPLIERS[5])
+                            points_earned = int(base_points * multiplier)
+
+                            # Award points to the player who shot the laser
+                            if laser.owner:
+                                laser.owner.score += points_earned
+                                player_name = f"Player {laser.owner.player_number}"
+                            else:
+                                player_name = "Unknown"
+
+                            # Visual feedback
+                            if combo_count > 1:
+                                print(f"{player_name}: +{points_earned} points! ({combo_count}x COMBO)")
+                            else:
+                                print(f"{player_name}: +{points_earned} points")
+
+                            # Split the asteroid
+                            effect_info = asteroid.split()
+                            if effect_info:
+                                if screen_shake_cooldown <= 0:
+                                    screen_shake = min(screen_shake + effect_info['shake_amount'], SCREEN_SHAKE_MAX)
+                                    screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
+
+                                # Spawn particles
+                                for i in range(effect_info['particle_count']):
+                                    angle = (360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
+                                    velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
+                                    particle = Particle(effect_info['position'].x, effect_info['position'].y, velocity)
+                                    particles.append(particle)
+
+                            # Chance to spawn power-up (if enabled)
+                            if POWERUP_SPAWN_ENABLED:
+                                if random.random() < MEGA_POWER_SPAWN_CHANCE:
+                                    PowerUp(asteroid.position.x, asteroid.position.y, PowerUp.MEGA_POWER)
+                                elif random.random() < POWERUP_SPAWN_CHANCE:
+                                    powerup_types = [PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
+                                    chosen_type = random.choice(powerup_types)
+                                    PowerUp(asteroid.position.x, asteroid.position.y, chosen_type)
+
+                # Remove expired laser beams
+                for laser in laser_beams_to_remove:
+                    laser_beams.remove(laser)
 
                 # Check for power-up collection for both players
                 for powerup in powerups:
@@ -852,6 +1107,10 @@ def main():
             for particle in particles:
                 particle.draw(screen, shake_offset)
 
+            # Draw laser beams with shake offset
+            for laser in laser_beams:
+                laser.draw(screen, shake_offset)
+
             # Draw scores and lives for both players
             draw_scores(screen, player1, player2)
             # Draw combo
@@ -885,7 +1144,7 @@ def main():
             draw_powerup_indicator(screen, player1, slow_motion_active, slow_motion_timer)
 
             # Draw game over screen (pass retry delay and high scores flag)
-            button_rect = draw_game_over_screen(screen, player1, player2, game_over_retry_delay, show_high_scores)
+            button_rect = draw_game_over_screen(screen, player1, player2, game_over_retry_delay, show_high_scores, p1_highscore_rank, p2_highscore_rank)
 
             # Update and draw taunt animation LAST (so it's on top)
             if taunt_animation:

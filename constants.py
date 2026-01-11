@@ -10,15 +10,16 @@ PLAYER_RADIUS = 20
 
 PLAYER_TURN_SPEED = 300
 
-PLAYER_SPEED = 200  # pixels per second
+PLAYER_SPEED = 300  # pixels per second
 
 SHOT_RADIUS = 5
 PLAYER_SHOOT_SPEED = 500  # pixels per second
 PLAYER_SHOOT_COOLDOWN = 0.3  # seconds
 
 # Power-up constants
-POWERUP_SPAWN_CHANCE = 0.15  # 15% chance to spawn when asteroid destroyed
-MEGA_POWER_SPAWN_CHANCE = 0.03  # 3% chance to spawn MEGA POWER (much rarer!)
+POWERUP_SPAWN_ENABLED = True  # Set to False to disable power-up spawning entirely
+POWERUP_SPAWN_CHANCE = 0.08  # 8% chance to spawn when asteroid destroyed (reduced from 15%)
+MEGA_POWER_SPAWN_CHANCE = 0.015  # 1.5% chance to spawn MEGA POWER (reduced from 3%)
 
 # Rapid Fire
 RAPID_FIRE_DURATION = 5.0  # seconds
@@ -35,7 +36,7 @@ SLOW_MOTION_FACTOR = 0.4  # asteroids move at 40% speed
 # Shield - one hit protection (no duration, just absorbs one hit)
 
 # MEGA POWER - activates ALL power-ups at once!
-MEGA_POWER_DURATION = 10.0  # seconds
+MEGA_POWER_DURATION = 6.0  # seconds (reduced from 10.0)
 MEGA_POWER_MUSIC_SPEED = 1.26  # Pitch shift up 4 semitones (2^(4/12))
 # Toggle for music speed-up feature during MEGA POWER
 MEGA_POWER_MUSIC_SPEEDUP_ENABLED = False
@@ -59,13 +60,15 @@ COMBO_MULTIPLIERS = {
 SCREEN_SHAKE_LARGE = 8  # pixels for large asteroids
 SCREEN_SHAKE_MEDIUM = 5  # pixels for medium asteroids
 SCREEN_SHAKE_SMALL = 2  # pixels for small asteroids
-SCREEN_SHAKE_DECAY = 8.0  # how fast shake decays per second
+SCREEN_SHAKE_DECAY = 20.0  # how fast shake decays per second
 SCREEN_SHAKE_MAX = 12  # maximum screen shake (prevents stacking too high)
 # minimum seconds between shake additions (prevents rapid stacking)
 SCREEN_SHAKE_COOLDOWN = 0.1
 
 # Asteroid death animation
 ASTEROID_DEATH_DURATION = 0.15  # seconds
+# maximum seconds (real-world time, not affected by game speed)
+ASTEROID_DEATH_DURATION_MAX = 0.15
 ASTEROID_SHAKE_INTENSITY = 3  # pixels to shake while dying
 
 # Particle effects
@@ -111,3 +114,17 @@ DEATH_TAUNTS = [
 TAUNT_DURATION = 2.5  # seconds the taunt stays on screen
 TAUNT_FADE_IN = 0.3  # seconds to fade in
 TAUNT_FADE_OUT = 0.5  # seconds to fade out
+
+# Laser Beam
+LASER_BEAM_MAX_SHOTS = 15  # Maximum number of laser beams available
+LASER_BEAM_COOLDOWN = 1.0  # Cooldown between laser shots in seconds
+
+# Boost
+BOOST_DURATION = 3.0  # seconds the boost lasts
+BOOST_SPEED_MULTIPLIER = 2.5  # Speed multiplier during boost
+BOOST_COOLDOWN = 8.0  # seconds before boost can be used again
+
+# Progressive Difficulty
+DIFFICULTY_INCREASE_INTERVAL = 30.0  # seconds between difficulty increases
+# Speed multiplier increase per interval (15%)
+DIFFICULTY_SPEED_INCREMENT = 0.15
