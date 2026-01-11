@@ -12,7 +12,7 @@ from soundeffects import play_shoot_sound
 
 
 class Player(CircleShape):
-    def __init__(self, x, y):
+    def __init__(self, x, y, input_source="keyboard", player_number=1, speed_multiplier=1.0):
         super().__init__(x, y, PLAYER_RADIUS)
         self.rotation = 0
         self.timer = 0
@@ -26,6 +26,13 @@ class Player(CircleShape):
         self.bounce_info = None  # Store bounce collision info for visual effects
         self.exhaust_timer = 0  # Timer for spawning exhaust particles
         self.is_moving = False  # Track if player is currently moving
+        self.input_source = input_source  # "keyboard", "gamepad_0", "gamepad_1"
+        self.player_number = player_number  # 1 or 2
+        self.lives = 3  # Start with 3 lives
+        self.respawn_timer = 0  # Timer for respawn invulnerability
+        self.is_respawning = False  # Flag for respawn state
+        self.score = 0  # Player's score
+        self.speed_multiplier = speed_multiplier  # Speed multiplier from config
     
     # in the player class
     def triangle(self, offset=(0, 0)):
@@ -40,8 +47,18 @@ class Player(CircleShape):
         return [a, b, c]
 
     def draw(self, screen, offset=(0, 0)):
-        # Change color based on active power-ups
-        if self.mega_power_active:
+        # Don't draw if dead
+        if self.lives <= 0:
+            return
+
+        # Change color based on active power-ups or respawn state
+        if self.is_respawning:
+            # Flashing effect during respawn invulnerability
+            if (pygame.time.get_ticks() // 100) % 2 == 0:
+                color = (100, 100, 100)  # Dim gray when flashing
+            else:
+                color = (255, 255, 255)  # White
+        elif self.mega_power_active:
             # Rainbow effect for MEGA POWER
             time = pygame.time.get_ticks() / 100
             hue = (time % 360) / 360.0
@@ -70,9 +87,19 @@ class Player(CircleShape):
         self.rotation += dt * PLAYER_TURN_SPEED
 
     def update(self, dt):
+        # Don't update if dead
+        if self.lives <= 0:
+            return
+
         keys = pygame.key.get_pressed()
         self.timer -= dt
         self.exhaust_timer -= dt
+
+        # Update respawn timer
+        if self.is_respawning:
+            self.respawn_timer -= dt
+            if self.respawn_timer <= 0:
+                self.is_respawning = False
 
         # Apply bounce velocity with decay
         if self.velocity.length() > 0:
@@ -105,63 +132,78 @@ class Player(CircleShape):
         # Track if player is moving this frame
         self.is_moving = False
 
-        # Get gamepad input
-        joystick_rotate = 0
-        joystick_move = 0
-        joystick_shoot = False
+        # Get input based on input source
+        rotate_input = 0
+        move_input = 0
+        shoot_input = False
 
-        if pygame.joystick.get_count() > 0:
-            joystick = pygame.joystick.Joystick(0)
+        if self.input_source == "keyboard":
+            # Player 1 keyboard controls (WASD + Space)
+            if keys[pygame.K_a]:
+                rotate_input = -1
+            if keys[pygame.K_d]:
+                rotate_input = 1
+            if keys[pygame.K_w]:
+                move_input = 1
+            if keys[pygame.K_s]:
+                move_input = -1
+            if keys[pygame.K_SPACE]:
+                shoot_input = True
+        elif self.input_source == "keyboard_2":
+            # Player 2 keyboard controls (Arrow keys + Enter)
+            if keys[pygame.K_LEFT]:
+                rotate_input = -1
+            if keys[pygame.K_RIGHT]:
+                rotate_input = 1
+            if keys[pygame.K_UP]:
+                move_input = 1
+            if keys[pygame.K_DOWN]:
+                move_input = -1
+            if keys[pygame.K_RETURN]:
+                shoot_input = True
+        elif self.input_source.startswith("gamepad"):
+            # Get gamepad index from input_source (e.g., "gamepad_0" -> 0)
+            gamepad_index = int(self.input_source.split("_")[1])
+            if pygame.joystick.get_count() > gamepad_index:
+                joystick = pygame.joystick.Joystick(gamepad_index)
 
-            # Left stick horizontal for rotation (axis 0)
-            left_stick_x = joystick.get_axis(0)
-            # Apply deadzone to avoid drift
-            if abs(left_stick_x) > 0.15:
-                joystick_rotate = left_stick_x
+                # Left stick horizontal for rotation (axis 0)
+                left_stick_x = joystick.get_axis(0)
+                if abs(left_stick_x) > 0.15:
+                    rotate_input = left_stick_x
 
-            # Left stick vertical for movement (axis 1)
-            left_stick_y = joystick.get_axis(1)
-            # Apply deadzone and invert (pygame joystick returns -1 for up)
-            if abs(left_stick_y) > 0.15:
-                joystick_move = -left_stick_y
+                # Left stick vertical for movement (axis 1)
+                left_stick_y = joystick.get_axis(1)
+                if abs(left_stick_y) > 0.15:
+                    move_input = -left_stick_y
 
-            # Right trigger for shooting (axis 5, or button 0 as fallback)
-            # Try right trigger first (axis 5), value ranges from -1 to 1
-            try:
-                right_trigger = joystick.get_axis(5)
-                joystick_shoot = right_trigger > 0.5
-            except:
-                pass
+                # Right trigger for shooting (axis 5, or button 0 as fallback)
+                try:
+                    right_trigger = joystick.get_axis(5)
+                    shoot_input = right_trigger > 0.5
+                except:
+                    pass
 
-            # Also check A button (button 0) for shooting
-            if joystick.get_button(0):
-                joystick_shoot = True
+                # Also check A button (button 0) for shooting
+                if joystick.get_button(0):
+                    shoot_input = True
 
-        # Handle rotation (keyboard or gamepad)
-        if keys[pygame.K_a] or joystick_rotate < 0:
-            rotation_amount = joystick_rotate if joystick_rotate < 0 else -1
-            self.rotate(rotation_amount * dt)
-        if keys[pygame.K_d] or joystick_rotate > 0:
-            rotation_amount = joystick_rotate if joystick_rotate > 0 else 1
-            self.rotate(rotation_amount * dt)
+        # Handle rotation
+        if rotate_input != 0:
+            self.rotate(rotate_input * dt)
 
-        # Handle movement (keyboard or gamepad)
-        if keys[pygame.K_w] or joystick_move > 0:
-            move_amount = joystick_move if joystick_move > 0 else 1
-            self.move(move_amount * dt)
+        # Handle movement
+        if move_input != 0:
+            self.move(move_input * dt)
             self.is_moving = True
-        if keys[pygame.K_s] or joystick_move < 0:
-            move_amount = joystick_move if joystick_move < 0 else -1
-            self.move(move_amount * dt)
-            self.is_moving = True
 
-        # Handle shooting (keyboard or gamepad)
-        if keys[pygame.K_SPACE] or joystick_shoot:
+        # Handle shooting
+        if shoot_input:
             self.shoot()
 
     def move(self, dt):
         forward = pygame.Vector2(0, 1).rotate(self.rotation)
-        self.position += forward * PLAYER_SPEED * dt
+        self.position += forward * PLAYER_SPEED * self.speed_multiplier * dt
 
         # Check for boundary collisions and apply bounce
         self.bounce_info = self.check_boundary_collision()
@@ -235,11 +277,11 @@ class Player(CircleShape):
         if self.multi_shot_active:
             # Shoot 3 bullets in a spread pattern
             for angle_offset in [-MULTI_SHOT_ANGLE_SPREAD, 0, MULTI_SHOT_ANGLE_SPREAD]:
-                shot = Shot(self.position.x, self.position.y, SHOT_RADIUS, self.rotation + angle_offset)
+                shot = Shot(self.position.x, self.position.y, SHOT_RADIUS, self.rotation + angle_offset, self)
                 shot.velocity = pygame.Vector2(0, 1).rotate(self.rotation + angle_offset) * PLAYER_SHOOT_SPEED
         else:
             # Shoot single bullet
-            shot = Shot(self.position.x, self.position.y, SHOT_RADIUS, self.rotation)
+            shot = Shot(self.position.x, self.position.y, SHOT_RADIUS, self.rotation, self)
             shot.velocity = pygame.Vector2(0, 1).rotate(self.rotation) * PLAYER_SHOOT_SPEED
 
         play_shoot_sound()
@@ -276,9 +318,34 @@ class Player(CircleShape):
         self.shield_active = True
 
     def take_damage(self):
-        """Handle taking damage - returns True if player dies, False if shield absorbed it"""
+        """Handle taking damage - returns True if player loses a life, False if shield absorbed it"""
+        # Invulnerable during respawn
+        if self.is_respawning:
+            return False
+
         if self.shield_active:
             self.shield_active = False
             return False  # Shield absorbed the hit
-        return True  # Player dies
+
+        # Lose a life
+        self.lives -= 1
+        return True  # Player took damage
+
+    def respawn(self, x, y):
+        """Respawn the player at the given position with temporary invulnerability"""
+        if self.lives <= 0:
+            return  # Can't respawn if no lives left
+
+        self.position.x = x
+        self.position.y = y
+        self.rotation = 0
+        self.velocity = pygame.Vector2(0, 0)
+        self.is_respawning = True
+        self.respawn_timer = 2.0  # 2 seconds of invulnerability
+
+        # Clear power-ups on respawn
+        self.rapid_fire_active = False
+        self.multi_shot_active = False
+        self.mega_power_active = False
+        self.shield_active = False
        
