@@ -148,3 +148,10 @@ REVIVE_SYSTEM_ENABLED = True  # Set to True to enable revive power-ups
 REVIVE_SPAWN_CHANCE = 0.3  # 30% chance to spawn revive when a player dies
 REVIVE_DURATION = 15.0  # seconds before revive power-up despawns
 REVIVE_BLINK_SPEED = 3.0  # blinks per second when about to expire
+
+# Wave System
+WAVE_SYSTEM_ENABLED = True  # Set to True to enable wave-based spawning instead of continuous
+WAVE_BASE_ASTEROIDS = 5  # Base number of asteroids in wave 1
+WAVE_ASTEROID_INCREMENT = 2  # How many more asteroids per wave
+WAVE_BREAK_DURATION = 4.0  # seconds of breathing room between waves
+WAVE_SPAWN_DELAY = 0.3  # seconds between spawning each asteroid in a wave

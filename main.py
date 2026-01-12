@@ -8,7 +8,7 @@ from constants import (ASTEROID_MAX_RADIUS, ASTEROID_MIN_RADIUS, ASTEROID_SPAWN_
                       EXHAUST_PARTICLE_SPEED, EXHAUST_PARTICLE_SPREAD, BACKGROUND_MUSIC_ENABLED,
                       STARFIELD_ENABLED, STARFIELD_STAR_COUNT, FRIENDLY_FIRE_ENABLED,
                       SHARED_LIVES_ENABLED, SHARED_LIVES_POOL, REVIVE_SYSTEM_ENABLED,
-                      REVIVE_SPAWN_CHANCE)
+                      REVIVE_SPAWN_CHANCE, WAVE_SYSTEM_ENABLED, WAVE_BREAK_DURATION)
 from player import Player
 import pygame
 from constants import *
@@ -109,6 +109,35 @@ def draw_combo(screen, combo_count, combo_timer):
     multiplier_text = font_small.render(f"{multiplier}x Points!", True, color)
     multiplier_rect = multiplier_text.get_rect(center=(x_pos, y_pos + 50))
     screen.blit(multiplier_text, multiplier_rect)
+
+
+def draw_wave_info(screen, wave_number, wave_break_active, wave_break_timer):
+    """Draw wave number and break countdown"""
+    font_medium = pygame.font.Font(None, 48)
+    font_large = pygame.font.Font(None, 80)
+
+    # Always show current wave number in top center
+    wave_color = (100, 255, 255)
+    wave_text = font_medium.render(f"WAVE {wave_number}", True, wave_color)
+    wave_rect = wave_text.get_rect(midtop=(SCREEN_WIDTH // 2, 10))
+    screen.blit(wave_text, wave_rect)
+
+    # Show "GET READY" message during wave break
+    if wave_break_active:
+        # Pulse effect based on timer
+        pulse = 1.0 + (0.2 * abs(wave_break_timer % 1.0 - 0.5))
+
+        # Large "GET READY" text
+        ready_color = (255, 255, 100)
+        ready_text = font_large.render("GET READY!", True, ready_color)
+        ready_rect = ready_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40))
+        screen.blit(ready_text, ready_rect)
+
+        # Countdown timer
+        countdown = int(wave_break_timer) + 1
+        timer_text = font_large.render(str(countdown), True, ready_color)
+        timer_rect = timer_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 40))
+        screen.blit(timer_text, timer_rect)
 
 
 def draw_powerup_indicator(screen, player, slow_motion_active, slow_motion_timer):
@@ -354,9 +383,13 @@ def reset_game(updatable, player1_input=None, player2_input=None, speed_multipli
         player2.score = 0
 
     # Create asteroid field
-    AsteroidField()
+    field = AsteroidField()
 
-    return player1, player2
+    # Start first wave if wave system is enabled
+    if WAVE_SYSTEM_ENABLED:
+        field.start_wave(1)
+
+    return player1, player2, field
 
 
 def main():
@@ -409,7 +442,7 @@ def main():
     config_phase = True  # Start with config screen
 
     # Create two players (will be recreated after config)
-    player1, player2 = reset_game(updatable)
+    player1, player2, asteroid_field_ref = reset_game(updatable)
 
     # Game state
     game_started = False  # Track if game has started (start screen)
@@ -461,6 +494,12 @@ def main():
     player1_dead = False
     player2_dead = False
 
+    # Wave system state
+    current_wave = 1
+    wave_break_active = False
+    wave_break_timer = 0.0
+    asteroid_field_ref = None  # Reference to the asteroid field for wave management
+
     # Main game loop
     running = True
     while running:
@@ -478,7 +517,7 @@ def main():
                     player_cnt = control_config.get_player_count()
                     friendly_fire_enabled = control_config.get_friendly_fire_enabled()
                     shared_lives_enabled = control_config.get_shared_lives_enabled()
-                    player1, player2 = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
+                    player1, player2, asteroid_field_ref = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
 
                     # Set up shared lives if enabled
                     if shared_lives_enabled and player_cnt == 2:
@@ -517,7 +556,7 @@ def main():
                     p1_input, p2_input = control_config.get_player_inputs()
                     speed_mult = control_config.get_speed_multiplier()
                     player_cnt = control_config.get_player_count()
-                    player1, player2 = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
+                    player1, player2, asteroid_field_ref = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
                     game_over = False
                     game_over_retry_delay = 0
                     show_high_scores = False
@@ -535,6 +574,9 @@ def main():
                     difficulty_timer = 0.0
                     asteroid_speed_multiplier = 1.0
                     laser_beams = []
+                    current_wave = 1
+                    wave_break_active = False
+                    wave_break_timer = 0.0
                     if music_sped_up:
                         reset_music_speed()
                         music_sped_up = False
@@ -545,7 +587,7 @@ def main():
                     p1_input, p2_input = control_config.get_player_inputs()
                     speed_mult = control_config.get_speed_multiplier()
                     player_cnt = control_config.get_player_count()
-                    player1, player2 = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
+                    player1, player2, asteroid_field_ref = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
                     game_over = False
                     game_over_retry_delay = 0
                     show_high_scores = False
@@ -563,6 +605,9 @@ def main():
                     difficulty_timer = 0.0
                     asteroid_speed_multiplier = 1.0
                     laser_beams = []
+                    current_wave = 1
+                    wave_break_active = False
+                    wave_break_timer = 0.0
                     if music_sped_up:
                         reset_music_speed()
                         music_sped_up = False
@@ -576,7 +621,7 @@ def main():
                     p1_input, p2_input = control_config.get_player_inputs()
                     speed_mult = control_config.get_speed_multiplier()
                     player_cnt = control_config.get_player_count()
-                    player1, player2 = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
+                    player1, player2, asteroid_field_ref = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
                     game_over = False
                     game_over_retry_delay = 0
                     show_high_scores = False
@@ -594,6 +639,9 @@ def main():
                     difficulty_timer = 0.0
                     asteroid_speed_multiplier = 1.0
                     laser_beams = []
+                    current_wave = 1
+                    wave_break_active = False
+                    wave_break_timer = 0.0
                     if music_sped_up:
                         reset_music_speed()
                         music_sped_up = False
@@ -671,6 +719,25 @@ def main():
                 for field in updatable:
                     if isinstance(field, AsteroidField):
                         field.update(dt)
+
+                # Wave system management
+                if WAVE_SYSTEM_ENABLED and asteroid_field_ref:
+                    # Check if we're in a wave break
+                    if wave_break_active:
+                        wave_break_timer -= dt
+                        if wave_break_timer <= 0:
+                            # Start the next wave
+                            current_wave += 1
+                            asteroid_field_ref.start_wave(current_wave)
+                            wave_break_active = False
+                    else:
+                        # Check if all asteroids are cleared and wave spawning is done
+                        if asteroid_field_ref.asteroids_to_spawn == 0 and len(asteroids) == 0:
+                            # Start wave break
+                            wave_break_active = True
+                            wave_break_timer = WAVE_BREAK_DURATION
+                            print(f"Wave {current_wave} cleared! Next wave in {WAVE_BREAK_DURATION} seconds...")
+
 
                 # Update both players at normal speed (only if alive or shared lives)
                 if not player1_dead or (shared_lives_enabled and player1.lives > 0):
@@ -1475,6 +1542,9 @@ def main():
             draw_scores(screen, player1, player2, shared_lives_enabled)
             # Draw combo
             draw_combo(screen, combo_count, combo_timer)
+            # Draw wave info if wave system is enabled
+            if WAVE_SYSTEM_ENABLED:
+                draw_wave_info(screen, current_wave, wave_break_active, wave_break_timer)
             # Draw power-up indicators for player 1 (left side)
             draw_powerup_indicator(screen, player1, slow_motion_active, slow_motion_timer)
 
