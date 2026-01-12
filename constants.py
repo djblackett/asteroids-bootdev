@@ -60,6 +60,19 @@ COMBO_MULTIPLIERS = {
     5: 3.0,   # 3x points and higher
 }
 
+# Kill streak notifications
+KILL_STREAK_ENABLED = True  # Set to True to enable kill streak notifications
+KILL_STREAK_MILESTONES = {
+    3: {"name": "TRIPLE KILL!", "color": (255, 200, 50)},
+    5: {"name": "KILLING SPREE!", "color": (255, 150, 0)},
+    10: {"name": "RAMPAGE!", "color": (255, 100, 255)},
+    15: {"name": "UNSTOPPABLE!", "color": (255, 50, 50)},
+    20: {"name": "GODLIKE!", "color": (255, 0, 0)},
+    25: {"name": "LEGENDARY!", "color": (255, 215, 0)},
+    30: {"name": "BEYOND LEGENDARY!", "color": (0, 255, 255)},
+}
+KILL_STREAK_NOTIFICATION_DURATION = 2.5  # seconds to display notification
+
 # Screen shake and effects
 SCREEN_SHAKE_LARGE = 8  # pixels for large asteroids
 SCREEN_SHAKE_MEDIUM = 5  # pixels for medium asteroids

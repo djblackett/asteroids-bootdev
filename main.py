@@ -8,7 +8,8 @@ from constants import (ASTEROID_MAX_RADIUS, ASTEROID_MIN_RADIUS, ASTEROID_SPAWN_
                       EXHAUST_PARTICLE_SPEED, EXHAUST_PARTICLE_SPREAD, BACKGROUND_MUSIC_ENABLED,
                       STARFIELD_ENABLED, STARFIELD_STAR_COUNT, FRIENDLY_FIRE_ENABLED,
                       SHARED_LIVES_ENABLED, SHARED_LIVES_POOL, REVIVE_SYSTEM_ENABLED,
-                      REVIVE_SPAWN_CHANCE, WAVE_SYSTEM_ENABLED, WAVE_BREAK_DURATION)
+                      REVIVE_SPAWN_CHANCE, WAVE_SYSTEM_ENABLED, WAVE_BREAK_DURATION,
+                      KILL_STREAK_ENABLED, KILL_STREAK_MILESTONES)
 from player import Player
 import pygame
 from constants import *
@@ -23,6 +24,7 @@ from startscreen import draw_start_screen
 from controlconfig import ControlConfig
 from highscores import add_score, is_high_score, get_top_scores
 from starfield import Starfield
+from killstreak import KillStreakNotification
 import random
 
 
@@ -138,6 +140,42 @@ def draw_wave_info(screen, wave_number, wave_break_active, wave_break_timer):
         timer_text = font_large.render(str(countdown), True, ready_color)
         timer_rect = timer_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 40))
         screen.blit(timer_text, timer_rect)
+
+
+def check_kill_streak_milestone(combo_count, last_milestone):
+    """Check if a new kill streak milestone has been reached. Returns milestone info or None."""
+    if not KILL_STREAK_ENABLED:
+        return None
+
+    # Find the highest milestone we've reached that's higher than the last one
+    for milestone in sorted(KILL_STREAK_MILESTONES.keys(), reverse=True):
+        if combo_count >= milestone and milestone > last_milestone:
+            streak_info = KILL_STREAK_MILESTONES[milestone]
+            return {
+                'milestone': milestone,
+                'name': streak_info['name'],
+                'color': streak_info['color']
+            }
+
+    return None
+
+
+def increment_combo_and_check_streak(combo_count, last_streak_milestone, active_notification):
+    """Increment combo and check for kill streak milestones. Returns (new_combo, new_milestone, new_notification)."""
+    combo_count += 1
+
+    # Check if we hit a new milestone
+    milestone_info = check_kill_streak_milestone(combo_count, last_streak_milestone)
+    if milestone_info:
+        # Create new notification
+        notification = KillStreakNotification(
+            combo_count,
+            milestone_info['name'],
+            milestone_info['color']
+        )
+        return combo_count, milestone_info['milestone'], notification
+
+    return combo_count, last_streak_milestone, active_notification
 
 
 def draw_powerup_indicator(screen, player, slow_motion_active, slow_motion_timer):
@@ -461,6 +499,10 @@ def main():
     combo_count = 0
     combo_timer = 0.0
 
+    # Kill streak notifications
+    active_streak_notification = None  # Currently displaying kill streak notification
+    last_streak_milestone = 0  # Track last milestone to avoid duplicate notifications
+
     # Respawn positions for each player
     p1_spawn_x = SCREEN_WIDTH * 0.25
     p1_spawn_y = SCREEN_HEIGHT // 2
@@ -564,6 +606,8 @@ def main():
                     p2_highscore_rank = None
                     combo_count = 0
                     combo_timer = 0.0
+                    last_streak_milestone = 0
+                    active_streak_notification = None
                     slow_motion_active = False
                     slow_motion_timer = 0
                     screen_shake = 0.0
@@ -595,6 +639,8 @@ def main():
                     p2_highscore_rank = None
                     combo_count = 0
                     combo_timer = 0.0
+                    last_streak_milestone = 0
+                    active_streak_notification = None
                     slow_motion_active = False
                     slow_motion_timer = 0
                     screen_shake = 0.0
@@ -629,6 +675,8 @@ def main():
                     p2_highscore_rank = None
                     combo_count = 0
                     combo_timer = 0.0
+                    last_streak_milestone = 0
+                    active_streak_notification = None
                     slow_motion_active = False
                     slow_motion_timer = 0
                     screen_shake = 0.0
@@ -694,6 +742,12 @@ def main():
                     if combo_timer <= 0:
                         combo_count = 0
                         combo_timer = 0.0
+                        last_streak_milestone = 0  # Reset streak milestone tracking
+
+                # Update kill streak notification
+                if active_streak_notification:
+                    if not active_streak_notification.update(dt):
+                        active_streak_notification = None
 
                 # Update slow motion timer
                 if slow_motion_active:
@@ -842,8 +896,10 @@ def main():
                     if not player1_dead and player1.lives > 0 and player1.check_collision(asteroid):
                         # If player is boosting, ram through the asteroid
                         if player1.boost_active:
-                            # Increase combo
-                            combo_count += 1
+                            # Increase combo and check for kill streak
+                            combo_count, last_streak_milestone, active_streak_notification = increment_combo_and_check_streak(
+                                combo_count, last_streak_milestone, active_streak_notification
+                            )
                             combo_timer = COMBO_TIMEOUT
 
                             # Calculate points with combo multiplier
@@ -989,8 +1045,10 @@ def main():
                     if not player2_dead and player2.lives > 0 and player2.check_collision(asteroid):
                         # If player is boosting, ram through the asteroid
                         if player2.boost_active:
-                            # Increase combo
-                            combo_count += 1
+                            # Increase combo and check for kill streak
+                            combo_count, last_streak_milestone, active_streak_notification = increment_combo_and_check_streak(
+                                combo_count, last_streak_milestone, active_streak_notification
+                            )
                             combo_timer = COMBO_TIMEOUT
 
                             # Calculate points with combo multiplier
@@ -1141,8 +1199,10 @@ def main():
                         continue
                     for shot in shots:
                         if asteroid.check_collision(shot):
-                            # Increase combo
-                            combo_count += 1
+                            # Increase combo and check for kill streak
+                            combo_count, last_streak_milestone, active_streak_notification = increment_combo_and_check_streak(
+                                combo_count, last_streak_milestone, active_streak_notification
+                            )
                             combo_timer = COMBO_TIMEOUT
 
                             # Calculate points with combo multiplier
@@ -1206,8 +1266,10 @@ def main():
                             continue
 
                         if laser.check_hit(asteroid):
-                            # Increase combo
-                            combo_count += 1
+                            # Increase combo and check for kill streak
+                            combo_count, last_streak_milestone, active_streak_notification = increment_combo_and_check_streak(
+                                combo_count, last_streak_milestone, active_streak_notification
+                            )
                             combo_timer = COMBO_TIMEOUT
 
                             # Calculate points with combo multiplier
@@ -1545,6 +1607,9 @@ def main():
             # Draw wave info if wave system is enabled
             if WAVE_SYSTEM_ENABLED:
                 draw_wave_info(screen, current_wave, wave_break_active, wave_break_timer)
+            # Draw kill streak notification if active
+            if active_streak_notification:
+                active_streak_notification.draw(screen)
             # Draw power-up indicators for player 1 (left side)
             draw_powerup_indicator(screen, player1, slow_motion_active, slow_motion_timer)
 
