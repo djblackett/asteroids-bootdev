@@ -25,7 +25,8 @@ class ControlConfig:
         # Speed multiplier (1.0 = normal, 1.5 = 50% faster, etc.)
         self.speed_multiplier = 1.0
         self.speed_options = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
-        self.speed_labels = ["50%", "75%", "100%", "125%", "150%", "200%"]
+        # Pad labels with spaces for consistent width
+        self.speed_labels = [" 50%", " 75%", "100%", "125%", "150%", "200%"]
 
         # Detect available gamepads
         self.gamepad_count = pygame.joystick.get_count()
@@ -35,12 +36,21 @@ class ControlConfig:
             self.gamepad_names.append(joystick.get_name())
 
         # Set default based on available hardware
+        # Note: Player 2 input only matters when player_count == 2
         if self.gamepad_count >= 2:
             self.player1_input = self.GAMEPAD_0
             self.player2_input = self.GAMEPAD_1
         elif self.gamepad_count == 1:
-            self.player1_input = self.KEYBOARD_1
-            self.player2_input = self.GAMEPAD_0
+            # In 1P mode, assign gamepad to P1. P2 input doesn't matter until 2P mode.
+            self.player1_input = self.GAMEPAD_0
+            self.player2_input = self.KEYBOARD_2
+
+        # Create fonts once during init instead of every frame
+        # Use default pygame fonts for better performance
+        self.font_title = pygame.font.Font(None, 64)
+        self.font_large = pygame.font.Font(None, 42)
+        self.font_medium = pygame.font.Font(None, 36)
+        self.font_small = pygame.font.Font(None, 28)
 
     def get_available_options(self, player_num):
         """Get list of available input options for a player"""
@@ -50,8 +60,10 @@ class ControlConfig:
 
         # Add gamepad options if available
         for i in range(self.gamepad_count):
-            gamepad_name = self.gamepad_names[i][:30]  # Truncate long names
-            options.append((f"Gamepad {i+1}: {gamepad_name}", f"gamepad_{i}"))
+            # Clean up gamepad name to avoid font alignment issues
+            gamepad_name = self.gamepad_names[i][:25]  # Truncate long names
+            # Format: "Controller X - Name" for cleaner rendering
+            options.append((f"Controller {i+1} - {gamepad_name}", f"gamepad_{i}"))
 
         return options
 
@@ -116,11 +128,20 @@ class ControlConfig:
     def handle_event(self, event):
         """Handle keyboard/gamepad input for config screen"""
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_UP:
+            # UP navigation (also support W key)
+            if event.key == pygame.K_UP or event.key == pygame.K_w:
                 self.selected_player = max(0, self.selected_player - 1)
-            elif event.key == pygame.K_DOWN:
+                # Skip Player 2 option if in 1-player mode
+                if self.player_count == 1 and self.selected_player == 2:
+                    self.selected_player = 1
+            # DOWN navigation (also support S key)
+            elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
                 self.selected_player = min(3, self.selected_player + 1)
-            elif event.key == pygame.K_LEFT:
+                # Skip Player 2 option if in 1-player mode
+                if self.player_count == 1 and self.selected_player == 2:
+                    self.selected_player = 3
+            # LEFT navigation (also support A key)
+            elif event.key == pygame.K_LEFT or event.key == pygame.K_a:
                 if self.selected_player == 0:
                     self.cycle_player_count(-1)
                 elif self.selected_player == 1:
@@ -129,7 +150,8 @@ class ControlConfig:
                     self.cycle_player2_input(-1)
                 else:  # selected_player == 3
                     self.cycle_speed(-1)
-            elif event.key == pygame.K_RIGHT:
+            # RIGHT navigation (also support D key)
+            elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
                 if self.selected_player == 0:
                     self.cycle_player_count(1)
                 elif self.selected_player == 1:
@@ -147,8 +169,14 @@ class ControlConfig:
                 self.config_complete = True
             elif event.button == 11:  # D-pad up
                 self.selected_player = max(0, self.selected_player - 1)
+                # Skip Player 2 option if in 1-player mode
+                if self.player_count == 1 and self.selected_player == 2:
+                    self.selected_player = 1
             elif event.button == 12:  # D-pad down
                 self.selected_player = min(3, self.selected_player + 1)
+                # Skip Player 2 option if in 1-player mode
+                if self.player_count == 1 and self.selected_player == 2:
+                    self.selected_player = 3
             elif event.button == 13:  # D-pad left
                 if self.selected_player == 0:
                     self.cycle_player_count(-1)
@@ -173,8 +201,14 @@ class ControlConfig:
             hat_x, hat_y = event.value
             if hat_y == 1:  # Up
                 self.selected_player = max(0, self.selected_player - 1)
+                # Skip Player 2 option if in 1-player mode
+                if self.player_count == 1 and self.selected_player == 2:
+                    self.selected_player = 1
             elif hat_y == -1:  # Down
                 self.selected_player = min(3, self.selected_player + 1)
+                # Skip Player 2 option if in 1-player mode
+                if self.player_count == 1 and self.selected_player == 2:
+                    self.selected_player = 3
             elif hat_x == -1:  # Left
                 if self.selected_player == 0:
                     self.cycle_player_count(-1)
@@ -198,59 +232,54 @@ class ControlConfig:
         """Draw the control configuration screen"""
         screen.fill((0, 0, 0))
 
-        # Title
-        font_title = pygame.font.Font(None, 64)
-        font_large = pygame.font.Font(None, 42)
-        font_medium = pygame.font.Font(None, 36)
-        font_small = pygame.font.Font(None, 28)
-
-        title = font_title.render("CONTROL SETUP", True, (255, 255, 255))
+        # Use pre-created fonts
+        title = self.font_title.render("CONTROL SETUP", True, (255, 255, 255))
         title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 80))
         screen.blit(title, title_rect)
 
         # Gamepad detection info
         if self.gamepad_count > 0:
-            gamepad_text = font_small.render(f"{self.gamepad_count} gamepad(s) detected", True, (100, 255, 100))
+            gamepad_text = self.font_small.render(f"{self.gamepad_count} gamepad(s) detected", True, (100, 255, 100))
         else:
-            gamepad_text = font_small.render("No gamepads detected - using keyboards", True, (255, 200, 100))
+            gamepad_text = self.font_small.render("No gamepads detected - using keyboards", True, (255, 200, 100))
         gamepad_rect = gamepad_text.get_rect(center=(SCREEN_WIDTH // 2, 140))
         screen.blit(gamepad_text, gamepad_rect)
 
         # Player count selection
         y_offset = 190
         player_count_color = (255, 255, 255) if self.selected_player == 0 else (150, 150, 150)
-        player_count_label = font_large.render("PLAYERS", True, player_count_color)
+        player_count_label = self.font_large.render("PLAYERS", True, player_count_color)
         player_count_label_rect = player_count_label.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
         screen.blit(player_count_label, player_count_label_rect)
 
         # Player count display
         player_count_display = f"< {self.player_count} >"
-        player_count_text = font_medium.render(player_count_display, True, player_count_color)
+        player_count_text = self.font_medium.render(player_count_display, True, player_count_color)
         player_count_rect = player_count_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 50))
         screen.blit(player_count_text, player_count_rect)
 
         # Selection indicator for player count
         if self.selected_player == 0:
-            indicator = font_medium.render("^", True, (255, 255, 255))
+            indicator = self.font_medium.render("^", True, (255, 255, 255))
             indicator_rect = indicator.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 85))
             screen.blit(indicator, indicator_rect)
 
         # Player 1 config
         y_offset = 300
         p1_color = (100, 200, 255) if self.selected_player == 1 else (150, 150, 150)
-        p1_label = font_large.render("PLAYER 1", True, p1_color)
+        p1_label = self.font_large.render("PLAYER 1", True, p1_color)
         p1_label_rect = p1_label.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
         screen.blit(p1_label, p1_label_rect)
 
         # Player 1 input display
         p1_input_name = self.get_input_display_name(self.player1_input, 1)
-        p1_input_text = font_medium.render(f"< {p1_input_name} >", True, p1_color)
+        p1_input_text = self.font_medium.render(f"< {p1_input_name} >", True, p1_color)
         p1_input_rect = p1_input_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 50))
         screen.blit(p1_input_text, p1_input_rect)
 
         # Selection indicator for Player 1
         if self.selected_player == 1:
-            indicator = font_medium.render("^", True, (100, 200, 255))
+            indicator = self.font_medium.render("^", True, (100, 200, 255))
             indicator_rect = indicator.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 85))
             screen.blit(indicator, indicator_rect)
 
@@ -258,57 +287,56 @@ class ControlConfig:
         if self.player_count == 2:
             y_offset = 410
             p2_color = (255, 200, 100) if self.selected_player == 2 else (150, 150, 150)
-            p2_label = font_large.render("PLAYER 2", True, p2_color)
+            p2_label = self.font_large.render("PLAYER 2", True, p2_color)
             p2_label_rect = p2_label.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
             screen.blit(p2_label, p2_label_rect)
 
             # Player 2 input display
             p2_input_name = self.get_input_display_name(self.player2_input, 2)
-            p2_input_text = font_medium.render(f"< {p2_input_name} >", True, p2_color)
+            p2_input_text = self.font_medium.render(f"< {p2_input_name} >", True, p2_color)
             p2_input_rect = p2_input_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 50))
             screen.blit(p2_input_text, p2_input_rect)
 
             # Selection indicator for Player 2
             if self.selected_player == 2:
-                indicator = font_medium.render("^", True, (255, 200, 100))
+                indicator = self.font_medium.render("^", True, (255, 200, 100))
                 indicator_rect = indicator.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 85))
                 screen.blit(indicator, indicator_rect)
 
         # Speed config
         y_offset = 520 if self.player_count == 2 else 410
         speed_color = (100, 255, 100) if self.selected_player == 3 else (150, 150, 150)
-        speed_label = font_large.render("SPEED", True, speed_color)
+        speed_label = self.font_large.render("SPEED", True, speed_color)
         speed_label_rect = speed_label.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
         screen.blit(speed_label, speed_label_rect)
 
         # Speed display
         speed_display = self.get_speed_label()
-        speed_text = font_medium.render(f"< {speed_display} >", True, speed_color)
+        speed_text = self.font_medium.render(f"< {speed_display} >", True, speed_color)
         speed_rect = speed_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 50))
         screen.blit(speed_text, speed_rect)
 
         # Selection indicator for Speed
         if self.selected_player == 3:
-            indicator = font_medium.render("^", True, (100, 255, 100))
+            indicator = self.font_medium.render("^", True, (100, 255, 100))
             indicator_rect = indicator.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 85))
             screen.blit(indicator, indicator_rect)
 
         # Instructions
         y_offset = 615 if self.player_count == 2 else 505
         instructions = [
-            "UP/DOWN: Select option",
-            "LEFT/RIGHT: Change setting",
+            "WASD or ARROWS: Navigate",
             "ENTER or SPACE: Start game"
         ]
 
         for i, instruction in enumerate(instructions):
-            text = font_small.render(instruction, True, (200, 200, 200))
+            text = self.font_small.render(instruction, True, (200, 200, 200))
             text_rect = text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + i * 30))
             screen.blit(text, text_rect)
 
         # Warning if both players use same input
         if self.player1_input == self.player2_input:
-            warning = font_small.render("WARNING: Both players using same input!", True, (255, 100, 100))
+            warning = self.font_small.render("WARNING: Both players using same input!", True, (255, 100, 100))
             warning_rect = warning.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 40))
             screen.blit(warning, warning_rect)
 

@@ -10,7 +10,7 @@ from constants import (PLAYER_RADIUS, PLAYER_SHOOT_COOLDOWN, PLAYER_SHOOT_SPEED,
                       LASER_BEAM_MAX_SHOTS, LASER_BEAM_COOLDOWN,
                       BOOST_DURATION, BOOST_SPEED_MULTIPLIER, BOOST_COOLDOWN)
 from shot import Shot
-from soundeffects import play_shoot_sound
+from soundeffects import play_shoot_sound, play_laser_sound, play_boost_sound
 
 
 class Player(CircleShape):
@@ -440,14 +440,18 @@ class Player(CircleShape):
         # Import here to avoid circular dependency
         from laserbeam import LaserBeam
 
-        # Create laser beam and store it
-        self.pending_laser = LaserBeam(self.position.x, self.position.y, self.rotation, self)
+        # Calculate laser starting position at the tip of the ship
+        forward = pygame.Vector2(0, 1).rotate(self.rotation)
+        laser_start = self.position + forward * self.radius
+
+        # Create laser beam from the tip of the ship
+        self.pending_laser = LaserBeam(laser_start.x, laser_start.y, self.rotation, self)
 
         # Update cooldown and shots remaining
         self.laser_cooldown = LASER_BEAM_COOLDOWN
         self.laser_shots_remaining -= 1
 
-        play_shoot_sound()
+        play_laser_sound()
 
     def activate_boost(self):
         """Activate the boost ability"""
@@ -457,3 +461,5 @@ class Player(CircleShape):
         self.boost_active = True
         self.boost_timer = BOOST_DURATION
         self.boost_cooldown = BOOST_COOLDOWN
+
+        play_boost_sound()

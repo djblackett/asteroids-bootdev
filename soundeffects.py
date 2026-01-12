@@ -7,6 +7,8 @@ import time
 _sounds_loaded = False
 _shoot_sounds = []
 _explosion_sounds = {}
+_laser_sound = None
+_boost_sound = None
 
 # Music position tracking for pitch shifting
 _music_start_time = 0
@@ -88,7 +90,7 @@ def change_pitch(sound, pitch_factor):
 
 def init_sounds():
     """Load and process sounds after pygame is initialized. Call this explicitly from main."""
-    global _sounds_loaded, _shoot_sounds, _explosion_sounds
+    global _sounds_loaded, _shoot_sounds, _explosion_sounds, _laser_sound, _boost_sound
 
     if _sounds_loaded:
         return
@@ -113,6 +115,14 @@ def init_sounds():
     _explosion_sounds['medium'] = change_pitch(original_explosion, 1.0)  # Original
     _explosion_sounds['small'] = change_pitch(original_explosion, 2.2)   # Very high crack
 
+    # Load laser beam sound
+    _laser_sound = pygame.mixer.Sound("./sound-effects/laser.mp3")
+    _laser_sound.set_volume(0.7)  # Set volume to 70% so it's not too loud
+
+    # Load boost sound
+    _boost_sound = pygame.mixer.Sound("./sound-effects/boost-woosh.mp3")
+    _boost_sound.set_volume(0.6)  # Set volume to 60%
+
     _sounds_loaded = True
     print("Sounds loaded!")
 
@@ -128,6 +138,20 @@ def play_shoot_sound():
     # Randomly select one of the pre-generated varied sounds
     sound = random.choice(_shoot_sounds)
     sound.play()
+
+def play_laser_sound():
+    """Play the laser beam sound effect."""
+    _ensure_sounds_loaded()
+
+    if _laser_sound:
+        _laser_sound.play()
+
+def play_boost_sound():
+    """Play the boost sound effect."""
+    _ensure_sounds_loaded()
+
+    if _boost_sound:
+        _boost_sound.play()
 
 def play_explosion_sound(asteroid_radius):
     """
