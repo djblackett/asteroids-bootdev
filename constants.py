@@ -18,8 +18,10 @@ PLAYER_SHOOT_COOLDOWN = 0.3  # seconds
 
 # Power-up constants
 POWERUP_SPAWN_ENABLED = True  # Set to False to disable power-up spawning entirely
-POWERUP_SPAWN_CHANCE = 0.08  # 8% chance to spawn when asteroid destroyed (reduced from 15%)
-MEGA_POWER_SPAWN_CHANCE = 0.015  # 1.5% chance to spawn MEGA POWER (reduced from 3%)
+# 8% chance to spawn when asteroid destroyed (reduced from 15%)
+POWERUP_SPAWN_CHANCE = 0.08
+# 1.5% chance to spawn MEGA POWER (reduced from 3%)
+MEGA_POWER_SPAWN_CHANCE = 0.015
 
 # Rapid Fire
 RAPID_FIRE_DURATION = 5.0  # seconds
@@ -40,6 +42,8 @@ MEGA_POWER_DURATION = 6.0  # seconds (reduced from 10.0)
 MEGA_POWER_MUSIC_SPEED = 1.26  # Pitch shift up 4 semitones (2^(4/12))
 # Toggle for music speed-up feature during MEGA POWER
 MEGA_POWER_MUSIC_SPEEDUP_ENABLED = False
+# Toggle for background music (disable for debugging when you already have music playing)
+BACKGROUND_MUSIC_ENABLED = True
 
 # Scoring system
 POINTS_LARGE_ASTEROID = 10  # 60 radius
@@ -128,3 +132,11 @@ BOOST_COOLDOWN = 8.0  # seconds before boost can be used again
 DIFFICULTY_INCREASE_INTERVAL = 30.0  # seconds between difficulty increases
 # Speed multiplier increase per interval (15%)
 DIFFICULTY_SPEED_INCREMENT = 0.15
+
+# Starfield Background
+STARFIELD_ENABLED = True  # Set to False to disable starfield
+STARFIELD_STAR_COUNT = 200  # Total number of stars across all layers
+STARFIELD_PARALLAX_STRENGTH = 0.05  # How much stars move based on player velocity (0.0 - 1.0)
+
+# Friendly Fire
+FRIENDLY_FIRE_ENABLED = True  # Set to False to disable shooting other players

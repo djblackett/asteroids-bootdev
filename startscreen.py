@@ -66,7 +66,8 @@ def draw_start_screen(screen):
 
     for powerup_type, name, description, color in powerup_info:
         # Create a temporary power-up to draw its icon
-        x_icon = SCREEN_WIDTH // 2 - 180
+        # Shifted left for better balance
+        x_icon = SCREEN_WIDTH // 2 - 120
         y_icon = y_offset
 
         # Draw icon background circle

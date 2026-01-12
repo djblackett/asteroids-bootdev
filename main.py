@@ -5,7 +5,8 @@ from asteroid import Asteroid
 from constants import (ASTEROID_MAX_RADIUS, ASTEROID_MIN_RADIUS, ASTEROID_SPAWN_RATE,
                       SCREEN_HEIGHT, SCREEN_WIDTH, MEGA_POWER_MUSIC_SPEEDUP_ENABLED,
                       BOUNDARY_PARTICLE_COUNT, BOUNDARY_SHAKE_AMOUNT, PARTICLE_SPEED,
-                      EXHAUST_PARTICLE_SPEED, EXHAUST_PARTICLE_SPREAD)
+                      EXHAUST_PARTICLE_SPEED, EXHAUST_PARTICLE_SPREAD, BACKGROUND_MUSIC_ENABLED,
+                      STARFIELD_ENABLED, STARFIELD_STAR_COUNT, FRIENDLY_FIRE_ENABLED)
 from player import Player
 import pygame
 from constants import *
@@ -19,6 +20,7 @@ from taunt import TauntAnimation
 from startscreen import draw_start_screen
 from controlconfig import ControlConfig
 from highscores import add_score, is_high_score, get_top_scores
+from starfield import Starfield
 import random
 
 
@@ -352,14 +354,15 @@ def main():
     if not joysticks:
         print("No gamepad detected - using keyboard controls only")
 
-    # Pre-load and process all sound effects at startup
-    init_sounds()
-
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pygame.display.set_caption("Asteroids Game")
 
-    # Start background music
-    start_background_music()
+    # Pre-load and process all sound effects at startup
+    init_sounds()
+
+    # Start background music (if enabled) - after display and sounds are loaded
+    if BACKGROUND_MUSIC_ENABLED:
+        start_background_music()
 
     clock = pygame.time.Clock()  # Create a clock to control the frame rate
     dt = 0
@@ -420,6 +423,12 @@ def main():
     difficulty_timer = 0.0
     asteroid_speed_multiplier = 1.0
 
+    # Starfield background
+    starfield = Starfield(star_count=STARFIELD_STAR_COUNT) if STARFIELD_ENABLED else None
+
+    # Friendly fire state (will be set from control config)
+    friendly_fire_enabled = FRIENDLY_FIRE_ENABLED
+
     # Main game loop
     running = True
     while running:
@@ -435,6 +444,7 @@ def main():
                     p1_input, p2_input = control_config.get_player_inputs()
                     speed_mult = control_config.get_speed_multiplier()
                     player_cnt = control_config.get_player_count()
+                    friendly_fire_enabled = control_config.get_friendly_fire_enabled()
                     player1, player2 = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
                     config_phase = False
                 continue  # Skip other event handling during config
@@ -558,6 +568,11 @@ def main():
         elif not game_started:
             # Draw the game in the background (frozen)
             shake_offset = (0, 0)
+
+            # Draw starfield
+            if starfield:
+                starfield.draw(screen)
+
             for sprite in drawable:
                 sprite.draw(screen, shake_offset)
 
@@ -608,6 +623,10 @@ def main():
                 # Update screen shake cooldown
                 if screen_shake_cooldown > 0:
                     screen_shake_cooldown -= dt
+
+                # Update starfield based on player movement
+                if starfield:
+                    starfield.update(player1, player2)
 
                 # Update asteroid field (spawns new asteroids)
                 for field in updatable:
@@ -1091,6 +1110,192 @@ def main():
                     if collected:
                         powerup.kill()
 
+                # Friendly fire - check if shots hit players
+                if friendly_fire_enabled:
+                    for shot in shots.copy():  # Use copy to avoid modification during iteration
+                        # Check if shot hits Player 1
+                        if shot.owner != player1 and player1.lives > 0 and player1.check_collision(shot):
+                            # Use take_damage to check if shield absorbed hit
+                            if player1.take_damage():
+                                print(f"Player 1 hit by Player {shot.owner.player_number}'s shot! Lives remaining: {player1.lives}")
+                                if player1.lives > 0:
+                                    # Respawn player 1
+                                    player1.respawn(p1_spawn_x, p1_spawn_y)
+                                else:
+                                    print("Player 1 eliminated by friendly fire!")
+                                    # Check if both players are dead
+                                    if player2.lives <= 0:
+                                        print("Game over!")
+                                        print(f"Player 1 Final Score: {player1.score}")
+                                        print(f"Player 2 Final Score: {player2.score}")
+                                        game_over = True
+                                        game_over_retry_delay = 1.5
+                                        taunt_animation = TauntAnimation()
+
+                                        # Check if scores qualify for high score board BEFORE saving
+                                        p1_is_high = is_high_score(player1.score) if player1.score > 0 else False
+                                        p2_is_high = is_high_score(player2.score) if player2.score > 0 else False
+
+                                        # Save high scores and store ranks
+                                        if player1.score > 0:
+                                            p1_highscore_rank = add_score("Player 1", player1.score)
+                                            if p1_highscore_rank:
+                                                print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
+                                        else:
+                                            p1_highscore_rank = None
+
+                                        if player2.score > 0:
+                                            p2_highscore_rank = add_score("Player 2", player2.score)
+                                            if p2_highscore_rank:
+                                                print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
+                                        else:
+                                            p2_highscore_rank = None
+
+                                        # Show high scores if either player got one
+                                        show_high_scores = (p1_is_high or p2_is_high)
+                            else:
+                                print("Player 1 shield absorbed friendly fire!")
+                            shot.kill()
+                            continue
+
+                        # Check if shot hits Player 2
+                        if shot.owner != player2 and player2.lives > 0 and player2.check_collision(shot):
+                            # Use take_damage to check if shield absorbed hit
+                            if player2.take_damage():
+                                print(f"Player 2 hit by Player {shot.owner.player_number}'s shot! Lives remaining: {player2.lives}")
+                                if player2.lives > 0:
+                                    # Respawn player 2
+                                    player2.respawn(p2_spawn_x, p2_spawn_y)
+                                else:
+                                    print("Player 2 eliminated by friendly fire!")
+                                    # Check if both players are dead
+                                    if player1.lives <= 0:
+                                        print("Game over!")
+                                        print(f"Player 1 Final Score: {player1.score}")
+                                        print(f"Player 2 Final Score: {player2.score}")
+                                        game_over = True
+                                        game_over_retry_delay = 1.5
+                                        taunt_animation = TauntAnimation()
+
+                                        # Check if scores qualify for high score board BEFORE saving
+                                        p1_is_high = is_high_score(player1.score) if player1.score > 0 else False
+                                        p2_is_high = is_high_score(player2.score) if player2.score > 0 else False
+
+                                        # Save high scores and store ranks
+                                        if player1.score > 0:
+                                            p1_highscore_rank = add_score("Player 1", player1.score)
+                                            if p1_highscore_rank:
+                                                print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
+                                        else:
+                                            p1_highscore_rank = None
+
+                                        if player2.score > 0:
+                                            p2_highscore_rank = add_score("Player 2", player2.score)
+                                            if p2_highscore_rank:
+                                                print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
+                                        else:
+                                            p2_highscore_rank = None
+
+                                        # Show high scores if either player got one
+                                        show_high_scores = (p1_is_high or p2_is_high)
+                            else:
+                                print("Player 2 shield absorbed friendly fire!")
+                            shot.kill()
+                            continue
+
+                # Friendly fire - check if laser beams hit players
+                if friendly_fire_enabled:
+                    for laser in laser_beams.copy():  # Use copy to avoid modification during iteration
+                        # Check if laser hits Player 1
+                        if laser.owner != player1 and player1.lives > 0 and laser.check_hit(player1):
+                            # Use take_damage to check if shield absorbed hit
+                            if player1.take_damage():
+                                print(f"Player 1 hit by Player {laser.owner.player_number}'s laser! Lives remaining: {player1.lives}")
+                                if player1.lives > 0:
+                                    # Respawn player 1
+                                    player1.respawn(p1_spawn_x, p1_spawn_y)
+                                else:
+                                    print("Player 1 eliminated by laser!")
+                                    # Check if both players are dead
+                                    if player2.lives <= 0:
+                                        print("Game over!")
+                                        print(f"Player 1 Final Score: {player1.score}")
+                                        print(f"Player 2 Final Score: {player2.score}")
+                                        game_over = True
+                                        game_over_retry_delay = 1.5
+                                        taunt_animation = TauntAnimation()
+
+                                        # Check if scores qualify for high score board BEFORE saving
+                                        p1_is_high = is_high_score(player1.score) if player1.score > 0 else False
+                                        p2_is_high = is_high_score(player2.score) if player2.score > 0 else False
+
+                                        # Save high scores and store ranks
+                                        if player1.score > 0:
+                                            p1_highscore_rank = add_score("Player 1", player1.score)
+                                            if p1_highscore_rank:
+                                                print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
+                                        else:
+                                            p1_highscore_rank = None
+
+                                        if player2.score > 0:
+                                            p2_highscore_rank = add_score("Player 2", player2.score)
+                                            if p2_highscore_rank:
+                                                print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
+                                        else:
+                                            p2_highscore_rank = None
+
+                                        # Show high scores if either player got one
+                                        show_high_scores = (p1_is_high or p2_is_high)
+                            else:
+                                print("Player 1 shield absorbed laser!")
+                            # Don't remove laser, it continues through
+                            continue
+
+                        # Check if laser hits Player 2
+                        if laser.owner != player2 and player2.lives > 0 and laser.check_hit(player2):
+                            # Use take_damage to check if shield absorbed hit
+                            if player2.take_damage():
+                                print(f"Player 2 hit by Player {laser.owner.player_number}'s laser! Lives remaining: {player2.lives}")
+                                if player2.lives > 0:
+                                    # Respawn player 2
+                                    player2.respawn(p2_spawn_x, p2_spawn_y)
+                                else:
+                                    print("Player 2 eliminated by laser!")
+                                    # Check if both players are dead
+                                    if player1.lives <= 0:
+                                        print("Game over!")
+                                        print(f"Player 1 Final Score: {player1.score}")
+                                        print(f"Player 2 Final Score: {player2.score}")
+                                        game_over = True
+                                        game_over_retry_delay = 1.5
+                                        taunt_animation = TauntAnimation()
+
+                                        # Check if scores qualify for high score board BEFORE saving
+                                        p1_is_high = is_high_score(player1.score) if player1.score > 0 else False
+                                        p2_is_high = is_high_score(player2.score) if player2.score > 0 else False
+
+                                        # Save high scores and store ranks
+                                        if player1.score > 0:
+                                            p1_highscore_rank = add_score("Player 1", player1.score)
+                                            if p1_highscore_rank:
+                                                print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
+                                        else:
+                                            p1_highscore_rank = None
+
+                                        if player2.score > 0:
+                                            p2_highscore_rank = add_score("Player 2", player2.score)
+                                            if p2_highscore_rank:
+                                                print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
+                                        else:
+                                            p2_highscore_rank = None
+
+                                        # Show high scores if either player got one
+                                        show_high_scores = (p1_is_high or p2_is_high)
+                            else:
+                                print("Player 2 shield absorbed laser!")
+                            # Don't remove laser, it continues through
+                            continue
+
             # Calculate screen shake offset (regardless of pause state for drawing)
             shake_offset = (0, 0)
             if screen_shake > 0:
@@ -1098,6 +1303,10 @@ def main():
                     random.uniform(-screen_shake, screen_shake),
                     random.uniform(-screen_shake, screen_shake)
                 )
+
+            # Draw starfield first (background layer)
+            if starfield:
+                starfield.draw(screen)
 
             # Draw all sprites with shake offset
             for sprite in drawable:
@@ -1130,6 +1339,11 @@ def main():
 
             # Draw frozen game state (no shake on game over)
             shake_offset = (0, 0)
+
+            # Draw starfield
+            if starfield:
+                starfield.draw(screen)
+
             for sprite in drawable:
                 sprite.draw(screen, shake_offset)
 

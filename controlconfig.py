@@ -1,6 +1,6 @@
 """Control configuration screen for multiplayer setup"""
 import pygame
-from constants import SCREEN_WIDTH, SCREEN_HEIGHT
+from constants import SCREEN_WIDTH, SCREEN_HEIGHT, FRIENDLY_FIRE_ENABLED
 
 
 class ControlConfig:
@@ -15,7 +15,7 @@ class ControlConfig:
     def __init__(self):
         self.player1_input = self.KEYBOARD_1
         self.player2_input = self.KEYBOARD_2
-        self.selected_player = 0  # Which row is selected: 0=Players, 1=P1, 2=P2, 3=Speed
+        self.selected_player = 0  # Which row is selected: 0=Players, 1=P1, 2=P2, 3=Speed, 4=FriendlyFire
         self.config_complete = False
 
         # Player count toggle
@@ -27,6 +27,10 @@ class ControlConfig:
         self.speed_options = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
         # Pad labels with spaces for consistent width
         self.speed_labels = [" 50%", " 75%", "100%", "125%", "150%", "200%"]
+
+        # Friendly fire toggle
+        self.friendly_fire_enabled = FRIENDLY_FIRE_ENABLED
+        self.friendly_fire_options = [False, True]
 
         # Detect available gamepads
         self.gamepad_count = pygame.joystick.get_count()
@@ -117,6 +121,15 @@ class ControlConfig:
         except ValueError:
             return "100%"
 
+    def cycle_friendly_fire(self, direction=1):
+        """Cycle through friendly fire options"""
+        try:
+            current_index = self.friendly_fire_options.index(self.friendly_fire_enabled)
+            new_index = (current_index + direction) % len(self.friendly_fire_options)
+            self.friendly_fire_enabled = self.friendly_fire_options[new_index]
+        except ValueError:
+            self.friendly_fire_enabled = FRIENDLY_FIRE_ENABLED
+
     def get_input_display_name(self, input_source, player_num):
         """Get human-readable name for an input source"""
         options = self.get_available_options(player_num)
@@ -136,7 +149,7 @@ class ControlConfig:
                     self.selected_player = 1
             # DOWN navigation (also support S key)
             elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
-                self.selected_player = min(3, self.selected_player + 1)
+                self.selected_player = min(4, self.selected_player + 1)
                 # Skip Player 2 option if in 1-player mode
                 if self.player_count == 1 and self.selected_player == 2:
                     self.selected_player = 3
@@ -148,8 +161,10 @@ class ControlConfig:
                     self.cycle_player1_input(-1)
                 elif self.selected_player == 2:
                     self.cycle_player2_input(-1)
-                else:  # selected_player == 3
+                elif self.selected_player == 3:
                     self.cycle_speed(-1)
+                else:  # selected_player == 4
+                    self.cycle_friendly_fire(-1)
             # RIGHT navigation (also support D key)
             elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
                 if self.selected_player == 0:
@@ -158,8 +173,10 @@ class ControlConfig:
                     self.cycle_player1_input(1)
                 elif self.selected_player == 2:
                     self.cycle_player2_input(1)
-                else:  # selected_player == 3
+                elif self.selected_player == 3:
                     self.cycle_speed(1)
+                else:  # selected_player == 4
+                    self.cycle_friendly_fire(1)
             elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
                 self.config_complete = True
 
@@ -173,7 +190,7 @@ class ControlConfig:
                 if self.player_count == 1 and self.selected_player == 2:
                     self.selected_player = 1
             elif event.button == 12:  # D-pad down
-                self.selected_player = min(3, self.selected_player + 1)
+                self.selected_player = min(4, self.selected_player + 1)
                 # Skip Player 2 option if in 1-player mode
                 if self.player_count == 1 and self.selected_player == 2:
                     self.selected_player = 3
@@ -184,8 +201,10 @@ class ControlConfig:
                     self.cycle_player1_input(-1)
                 elif self.selected_player == 2:
                     self.cycle_player2_input(-1)
-                else:
+                elif self.selected_player == 3:
                     self.cycle_speed(-1)
+                else:  # selected_player == 4
+                    self.cycle_friendly_fire(-1)
             elif event.button == 14:  # D-pad right
                 if self.selected_player == 0:
                     self.cycle_player_count(1)
@@ -193,8 +212,10 @@ class ControlConfig:
                     self.cycle_player1_input(1)
                 elif self.selected_player == 2:
                     self.cycle_player2_input(1)
-                else:
+                elif self.selected_player == 3:
                     self.cycle_speed(1)
+                else:  # selected_player == 4
+                    self.cycle_friendly_fire(1)
 
         # Also handle joystick hat for D-pad
         elif event.type == pygame.JOYHATMOTION:
@@ -205,7 +226,7 @@ class ControlConfig:
                 if self.player_count == 1 and self.selected_player == 2:
                     self.selected_player = 1
             elif hat_y == -1:  # Down
-                self.selected_player = min(3, self.selected_player + 1)
+                self.selected_player = min(4, self.selected_player + 1)
                 # Skip Player 2 option if in 1-player mode
                 if self.player_count == 1 and self.selected_player == 2:
                     self.selected_player = 3
@@ -216,8 +237,10 @@ class ControlConfig:
                     self.cycle_player1_input(-1)
                 elif self.selected_player == 2:
                     self.cycle_player2_input(-1)
-                else:
+                elif self.selected_player == 3:
                     self.cycle_speed(-1)
+                else:  # selected_player == 4
+                    self.cycle_friendly_fire(-1)
             elif hat_x == 1:  # Right
                 if self.selected_player == 0:
                     self.cycle_player_count(1)
@@ -225,8 +248,10 @@ class ControlConfig:
                     self.cycle_player1_input(1)
                 elif self.selected_player == 2:
                     self.cycle_player2_input(1)
-                else:
+                elif self.selected_player == 3:
                     self.cycle_speed(1)
+                else:  # selected_player == 4
+                    self.cycle_friendly_fire(1)
 
     def draw(self, screen):
         """Draw the control configuration screen"""
@@ -322,8 +347,28 @@ class ControlConfig:
             indicator_rect = indicator.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 85))
             screen.blit(indicator, indicator_rect)
 
+        # Friendly Fire config (only show if 2 players)
+        if self.player_count == 2:
+            y_offset = 615
+            ff_color = (255, 100, 100) if self.selected_player == 4 else (150, 150, 150)
+            ff_label = self.font_large.render("FRIENDLY FIRE", True, ff_color)
+            ff_label_rect = ff_label.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
+            screen.blit(ff_label, ff_label_rect)
+
+            # Friendly Fire display
+            ff_display = "ON" if self.friendly_fire_enabled else "OFF"
+            ff_text = self.font_medium.render(f"< {ff_display} >", True, ff_color)
+            ff_rect = ff_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 50))
+            screen.blit(ff_text, ff_rect)
+
+            # Selection indicator for Friendly Fire
+            if self.selected_player == 4:
+                indicator = self.font_medium.render("^", True, (255, 100, 100))
+                indicator_rect = indicator.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 85))
+                screen.blit(indicator, indicator_rect)
+
         # Instructions
-        y_offset = 615 if self.player_count == 2 else 505
+        y_offset = 710 if self.player_count == 2 else 505
         instructions = [
             "WASD or ARROWS: Navigate",
             "ENTER or SPACE: Start game"
@@ -355,3 +400,7 @@ class ControlConfig:
     def get_player_count(self):
         """Return the configured player count"""
         return self.player_count
+
+    def get_friendly_fire_enabled(self):
+        """Return the configured friendly fire setting"""
+        return self.friendly_fire_enabled
