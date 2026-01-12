@@ -9,12 +9,21 @@ class PowerUp(CircleShape):
     MULTI_SHOT = "multi_shot"
     SLOW_MOTION = "slow_motion"
     MEGA_POWER = "mega_power"
+    REVIVE = "revive"
     containers = None
 
-    def __init__(self, x, y, powerup_type):
+    def __init__(self, x, y, powerup_type, custom_lifetime=None):
         super().__init__(x, y, 15)  # Power-ups have radius of 15
         self.powerup_type = powerup_type
-        self.lifetime = 12.0  # Power-up disappears after 12 seconds if not collected
+
+        # Revive has longer lifetime by default
+        if custom_lifetime is not None:
+            self.lifetime = custom_lifetime
+        elif powerup_type == self.REVIVE:
+            from constants import REVIVE_DURATION
+            self.lifetime = REVIVE_DURATION
+        else:
+            self.lifetime = 12.0  # Power-up disappears after 12 seconds if not collected
 
         # Slow floating movement
         angle = random.uniform(0, 360)
@@ -143,6 +152,38 @@ class PowerUp(CircleShape):
             pygame.draw.circle(screen, color1, center, circle_radius, 3)
             pygame.draw.circle(screen, color2, center, int(circle_radius * 0.7), 2)
             pygame.draw.circle(screen, color3, center, int(circle_radius * 0.4), 2)
+
+        elif self.powerup_type == self.REVIVE:
+            # Green heart/plus for revive
+            color = (0, 255, 100)
+
+            # Blink faster when about to expire
+            if self.lifetime <= 3.0:
+                from constants import REVIVE_BLINK_SPEED
+                blink_cycle = (pygame.time.get_ticks() / 1000.0) * REVIVE_BLINK_SPEED
+                if int(blink_cycle) % 2 == 0:
+                    color = (255, 255, 255)  # Flash white
+
+            # Draw medical cross (plus sign)
+            cross_width = radius * 0.4
+            cross_length = radius * 1.2
+
+            # Vertical bar
+            pygame.draw.rect(screen, color,
+                           (center[0] - cross_width // 2,
+                            center[1] - cross_length // 2,
+                            cross_width,
+                            cross_length))
+
+            # Horizontal bar
+            pygame.draw.rect(screen, color,
+                           (center[0] - cross_length // 2,
+                            center[1] - cross_width // 2,
+                            cross_length,
+                            cross_width))
+
+            # Draw pulsing outer circle
+            pygame.draw.circle(screen, color, center, radius, 2)
 
     def update(self, dt):
         # Move the power-up

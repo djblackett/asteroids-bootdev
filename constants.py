@@ -140,3 +140,11 @@ STARFIELD_PARALLAX_STRENGTH = 0.05  # How much stars move based on player veloci
 
 # Friendly Fire
 FRIENDLY_FIRE_ENABLED = True  # Set to False to disable shooting other players
+
+# Co-op System
+SHARED_LIVES_ENABLED = False  # Set to True for shared life pool between players
+SHARED_LIVES_POOL = 6  # Total lives shared between both players when enabled
+REVIVE_SYSTEM_ENABLED = True  # Set to True to enable revive power-ups
+REVIVE_SPAWN_CHANCE = 0.3  # 30% chance to spawn revive when a player dies
+REVIVE_DURATION = 15.0  # seconds before revive power-up despawns
+REVIVE_BLINK_SPEED = 3.0  # blinks per second when about to expire

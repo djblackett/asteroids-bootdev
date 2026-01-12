@@ -1,6 +1,6 @@
 """Control configuration screen for multiplayer setup"""
 import pygame
-from constants import SCREEN_WIDTH, SCREEN_HEIGHT, FRIENDLY_FIRE_ENABLED
+from constants import SCREEN_WIDTH, SCREEN_HEIGHT, FRIENDLY_FIRE_ENABLED, SHARED_LIVES_ENABLED
 
 
 class ControlConfig:
@@ -15,7 +15,7 @@ class ControlConfig:
     def __init__(self):
         self.player1_input = self.KEYBOARD_1
         self.player2_input = self.KEYBOARD_2
-        self.selected_player = 0  # Which row is selected: 0=Players, 1=P1, 2=P2, 3=Speed, 4=FriendlyFire
+        self.selected_player = 0  # Which row is selected: 0=Players, 1=P1, 2=P2, 3=Speed, 4=FriendlyFire, 5=SharedLives
         self.config_complete = False
 
         # Player count toggle
@@ -31,6 +31,10 @@ class ControlConfig:
         # Friendly fire toggle
         self.friendly_fire_enabled = FRIENDLY_FIRE_ENABLED
         self.friendly_fire_options = [False, True]
+
+        # Shared lives toggle
+        self.shared_lives_enabled = SHARED_LIVES_ENABLED
+        self.shared_lives_options = [False, True]
 
         # Detect available gamepads
         self.gamepad_count = pygame.joystick.get_count()
@@ -130,6 +134,15 @@ class ControlConfig:
         except ValueError:
             self.friendly_fire_enabled = FRIENDLY_FIRE_ENABLED
 
+    def cycle_shared_lives(self, direction=1):
+        """Cycle through shared lives options"""
+        try:
+            current_index = self.shared_lives_options.index(self.shared_lives_enabled)
+            new_index = (current_index + direction) % len(self.shared_lives_options)
+            self.shared_lives_enabled = self.shared_lives_options[new_index]
+        except ValueError:
+            self.shared_lives_enabled = SHARED_LIVES_ENABLED
+
     def get_input_display_name(self, input_source, player_num):
         """Get human-readable name for an input source"""
         options = self.get_available_options(player_num)
@@ -149,7 +162,7 @@ class ControlConfig:
                     self.selected_player = 1
             # DOWN navigation (also support S key)
             elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
-                self.selected_player = min(4, self.selected_player + 1)
+                self.selected_player = min(5, self.selected_player + 1)
                 # Skip Player 2 option if in 1-player mode
                 if self.player_count == 1 and self.selected_player == 2:
                     self.selected_player = 3
@@ -163,8 +176,10 @@ class ControlConfig:
                     self.cycle_player2_input(-1)
                 elif self.selected_player == 3:
                     self.cycle_speed(-1)
-                else:  # selected_player == 4
+                elif self.selected_player == 4:
                     self.cycle_friendly_fire(-1)
+                else:  # selected_player == 5
+                    self.cycle_shared_lives(-1)
             # RIGHT navigation (also support D key)
             elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
                 if self.selected_player == 0:
@@ -175,8 +190,10 @@ class ControlConfig:
                     self.cycle_player2_input(1)
                 elif self.selected_player == 3:
                     self.cycle_speed(1)
-                else:  # selected_player == 4
+                elif self.selected_player == 4:
                     self.cycle_friendly_fire(1)
+                else:  # selected_player == 5
+                    self.cycle_shared_lives(1)
             elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
                 self.config_complete = True
 
@@ -190,7 +207,7 @@ class ControlConfig:
                 if self.player_count == 1 and self.selected_player == 2:
                     self.selected_player = 1
             elif event.button == 12:  # D-pad down
-                self.selected_player = min(4, self.selected_player + 1)
+                self.selected_player = min(5, self.selected_player + 1)
                 # Skip Player 2 option if in 1-player mode
                 if self.player_count == 1 and self.selected_player == 2:
                     self.selected_player = 3
@@ -203,8 +220,10 @@ class ControlConfig:
                     self.cycle_player2_input(-1)
                 elif self.selected_player == 3:
                     self.cycle_speed(-1)
-                else:  # selected_player == 4
+                elif self.selected_player == 4:
                     self.cycle_friendly_fire(-1)
+                else:  # selected_player == 5
+                    self.cycle_shared_lives(-1)
             elif event.button == 14:  # D-pad right
                 if self.selected_player == 0:
                     self.cycle_player_count(1)
@@ -214,8 +233,10 @@ class ControlConfig:
                     self.cycle_player2_input(1)
                 elif self.selected_player == 3:
                     self.cycle_speed(1)
-                else:  # selected_player == 4
+                elif self.selected_player == 4:
                     self.cycle_friendly_fire(1)
+                else:  # selected_player == 5
+                    self.cycle_shared_lives(1)
 
         # Also handle joystick hat for D-pad
         elif event.type == pygame.JOYHATMOTION:
@@ -226,7 +247,7 @@ class ControlConfig:
                 if self.player_count == 1 and self.selected_player == 2:
                     self.selected_player = 1
             elif hat_y == -1:  # Down
-                self.selected_player = min(4, self.selected_player + 1)
+                self.selected_player = min(5, self.selected_player + 1)
                 # Skip Player 2 option if in 1-player mode
                 if self.player_count == 1 and self.selected_player == 2:
                     self.selected_player = 3
@@ -239,8 +260,10 @@ class ControlConfig:
                     self.cycle_player2_input(-1)
                 elif self.selected_player == 3:
                     self.cycle_speed(-1)
-                else:  # selected_player == 4
+                elif self.selected_player == 4:
                     self.cycle_friendly_fire(-1)
+                else:  # selected_player == 5
+                    self.cycle_shared_lives(-1)
             elif hat_x == 1:  # Right
                 if self.selected_player == 0:
                     self.cycle_player_count(1)
@@ -250,8 +273,10 @@ class ControlConfig:
                     self.cycle_player2_input(1)
                 elif self.selected_player == 3:
                     self.cycle_speed(1)
-                else:  # selected_player == 4
+                elif self.selected_player == 4:
                     self.cycle_friendly_fire(1)
+                else:  # selected_player == 5
+                    self.cycle_shared_lives(1)
 
     def draw(self, screen):
         """Draw the control configuration screen"""
@@ -367,8 +392,27 @@ class ControlConfig:
                 indicator_rect = indicator.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 85))
                 screen.blit(indicator, indicator_rect)
 
+            # Shared Lives config
+            y_offset = 710
+            sl_color = (100, 255, 255) if self.selected_player == 5 else (150, 150, 150)
+            sl_label = self.font_large.render("SHARED LIVES", True, sl_color)
+            sl_label_rect = sl_label.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
+            screen.blit(sl_label, sl_label_rect)
+
+            # Shared Lives display
+            sl_display = "ON" if self.shared_lives_enabled else "OFF"
+            sl_text = self.font_medium.render(f"< {sl_display} >", True, sl_color)
+            sl_rect = sl_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 50))
+            screen.blit(sl_text, sl_rect)
+
+            # Selection indicator for Shared Lives
+            if self.selected_player == 5:
+                indicator = self.font_medium.render("^", True, (100, 255, 255))
+                indicator_rect = indicator.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 85))
+                screen.blit(indicator, indicator_rect)
+
         # Instructions
-        y_offset = 710 if self.player_count == 2 else 505
+        y_offset = 805 if self.player_count == 2 else 505
         instructions = [
             "WASD or ARROWS: Navigate",
             "ENTER or SPACE: Start game"
@@ -404,3 +448,7 @@ class ControlConfig:
     def get_friendly_fire_enabled(self):
         """Return the configured friendly fire setting"""
         return self.friendly_fire_enabled
+
+    def get_shared_lives_enabled(self):
+        """Return the configured shared lives setting"""
+        return self.shared_lives_enabled

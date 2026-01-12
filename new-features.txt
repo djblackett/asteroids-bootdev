@@ -1,0 +1,56 @@
+Visual Polish Features
+Starfield Background - Parallax scrolling stars that move slightly as the player moves, creating depth and immersion
+
+Asteroid Textures/Variations - Different visual styles for asteroids (rocky, icy, metallic) with different colors and patterns
+
+Trails & After-images - Short trails behind fast-moving objects, especially during boost
+
+Mini-map - Small corner display showing asteroid positions relative to player (especially useful in multiplayer)
+
+Kill Streak Notifications - Big flashy text/animations for milestone combos (10x, 20x, etc.)
+
+Gameplay Enhancements
+Enemy Ships/UFOs - Occasional hostile ships that shoot back at players, worth bonus points
+
+Wave System - Structured waves with increasing difficulty and brief breathing room between waves
+
+Power-up Magnets - Hold a button to slowly pull nearby power-ups toward you
+
+Time Trial Mode - Survive for X seconds or clear all asteroids as fast as possible
+
+Asteroid Fragment Chains - When you destroy an asteroid, fragments briefly glow and award bonus points if destroyed quickly (chain reaction bonus)
+
+Multiplayer Features
+Friendly Fire Toggle - Option to enable/disable shooting the other player
+
+Shared Lives Pool - Co-op mode where both players share a life pool
+
+Competitive Modes - King of the Hill (control center area), Race (first to X points), Last Man Standing
+
+Revive System - Dead player can be revived if surviving player collects a special item
+
+Meta Features
+Achievements System - Unlockable achievements displayed on screen (e.g., "Untouchable - Clear 10 asteroids without getting hit")
+
+Unlockable Ship Skins - Different visual styles for player ships earned through achievements
+
+Daily Challenge - Seeded random game with specific conditions, compete on global leaderboard
+
+Replay System - Save and replay best runs
+
+Statistics Screen - Track total playtime, asteroids destroyed, highest combo, etc.
+
+Audio/Juice
+Proximity Warning System - Audio cue or visual indicator when asteroids are dangerously close
+
+Dynamic Music - Music intensity increases with combo count or danger level
+
+Voice Callouts - Announcer voice for "Double Kill!", "Mega Combo!", etc.
+
+Quick Win Additions
+The easiest "wow factor" additions would be:
+
+Starfield background (visual depth, minimal code)
+Kill streak notifications (leverages your existing combo system)
+Enemy UFOs (adds variety to gameplay)
+Wave system with breathing room (better pacing)

@@ -6,7 +6,9 @@ from constants import (ASTEROID_MAX_RADIUS, ASTEROID_MIN_RADIUS, ASTEROID_SPAWN_
                       SCREEN_HEIGHT, SCREEN_WIDTH, MEGA_POWER_MUSIC_SPEEDUP_ENABLED,
                       BOUNDARY_PARTICLE_COUNT, BOUNDARY_SHAKE_AMOUNT, PARTICLE_SPEED,
                       EXHAUST_PARTICLE_SPEED, EXHAUST_PARTICLE_SPREAD, BACKGROUND_MUSIC_ENABLED,
-                      STARFIELD_ENABLED, STARFIELD_STAR_COUNT, FRIENDLY_FIRE_ENABLED)
+                      STARFIELD_ENABLED, STARFIELD_STAR_COUNT, FRIENDLY_FIRE_ENABLED,
+                      SHARED_LIVES_ENABLED, SHARED_LIVES_POOL, REVIVE_SYSTEM_ENABLED,
+                      REVIVE_SPAWN_CHANCE)
 from player import Player
 import pygame
 from constants import *
@@ -24,31 +26,40 @@ from starfield import Starfield
 import random
 
 
-def draw_scores(screen, player1, player2):
+def draw_scores(screen, player1, player2, shared_lives_enabled=False):
     """Draw scores and lives for both players"""
     font = pygame.font.Font(None, 36)
 
     # Player 1 - Top left
-    p1_color = (100, 200, 255) if player1.lives > 0 else (100, 100, 100)
+    p1_color = (100, 200, 255) if player1.lives > 0 or (shared_lives_enabled and player1.lives > 0) else (100, 100, 100)
     p1_score_text = font.render(f"P1: {player1.score}", True, p1_color)
     p1_score_rect = p1_score_text.get_rect(topleft=(10, 10))
     screen.blit(p1_score_text, p1_score_rect)
 
-    # Player 1 lives
-    lives_text = font.render(f"Lives: {player1.lives}", True, p1_color)
-    lives_rect = lives_text.get_rect(topleft=(10, 45))
-    screen.blit(lives_text, lives_rect)
-
     # Player 2 - Top right
-    p2_color = (255, 200, 100) if player2.lives > 0 else (100, 100, 100)
+    p2_color = (255, 200, 100) if player2.lives > 0 or (shared_lives_enabled and player1.lives > 0) else (100, 100, 100)
     p2_score_text = font.render(f"P2: {player2.score}", True, p2_color)
     p2_score_rect = p2_score_text.get_rect(topright=(SCREEN_WIDTH - 10, 10))
     screen.blit(p2_score_text, p2_score_rect)
 
-    # Player 2 lives
-    lives_text = font.render(f"Lives: {player2.lives}", True, p2_color)
-    lives_rect = lives_text.get_rect(topright=(SCREEN_WIDTH - 10, 45))
-    screen.blit(lives_text, lives_rect)
+    # Lives display - centered if shared, separate if not
+    if shared_lives_enabled and player2.lives == 0:
+        # Shared lives - show in center
+        lives_color = (100, 255, 255)
+        lives_text = font.render(f"SHARED LIVES: {player1.lives}", True, lives_color)
+        lives_rect = lives_text.get_rect(midtop=(SCREEN_WIDTH // 2, 10))
+        screen.blit(lives_text, lives_rect)
+    else:
+        # Individual lives - show separately
+        # Player 1 lives
+        lives_text = font.render(f"Lives: {player1.lives}", True, p1_color)
+        lives_rect = lives_text.get_rect(topleft=(10, 45))
+        screen.blit(lives_text, lives_rect)
+
+        # Player 2 lives
+        lives_text = font.render(f"Lives: {player2.lives}", True, p2_color)
+        lives_rect = lives_text.get_rect(topright=(SCREEN_WIDTH - 10, 45))
+        screen.blit(lives_text, lives_rect)
 
 
 def draw_combo(screen, combo_count, combo_timer):
@@ -429,6 +440,10 @@ def main():
     # Friendly fire state (will be set from control config)
     friendly_fire_enabled = FRIENDLY_FIRE_ENABLED
 
+    # Shared lives state (will be set from control config)
+    shared_lives_enabled = SHARED_LIVES_ENABLED
+    shared_lives_pool = SHARED_LIVES_POOL
+
     # Main game loop
     running = True
     while running:
@@ -445,7 +460,14 @@ def main():
                     speed_mult = control_config.get_speed_multiplier()
                     player_cnt = control_config.get_player_count()
                     friendly_fire_enabled = control_config.get_friendly_fire_enabled()
+                    shared_lives_enabled = control_config.get_shared_lives_enabled()
                     player1, player2 = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
+
+                    # Set up shared lives if enabled
+                    if shared_lives_enabled and player_cnt == 2:
+                        player1.lives = shared_lives_pool
+                        player2.lives = 0  # Player 2 doesn't have separate lives
+
                     config_phase = False
                 continue  # Skip other event handling during config
 
@@ -1321,7 +1343,7 @@ def main():
                 laser.draw(screen, shake_offset)
 
             # Draw scores and lives for both players
-            draw_scores(screen, player1, player2)
+            draw_scores(screen, player1, player2, shared_lives_enabled)
             # Draw combo
             draw_combo(screen, combo_count, combo_timer)
             # Draw power-up indicators for player 1 (left side)
@@ -1353,7 +1375,7 @@ def main():
                 particle.draw(screen, shake_offset)
 
             # Draw scores on frozen game
-            draw_scores(screen, player1, player2)
+            draw_scores(screen, player1, player2, shared_lives_enabled)
             # Draw power-up indicators on frozen game
             draw_powerup_indicator(screen, player1, slow_motion_active, slow_motion_timer)
 
