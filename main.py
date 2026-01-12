@@ -26,6 +26,19 @@ from starfield import Starfield
 import random
 
 
+def handle_player_death(player, player_num, death_x, death_y, shared_lives_enabled):
+    """
+    Handle player death logic including revive spawning.
+    Returns True if game should continue, False if game over.
+    """
+    # Spawn revive power-up if enabled
+    if REVIVE_SYSTEM_ENABLED and random.random() < REVIVE_SPAWN_CHANCE:
+        PowerUp(death_x, death_y, PowerUp.REVIVE)
+        print(f"Revive power-up spawned at Player {player_num}'s death location!")
+
+    return True  # Game continues (player can be revived)
+
+
 def draw_scores(screen, player1, player2, shared_lives_enabled=False):
     """Draw scores and lives for both players"""
     font = pygame.font.Font(None, 36)
@@ -444,6 +457,10 @@ def main():
     shared_lives_enabled = SHARED_LIVES_ENABLED
     shared_lives_pool = SHARED_LIVES_POOL
 
+    # Player death state (for revive system)
+    player1_dead = False
+    player2_dead = False
+
     # Main game loop
     running = True
     while running:
@@ -655,9 +672,11 @@ def main():
                     if isinstance(field, AsteroidField):
                         field.update(dt)
 
-                # Update both players at normal speed
-                player1.update(dt)
-                player2.update(dt)
+                # Update both players at normal speed (only if alive or shared lives)
+                if not player1_dead or (shared_lives_enabled and player1.lives > 0):
+                    player1.update(dt)
+                if not player2_dead or (shared_lives_enabled and player1.lives > 0):
+                    player2.update(dt)
 
                 # Check for new laser beams from players
                 if player1.pending_laser:
@@ -752,8 +771,8 @@ def main():
                     if asteroid.dying:
                         continue
 
-                    # Player 1 collision
-                    if player1.lives > 0 and player1.check_collision(asteroid):
+                    # Player 1 collision (skip if dead)
+                    if not player1_dead and player1.lives > 0 and player1.check_collision(asteroid):
                         # If player is boosting, ram through the asteroid
                         if player1.boost_active:
                             # Increase combo
@@ -800,26 +819,27 @@ def main():
                             # Normal collision - take damage
                             # Use take_damage to check if shield absorbed hit
                             if player1.take_damage():
-                                print(f"Player 1 hit! Lives remaining: {player1.lives}")
-                                if player1.lives > 0:
-                                    # Respawn player 1
-                                    player1.respawn(p1_spawn_x, p1_spawn_y)
-                                else:
-                                    print("Player 1 eliminated!")
-                                    # Check if both players are dead
-                                    if player2.lives <= 0:
-                                        print("Game over!")
-                                        print(f"Player 1 Final Score: {player1.score}")
-                                        print(f"Player 2 Final Score: {player2.score}")
+                                if shared_lives_enabled:
+                                    # Shared lives mode - deduct from pool
+                                    player1.lives -= 1
+                                    print(f"Player 1 hit! Shared lives remaining: {player1.lives}")
+
+                                    if player1.lives > 0:
+                                        # Respawn player 1
+                                        player1.respawn(p1_spawn_x, p1_spawn_y)
+                                    else:
+                                        # Out of shared lives - mark both as dead
+                                        print("Out of shared lives! Game over!")
+                                        player1_dead = True
+                                        player2_dead = True
                                         game_over = True
-                                        game_over_retry_delay = 1.5  # 1.5 second delay
+                                        game_over_retry_delay = 1.5
                                         taunt_animation = TauntAnimation()
 
-                                        # Check if scores qualify for high score board BEFORE saving
+                                        # Save high scores
                                         p1_is_high = is_high_score(player1.score) if player1.score > 0 else False
                                         p2_is_high = is_high_score(player2.score) if player2.score > 0 else False
 
-                                        # Save high scores and store ranks
                                         if player1.score > 0:
                                             p1_highscore_rank = add_score("Player 1", player1.score)
                                             if p1_highscore_rank:
@@ -834,9 +854,52 @@ def main():
                                         else:
                                             p2_highscore_rank = None
 
-                                        # Show high scores if either player got one
                                         show_high_scores = (p1_is_high or p2_is_high)
                                         break
+                                else:
+                                    # Individual lives mode
+                                    print(f"Player 1 hit! Lives remaining: {player1.lives}")
+                                    if player1.lives > 0:
+                                        # Respawn player 1
+                                        player1.respawn(p1_spawn_x, p1_spawn_y)
+                                    else:
+                                        print("Player 1 eliminated!")
+                                        player1_dead = True
+
+                                        # Spawn revive power-up
+                                        handle_player_death(player1, 1, player1.position.x, player1.position.y, shared_lives_enabled)
+
+                                        # Check if both players are dead
+                                        if player2.lives <= 0:
+                                            print("Game over!")
+                                            print(f"Player 1 Final Score: {player1.score}")
+                                            print(f"Player 2 Final Score: {player2.score}")
+                                            game_over = True
+                                            game_over_retry_delay = 1.5
+                                            taunt_animation = TauntAnimation()
+
+                                            # Check if scores qualify for high score board BEFORE saving
+                                            p1_is_high = is_high_score(player1.score) if player1.score > 0 else False
+                                            p2_is_high = is_high_score(player2.score) if player2.score > 0 else False
+
+                                            # Save high scores and store ranks
+                                            if player1.score > 0:
+                                                p1_highscore_rank = add_score("Player 1", player1.score)
+                                                if p1_highscore_rank:
+                                                    print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
+                                            else:
+                                                p1_highscore_rank = None
+
+                                            if player2.score > 0:
+                                                p2_highscore_rank = add_score("Player 2", player2.score)
+                                                if p2_highscore_rank:
+                                                    print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
+                                            else:
+                                                p2_highscore_rank = None
+
+                                            # Show high scores if either player got one
+                                            show_high_scores = (p1_is_high or p2_is_high)
+                                            break
                             else:
                                 print("Player 1 shield absorbed hit!")
 
@@ -855,8 +918,8 @@ def main():
                                     particles.append(particle)
                         continue
 
-                    # Player 2 collision
-                    if player2.lives > 0 and player2.check_collision(asteroid):
+                    # Player 2 collision (skip if dead)
+                    if not player2_dead and player2.lives > 0 and player2.check_collision(asteroid):
                         # If player is boosting, ram through the asteroid
                         if player2.boost_active:
                             # Increase combo
@@ -903,26 +966,27 @@ def main():
                             # Normal collision - take damage
                             # Use take_damage to check if shield absorbed hit
                             if player2.take_damage():
-                                print(f"Player 2 hit! Lives remaining: {player2.lives}")
-                                if player2.lives > 0:
-                                    # Respawn player 2
-                                    player2.respawn(p2_spawn_x, p2_spawn_y)
-                                else:
-                                    print("Player 2 eliminated!")
-                                    # Check if both players are dead
-                                    if player1.lives <= 0:
-                                        print("Game over!")
-                                        print(f"Player 1 Final Score: {player1.score}")
-                                        print(f"Player 2 Final Score: {player2.score}")
+                                if shared_lives_enabled:
+                                    # Shared lives mode - deduct from pool
+                                    player1.lives -= 1
+                                    print(f"Player 2 hit! Shared lives remaining: {player1.lives}")
+
+                                    if player1.lives > 0:
+                                        # Respawn player 2
+                                        player2.respawn(p2_spawn_x, p2_spawn_y)
+                                    else:
+                                        # Out of shared lives - mark both as dead
+                                        print("Out of shared lives! Game over!")
+                                        player1_dead = True
+                                        player2_dead = True
                                         game_over = True
-                                        game_over_retry_delay = 1.5  # 1.5 second delay
+                                        game_over_retry_delay = 1.5
                                         taunt_animation = TauntAnimation()
 
-                                        # Check if scores qualify for high score board BEFORE saving
+                                        # Save high scores
                                         p1_is_high = is_high_score(player1.score) if player1.score > 0 else False
                                         p2_is_high = is_high_score(player2.score) if player2.score > 0 else False
 
-                                        # Save high scores and store ranks
                                         if player1.score > 0:
                                             p1_highscore_rank = add_score("Player 1", player1.score)
                                             if p1_highscore_rank:
@@ -937,9 +1001,52 @@ def main():
                                         else:
                                             p2_highscore_rank = None
 
-                                        # Show high scores if either player got one
                                         show_high_scores = (p1_is_high or p2_is_high)
                                         break
+                                else:
+                                    # Individual lives mode
+                                    print(f"Player 2 hit! Lives remaining: {player2.lives}")
+                                    if player2.lives > 0:
+                                        # Respawn player 2
+                                        player2.respawn(p2_spawn_x, p2_spawn_y)
+                                    else:
+                                        print("Player 2 eliminated!")
+                                        player2_dead = True
+
+                                        # Spawn revive power-up
+                                        handle_player_death(player2, 2, player2.position.x, player2.position.y, shared_lives_enabled)
+
+                                        # Check if both players are dead
+                                        if player1.lives <= 0:
+                                            print("Game over!")
+                                            print(f"Player 1 Final Score: {player1.score}")
+                                            print(f"Player 2 Final Score: {player2.score}")
+                                            game_over = True
+                                            game_over_retry_delay = 1.5
+                                            taunt_animation = TauntAnimation()
+
+                                            # Check if scores qualify for high score board BEFORE saving
+                                            p1_is_high = is_high_score(player1.score) if player1.score > 0 else False
+                                            p2_is_high = is_high_score(player2.score) if player2.score > 0 else False
+
+                                            # Save high scores and store ranks
+                                            if player1.score > 0:
+                                                p1_highscore_rank = add_score("Player 1", player1.score)
+                                                if p1_highscore_rank:
+                                                    print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
+                                            else:
+                                                p1_highscore_rank = None
+
+                                            if player2.score > 0:
+                                                p2_highscore_rank = add_score("Player 2", player2.score)
+                                                if p2_highscore_rank:
+                                                    print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
+                                            else:
+                                                p2_highscore_rank = None
+
+                                            # Show high scores if either player got one
+                                            show_high_scores = (p1_is_high or p2_is_high)
+                                            break
                             else:
                                 print("Player 2 shield absorbed hit!")
 
@@ -1085,8 +1192,8 @@ def main():
                 for powerup in powerups:
                     collected = False
 
-                    # Player 1 collection
-                    if player1.lives > 0 and player1.check_collision(powerup):
+                    # Player 1 collection (only if alive)
+                    if not player1_dead and player1.lives > 0 and player1.check_collision(powerup):
                         if powerup.powerup_type == PowerUp.MEGA_POWER:
                             player1.activate_mega_power()
                             slow_motion_active = True
@@ -1105,10 +1212,21 @@ def main():
                             slow_motion_active = True
                             slow_motion_timer = SLOW_MOTION_DURATION
                             print("Player 1: Slow Motion!")
+                        elif powerup.powerup_type == PowerUp.REVIVE:
+                            # Revive dead player
+                            if player2_dead and player2.lives == 0:
+                                player2.lives = 3  # Revive with 3 lives
+                                player2.respawn(p2_spawn_x, p2_spawn_y)
+                                player2_dead = False
+                                print("Player 1 revived Player 2!")
+                            elif player1_dead:
+                                print("Player 1 can't revive themselves!")
+                            else:
+                                print("Player 1: No one to revive!")
                         collected = True
 
-                    # Player 2 collection
-                    if not collected and player2.lives > 0 and player2.check_collision(powerup):
+                    # Player 2 collection (only if alive)
+                    if not collected and not player2_dead and player2.lives > 0 and player2.check_collision(powerup):
                         if powerup.powerup_type == PowerUp.MEGA_POWER:
                             player2.activate_mega_power()
                             slow_motion_active = True
@@ -1127,6 +1245,17 @@ def main():
                             slow_motion_active = True
                             slow_motion_timer = SLOW_MOTION_DURATION
                             print("Player 2: Slow Motion!")
+                        elif powerup.powerup_type == PowerUp.REVIVE:
+                            # Revive dead player
+                            if player1_dead and player1.lives == 0:
+                                player1.lives = 3  # Revive with 3 lives
+                                player1.respawn(p1_spawn_x, p1_spawn_y)
+                                player1_dead = False
+                                print("Player 2 revived Player 1!")
+                            elif player2_dead:
+                                print("Player 2 can't revive themselves!")
+                            else:
+                                print("Player 2: No one to revive!")
                         collected = True
 
                     if collected:
@@ -1135,8 +1264,8 @@ def main():
                 # Friendly fire - check if shots hit players
                 if friendly_fire_enabled:
                     for shot in shots.copy():  # Use copy to avoid modification during iteration
-                        # Check if shot hits Player 1
-                        if shot.owner != player1 and player1.lives > 0 and player1.check_collision(shot):
+                        # Check if shot hits Player 1 (skip if dead)
+                        if shot.owner != player1 and not player1_dead and player1.lives > 0 and player1.check_collision(shot):
                             # Use take_damage to check if shield absorbed hit
                             if player1.take_damage():
                                 print(f"Player 1 hit by Player {shot.owner.player_number}'s shot! Lives remaining: {player1.lives}")
@@ -1180,8 +1309,8 @@ def main():
                             shot.kill()
                             continue
 
-                        # Check if shot hits Player 2
-                        if shot.owner != player2 and player2.lives > 0 and player2.check_collision(shot):
+                        # Check if shot hits Player 2 (skip if dead)
+                        if shot.owner != player2 and not player2_dead and player2.lives > 0 and player2.check_collision(shot):
                             # Use take_damage to check if shield absorbed hit
                             if player2.take_damage():
                                 print(f"Player 2 hit by Player {shot.owner.player_number}'s shot! Lives remaining: {player2.lives}")
@@ -1228,8 +1357,8 @@ def main():
                 # Friendly fire - check if laser beams hit players
                 if friendly_fire_enabled:
                     for laser in laser_beams.copy():  # Use copy to avoid modification during iteration
-                        # Check if laser hits Player 1
-                        if laser.owner != player1 and player1.lives > 0 and laser.check_hit(player1):
+                        # Check if laser hits Player 1 (skip if dead)
+                        if laser.owner != player1 and not player1_dead and player1.lives > 0 and laser.check_hit(player1):
                             # Use take_damage to check if shield absorbed hit
                             if player1.take_damage():
                                 print(f"Player 1 hit by Player {laser.owner.player_number}'s laser! Lives remaining: {player1.lives}")
@@ -1273,8 +1402,8 @@ def main():
                             # Don't remove laser, it continues through
                             continue
 
-                        # Check if laser hits Player 2
-                        if laser.owner != player2 and player2.lives > 0 and laser.check_hit(player2):
+                        # Check if laser hits Player 2 (skip if dead)
+                        if laser.owner != player2 and not player2_dead and player2.lives > 0 and laser.check_hit(player2):
                             # Use take_damage to check if shield absorbed hit
                             if player2.take_damage():
                                 print(f"Player 2 hit by Player {laser.owner.player_number}'s laser! Lives remaining: {player2.lives}")
