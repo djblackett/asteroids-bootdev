@@ -67,12 +67,28 @@ pygbag --build main.py
 
 This creates a `build/web` directory containing all the files you need to upload.
 
+## Audio Processing
+
+The game includes pre-processed audio files in `sound-effects/processed/` for optimal web performance:
+- **Shooting sounds**: 3 pitch variations with reverb
+- **Explosion sounds**: 3 size-specific variations
+
+These files are automatically used in web mode, providing the same audio experience as desktop.
+
+### Regenerating Audio Files
+
+If you modify the source audio files, regenerate the processed versions:
+```bash
+python preprocess_audio.py
+```
+
 ## Notes
 
 - The game has been modified to run asynchronously (required for web browsers)
 - All assets (music and sound effects) are automatically included
 - The game should work in any modern web browser with WebAssembly support
 - Mobile browsers are supported, though controls may need adjustment
+- Web version uses pre-processed audio files for full audio quality without runtime processing
 
 ## Troubleshooting
 
