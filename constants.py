@@ -164,7 +164,37 @@ REVIVE_BLINK_SPEED = 3.0  # blinks per second when about to expire
 
 # Wave System
 WAVE_SYSTEM_ENABLED = True  # Set to True to enable wave-based spawning instead of continuous
-WAVE_BASE_ASTEROIDS = 5  # Base number of asteroids in wave 1
-WAVE_ASTEROID_INCREMENT = 2  # How many more asteroids per wave
-WAVE_BREAK_DURATION = 4.0  # seconds of breathing room between waves
-WAVE_SPAWN_DELAY = 0.3  # seconds between spawning each asteroid in a wave
+WAVE_BASE_ASTEROIDS = 10  # Base number of asteroids in wave 1 (doubled for more chaos)
+WAVE_ASTEROID_INCREMENT = 3  # How many more asteroids per wave (faster ramp-up)
+WAVE_BREAK_DURATION = 1.5  # seconds of breathing room between waves (much shorter)
+WAVE_SPAWN_DELAY = 0.1  # seconds between spawning each asteroid in a wave (rapid fire!)
+WAVE_MAX_DURATION = 25.0  # Maximum seconds for a wave before forcing next wave (keep it moving!)
+
+# UFO System
+UFO_ENABLED = True  # Set to False to disable UFO spawning entirely
+UFO_SPAWN_WAVE_START = 2  # UFOs start spawning from this wave onwards
+UFO_SPAWN_CHANCE = 0.5  # 50% chance to spawn a UFO during a wave
+UFO_MAX_ACTIVE = 2  # Maximum number of UFOs on screen at once
+
+# Large UFO
+UFO_LARGE_RADIUS = 30  # pixels
+UFO_LARGE_SPEED = 100  # pixels per second (slow, predictable)
+UFO_LARGE_SHOOT_COOLDOWN = 2.0  # seconds between shots (shoots randomly)
+UFO_LARGE_SHOOT_ACCURACY = 0.0  # 0 = random direction, 1 = perfect aim at player
+UFO_LARGE_POINTS = 200  # points awarded for destroying
+
+# Small UFO
+UFO_SMALL_RADIUS = 20  # pixels
+UFO_SMALL_SPEED = 180  # pixels per second (faster, more aggressive)
+UFO_SMALL_SHOOT_COOLDOWN = 1.5  # seconds between shots
+UFO_SMALL_SHOOT_ACCURACY = 0.7  # 70% accuracy aiming at player (with some randomness)
+UFO_SMALL_POINTS = 500  # points awarded for destroying (high value target!)
+UFO_SMALL_WAVE_START = 5  # Small UFOs start appearing from wave 5 onwards
+
+# UFO Shot
+UFO_SHOT_SPEED = 350  # pixels per second
+UFO_SHOT_RADIUS = 6  # slightly larger than player shots
+
+# UFO Spawn Timing
+UFO_SPAWN_MIN_DELAY = 8.0  # minimum seconds into wave before UFO can spawn
+UFO_SPAWN_MAX_DELAY = 15.0  # maximum seconds into wave before UFO spawns

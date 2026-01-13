@@ -78,6 +78,19 @@ class Asteroid(CircleShape):
         else:
             self.position += self.velocity * dt
 
+            # Screen wrapping - wrap around when asteroid goes off screen
+            from constants import SCREEN_WIDTH, SCREEN_HEIGHT
+
+            if self.position.x < -self.radius:
+                self.position.x = SCREEN_WIDTH + self.radius
+            elif self.position.x > SCREEN_WIDTH + self.radius:
+                self.position.x = -self.radius
+
+            if self.position.y < -self.radius:
+                self.position.y = SCREEN_HEIGHT + self.radius
+            elif self.position.y > SCREEN_HEIGHT + self.radius:
+                self.position.y = -self.radius
+
     def get_particle_count(self):
         """Get number of particles to spawn based on size"""
         if self.size_category == "large":

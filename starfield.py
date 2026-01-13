@@ -75,12 +75,31 @@ class Starfield:
             player2: Optional second player object
         """
         # Calculate average velocity if both players are alive
+        # But ignore bounce-back velocity (only track movement from thrust)
+        # Bounce velocity is typically much larger in magnitude, so we can filter it
+
+        def get_movement_velocity(player):
+            """Get player velocity, filtering out bounce-back effects"""
+            if player.lives <= 0:
+                return pygame.Vector2(0, 0)
+
+            # If player just bounced, ignore their velocity to prevent jarring starfield movement
+            # bounce_info is set when player hits a wall, None otherwise
+            if hasattr(player, 'bounce_info') and player.bounce_info is not None:
+                return pygame.Vector2(0, 0)
+
+            # Also filter out very high velocities (edge case)
+            vel = player.velocity
+            if vel.length() > 400:
+                return pygame.Vector2(0, 0)
+            return vel
+
         if player2 and player2.lives > 0 and player1.lives > 0:
-            avg_velocity = (player1.velocity + player2.velocity) / 2
+            avg_velocity = (get_movement_velocity(player1) + get_movement_velocity(player2)) / 2
         elif player1.lives > 0:
-            avg_velocity = player1.velocity
+            avg_velocity = get_movement_velocity(player1)
         elif player2 and player2.lives > 0:
-            avg_velocity = player2.velocity
+            avg_velocity = get_movement_velocity(player2)
         else:
             avg_velocity = pygame.Vector2(0, 0)
 

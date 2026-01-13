@@ -103,6 +103,19 @@ class Player(CircleShape):
                 draw_pos = trail_pos + trail_offset
                 pygame.draw.circle(screen, (255, 100, 255), (int(draw_pos.x), int(draw_pos.y)), trail_radius, 1)
 
+            # Draw warning indicator when boost is about to wear off (last 1 second)
+            if self.boost_timer <= 1.0:
+                # Create a pulsing ring effect
+                pulse_speed = 8.0  # pulses per second
+                pulse = abs((pygame.time.get_ticks() / 1000.0 * pulse_speed) % 2 - 1)  # 0 to 1 and back
+
+                # Warning ring around player
+                warning_radius = int(self.radius * (1.8 + 0.4 * pulse))
+                warning_color = (255, 255, 0)  # Yellow warning
+                warning_thickness = 2 if pulse > 0.5 else 3  # Pulsing thickness
+                warning_pos = self.position + pygame.Vector2(offset[0], offset[1])
+                pygame.draw.circle(screen, warning_color, (int(warning_pos.x), int(warning_pos.y)), warning_radius, warning_thickness)
+
         # Draw shield if active
         if self.shield_active:
             shield_color = (0, 255, 255)  # Cyan

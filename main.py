@@ -8,8 +8,9 @@ from constants import (ASTEROID_MAX_RADIUS, ASTEROID_MIN_RADIUS, ASTEROID_SPAWN_
                       EXHAUST_PARTICLE_SPEED, EXHAUST_PARTICLE_SPREAD, BACKGROUND_MUSIC_ENABLED,
                       STARFIELD_ENABLED, STARFIELD_STAR_COUNT, FRIENDLY_FIRE_ENABLED,
                       SHARED_LIVES_ENABLED, SHARED_LIVES_POOL, REVIVE_SYSTEM_ENABLED,
-                      REVIVE_SPAWN_CHANCE, WAVE_SYSTEM_ENABLED, WAVE_BREAK_DURATION,
-                      KILL_STREAK_ENABLED, KILL_STREAK_MILESTONES)
+                      REVIVE_SPAWN_CHANCE, WAVE_SYSTEM_ENABLED, WAVE_BREAK_DURATION, WAVE_MAX_DURATION,
+                      KILL_STREAK_ENABLED, KILL_STREAK_MILESTONES,
+                      UFO_ENABLED, UFO_LARGE_POINTS, UFO_SMALL_POINTS)
 from player import Player
 import pygame
 from constants import *
@@ -25,6 +26,7 @@ from controlconfig import ControlConfig
 from highscores import add_score, is_high_score, get_top_scores
 from starfield import Starfield
 from killstreak import KillStreakNotification
+from ufo import UFO
 import random
 
 
@@ -113,9 +115,10 @@ def draw_combo(screen, combo_count, combo_timer):
     screen.blit(multiplier_text, multiplier_rect)
 
 
-def draw_wave_info(screen, wave_number, wave_break_active, wave_break_timer):
+def draw_wave_info(screen, wave_number, wave_break_active, wave_break_timer, wave_duration=None, wave_max_duration=None):
     """Draw wave number and break countdown"""
     font_medium = pygame.font.Font(None, 48)
+    font_small = pygame.font.Font(None, 32)
     font_large = pygame.font.Font(None, 80)
 
     # Always show current wave number in top center
@@ -123,6 +126,24 @@ def draw_wave_info(screen, wave_number, wave_break_active, wave_break_timer):
     wave_text = font_medium.render(f"WAVE {wave_number}", True, wave_color)
     wave_rect = wave_text.get_rect(midtop=(SCREEN_WIDTH // 2, 10))
     screen.blit(wave_text, wave_rect)
+
+    # Show wave timer below wave number (if not in break and timer provided)
+    if not wave_break_active and wave_duration is not None and wave_max_duration is not None:
+        time_remaining = max(0, wave_max_duration - wave_duration)
+        minutes = int(time_remaining // 60)
+        seconds = int(time_remaining % 60)
+
+        # Color changes as time runs out
+        if time_remaining <= 10:
+            timer_color = (255, 100, 100)  # Red - urgent!
+        elif time_remaining <= 20:
+            timer_color = (255, 200, 100)  # Orange - warning
+        else:
+            timer_color = (150, 150, 150)  # Gray - plenty of time
+
+        timer_text = font_small.render(f"{minutes}:{seconds:02d}", True, timer_color)
+        timer_rect = timer_text.get_rect(midtop=(SCREEN_WIDTH // 2, 58))
+        screen.blit(timer_text, timer_rect)
 
     # Show "GET READY" message during wave break
     if wave_break_active:
@@ -422,6 +443,8 @@ def reset_game(updatable, player1_input=None, player2_input=None, speed_multipli
 
     # Create asteroid field
     field = AsteroidField()
+    # Set players reference for UFO targeting
+    field.players = [player1, player2]
 
     # Start first wave if wave system is enabled
     if WAVE_SYSTEM_ENABLED:
@@ -467,6 +490,7 @@ def main():
     asteroids = pygame.sprite.Group()
     shots = pygame.sprite.Group()
     powerups = pygame.sprite.Group()
+    ufos = pygame.sprite.Group()  # Group for UFO enemies
     laser_beams = []  # List to track active laser beams
 
     Player.containers = (updatable, drawable)
@@ -474,6 +498,7 @@ def main():
     AsteroidField.containers = (updatable,)
     Shot.containers = (shots, updatable, drawable)
     PowerUp.containers = (powerups, updatable, drawable)
+    UFO.containers = (ufos, updatable, drawable)
 
     # Control configuration
     control_config = ControlConfig()
@@ -540,6 +565,7 @@ def main():
     current_wave = 1
     wave_break_active = False
     wave_break_timer = 0.0
+    wave_duration_timer = 0.0  # Tracks how long current wave has been active
     asteroid_field_ref = None  # Reference to the asteroid field for wave management
 
     # Main game loop
@@ -600,6 +626,8 @@ def main():
                     player_cnt = control_config.get_player_count()
                     player1, player2, asteroid_field_ref = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
                     game_over = False
+                    player1_dead = False
+                    player2_dead = False
                     game_over_retry_delay = 0
                     show_high_scores = False
                     p1_highscore_rank = None
@@ -621,6 +649,7 @@ def main():
                     current_wave = 1
                     wave_break_active = False
                     wave_break_timer = 0.0
+                    wave_duration_timer = 0.0
                     if music_sped_up:
                         reset_music_speed()
                         music_sped_up = False
@@ -633,6 +662,8 @@ def main():
                     player_cnt = control_config.get_player_count()
                     player1, player2, asteroid_field_ref = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
                     game_over = False
+                    player1_dead = False
+                    player2_dead = False
                     game_over_retry_delay = 0
                     show_high_scores = False
                     p1_highscore_rank = None
@@ -654,6 +685,7 @@ def main():
                     current_wave = 1
                     wave_break_active = False
                     wave_break_timer = 0.0
+                    wave_duration_timer = 0.0
                     if music_sped_up:
                         reset_music_speed()
                         music_sped_up = False
@@ -669,6 +701,8 @@ def main():
                     player_cnt = control_config.get_player_count()
                     player1, player2, asteroid_field_ref = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
                     game_over = False
+                    player1_dead = False
+                    player2_dead = False
                     game_over_retry_delay = 0
                     show_high_scores = False
                     p1_highscore_rank = None
@@ -690,6 +724,7 @@ def main():
                     current_wave = 1
                     wave_break_active = False
                     wave_break_timer = 0.0
+                    wave_duration_timer = 0.0
                     if music_sped_up:
                         reset_music_speed()
                         music_sped_up = False
@@ -784,14 +819,35 @@ def main():
                             current_wave += 1
                             asteroid_field_ref.start_wave(current_wave)
                             wave_break_active = False
+                            wave_duration_timer = 0.0  # Reset wave timer
                     else:
+                        # Track wave duration
+                        wave_duration_timer += dt
+
                         # Check if all asteroids are cleared and wave spawning is done
-                        if asteroid_field_ref.asteroids_to_spawn == 0 and len(asteroids) == 0:
+                        # OR if maximum wave duration exceeded (keeps pace fast!)
+                        wave_complete = asteroid_field_ref.asteroids_to_spawn == 0 and len(asteroids) == 0
+                        wave_timeout = wave_duration_timer >= WAVE_MAX_DURATION
+
+                        if (wave_complete or wave_timeout) and not wave_break_active:
                             # Start wave break
                             wave_break_active = True
                             wave_break_timer = WAVE_BREAK_DURATION
-                            print(f"Wave {current_wave} cleared! Next wave in {WAVE_BREAK_DURATION} seconds...")
+                            if wave_complete:
+                                print(f"Wave {current_wave} cleared! Next wave in {WAVE_BREAK_DURATION} seconds...")
+                            else:
+                                print(f"Wave {current_wave} time limit reached! ({len(asteroids)} asteroids remaining)")
+                                print(f"Next wave in {WAVE_BREAK_DURATION} seconds...")
+                                # Destroy remaining asteroids (no points) to avoid overlap
+                                for asteroid in list(asteroids):
+                                    asteroid.kill()
+                            wave_duration_timer = 0.0  # Reset timer
 
+                # Check if UFO should spawn (wave system scheduled spawn)
+                if UFO_ENABLED and asteroid_field_ref.ufo_spawn_scheduled:
+                    if asteroid_field_ref.ufo_spawn_timer >= asteroid_field_ref.ufo_spawn_delay:
+                        asteroid_field_ref.spawn_ufo(ufos)
+                        asteroid_field_ref.ufo_spawn_scheduled = False
 
                 # Update both players at normal speed (only if alive or shared lives)
                 if not player1_dead or (shared_lives_enabled and player1.lives > 0):
@@ -1317,6 +1373,213 @@ def main():
                 for laser in laser_beams_to_remove:
                     laser_beams.remove(laser)
 
+                # === UFO COLLISIONS ===
+                # Check UFO collisions with player shots
+                for ufo in list(ufos):  # Use list() to avoid modification during iteration
+                    for shot in shots:
+                        # Skip UFO shots (they shouldn't destroy UFOs)
+                        if isinstance(shot.owner, UFO):
+                            continue
+
+                        if ufo.check_collision(shot):
+                            # Determine points based on UFO type
+                            points = UFO_LARGE_POINTS if ufo.ufo_type == "large" else UFO_SMALL_POINTS
+
+                            # Award points to shooter
+                            if shot.owner:
+                                shot.owner.score += points
+                                player_name = f"Player {shot.owner.player_number}"
+                                print(f"{player_name}: UFO destroyed! +{points} points")
+
+                            # Screen shake effect
+                            if screen_shake_cooldown <= 0:
+                                screen_shake = min(screen_shake + 6, SCREEN_SHAKE_MAX)
+                                screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
+
+                            # Spawn particles at UFO position
+                            particle_count = 10
+                            for i in range(particle_count):
+                                angle = (360 / particle_count) * i + random.uniform(-15, 15)
+                                velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
+                                particle = Particle(ufo.position.x, ufo.position.y, velocity)
+                                particles.append(particle)
+
+                            # Always spawn a power-up (guaranteed drop from UFOs)
+                            powerup_types = [PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
+                            chosen_type = random.choice(powerup_types)
+                            PowerUp(ufo.position.x, ufo.position.y, chosen_type)
+
+                            # Destroy UFO and shot
+                            ufo.kill()
+                            shot.kill()
+                            break
+
+                # Check UFO collisions with players
+                for ufo in ufos:
+                    # Player 1 collision
+                    if not player1_dead and player1.lives > 0 and player1.check_collision(ufo):
+                        # If player is boosting, destroy the UFO
+                        if player1.boost_active:
+                            points = UFO_LARGE_POINTS if ufo.ufo_type == "large" else UFO_SMALL_POINTS
+                            player1.score += points
+                            print(f"Player 1: UFO destroyed by boost! +{points} points")
+
+                            # Effects
+                            if screen_shake_cooldown <= 0:
+                                screen_shake = min(screen_shake + 6, SCREEN_SHAKE_MAX)
+                                screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
+
+                            # Particles
+                            for i in range(10):
+                                angle = (360 / 10) * i + random.uniform(-15, 15)
+                                velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
+                                particle = Particle(ufo.position.x, ufo.position.y, velocity)
+                                particles.append(particle)
+
+                            # Guaranteed power-up
+                            powerup_types = [PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
+                            chosen_type = random.choice(powerup_types)
+                            PowerUp(ufo.position.x, ufo.position.y, chosen_type)
+
+                            ufo.kill()
+                        else:
+                            # Normal collision - take damage
+                            if player1.take_damage():
+                                if shared_lives_enabled:
+                                    player1.lives -= 1
+                                    print(f"Player 1 hit by UFO! Shared lives remaining: {player1.lives}")
+                                    if player1.lives > 0:
+                                        player1.respawn(p1_spawn_x, p1_spawn_y)
+                                    else:
+                                        print("Out of shared lives! Game over!")
+                                        player1_dead = True
+                                        player2_dead = True
+                                        game_over = True
+                                        game_over_retry_delay = 1.5
+                                        taunt_animation = TauntAnimation()
+                                else:
+                                    player1.lives -= 1
+                                    print(f"Player 1 hit by UFO! Lives remaining: {player1.lives}")
+                                    if player1.lives > 0:
+                                        player1.respawn(p1_spawn_x, p1_spawn_y)
+                                    else:
+                                        player1_dead = True
+                                        # Check if both players dead for game over
+                                        if player1_dead and player2_dead:
+                                            game_over = True
+                                            game_over_retry_delay = 1.5
+                                            taunt_animation = TauntAnimation()
+
+                    # Player 2 collision
+                    if not player2_dead and player2.lives > 0 and player2.check_collision(ufo):
+                        if player2.boost_active:
+                            points = UFO_LARGE_POINTS if ufo.ufo_type == "large" else UFO_SMALL_POINTS
+                            player2.score += points
+                            print(f"Player 2: UFO destroyed by boost! +{points} points")
+
+                            if screen_shake_cooldown <= 0:
+                                screen_shake = min(screen_shake + 6, SCREEN_SHAKE_MAX)
+                                screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
+
+                            for i in range(10):
+                                angle = (360 / 10) * i + random.uniform(-15, 15)
+                                velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
+                                particle = Particle(ufo.position.x, ufo.position.y, velocity)
+                                particles.append(particle)
+
+                            powerup_types = [PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
+                            chosen_type = random.choice(powerup_types)
+                            PowerUp(ufo.position.x, ufo.position.y, chosen_type)
+
+                            ufo.kill()
+                        else:
+                            if player2.take_damage():
+                                if shared_lives_enabled:
+                                    player1.lives -= 1  # Shared lives use player1.lives
+                                    print(f"Player 2 hit by UFO! Shared lives remaining: {player1.lives}")
+                                    if player1.lives > 0:
+                                        player2.respawn(p2_spawn_x, p2_spawn_y)
+                                    else:
+                                        print("Out of shared lives! Game over!")
+                                        player1_dead = True
+                                        player2_dead = True
+                                        game_over = True
+                                        game_over_retry_delay = 1.5
+                                        taunt_animation = TauntAnimation()
+                                else:
+                                    player2.lives -= 1
+                                    print(f"Player 2 hit by UFO! Lives remaining: {player2.lives}")
+                                    if player2.lives > 0:
+                                        player2.respawn(p2_spawn_x, p2_spawn_y)
+                                    else:
+                                        player2_dead = True
+                                        if player1_dead and player2_dead:
+                                            game_over = True
+                                            game_over_retry_delay = 1.5
+                                            taunt_animation = TauntAnimation()
+
+                # Check UFO shots hitting players
+                for shot in list(shots):
+                    # Only check UFO shots (owner is a UFO)
+                    if not isinstance(shot.owner, UFO):
+                        continue
+
+                    # Check Player 1
+                    if not player1_dead and player1.lives > 0 and player1.check_collision(shot):
+                        if player1.take_damage():
+                            if shared_lives_enabled:
+                                player1.lives -= 1
+                                print(f"Player 1 hit by UFO shot! Shared lives remaining: {player1.lives}")
+                                if player1.lives > 0:
+                                    player1.respawn(p1_spawn_x, p1_spawn_y)
+                                else:
+                                    print("Out of shared lives! Game over!")
+                                    player1_dead = True
+                                    player2_dead = True
+                                    game_over = True
+                                    game_over_retry_delay = 1.5
+                                    taunt_animation = TauntAnimation()
+                            else:
+                                player1.lives -= 1
+                                print(f"Player 1 hit by UFO shot! Lives remaining: {player1.lives}")
+                                if player1.lives > 0:
+                                    player1.respawn(p1_spawn_x, p1_spawn_y)
+                                else:
+                                    player1_dead = True
+                                    if player1_dead and player2_dead:
+                                        game_over = True
+                                        game_over_retry_delay = 1.5
+                                        taunt_animation = TauntAnimation()
+                        shot.kill()
+
+                    # Check Player 2
+                    if not player2_dead and player2.lives > 0 and player2.check_collision(shot):
+                        if player2.take_damage():
+                            if shared_lives_enabled:
+                                player1.lives -= 1
+                                print(f"Player 2 hit by UFO shot! Shared lives remaining: {player1.lives}")
+                                if player1.lives > 0:
+                                    player2.respawn(p2_spawn_x, p2_spawn_y)
+                                else:
+                                    print("Out of shared lives! Game over!")
+                                    player1_dead = True
+                                    player2_dead = True
+                                    game_over = True
+                                    game_over_retry_delay = 1.5
+                                    taunt_animation = TauntAnimation()
+                            else:
+                                player2.lives -= 1
+                                print(f"Player 2 hit by UFO shot! Lives remaining: {player2.lives}")
+                                if player2.lives > 0:
+                                    player2.respawn(p2_spawn_x, p2_spawn_y)
+                                else:
+                                    player2_dead = True
+                                    if player1_dead and player2_dead:
+                                        game_over = True
+                                        game_over_retry_delay = 1.5
+                                        taunt_animation = TauntAnimation()
+                        shot.kill()
+
                 # Check for power-up collection for both players
                 for powerup in powerups:
                     collected = False
@@ -1606,7 +1869,8 @@ def main():
             draw_combo(screen, combo_count, combo_timer)
             # Draw wave info if wave system is enabled
             if WAVE_SYSTEM_ENABLED:
-                draw_wave_info(screen, current_wave, wave_break_active, wave_break_timer)
+                draw_wave_info(screen, current_wave, wave_break_active, wave_break_timer,
+                             wave_duration_timer, WAVE_MAX_DURATION)
             # Draw kill streak notification if active
             if active_streak_notification:
                 active_streak_notification.draw(screen)
