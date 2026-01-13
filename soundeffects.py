@@ -1,7 +1,14 @@
 import pygame
 import random
-import numpy as np
+import sys
 import time
+
+# Check if running in web browser (pygbag/emscripten)
+IS_WEB = sys.platform == "emscripten"
+
+# Only import numpy if not in web environment
+if not IS_WEB:
+    import numpy as np
 
 # Sound cache - will be loaded after pygame.init()
 _sounds_loaded = False
@@ -97,29 +104,47 @@ def init_sounds():
 
     print("Loading sounds...")
 
-    # Load and process shooting sounds
-    original_shoot = pygame.mixer.Sound("./sound-effects/shoot_01.wav")
-    shoot_reverb = add_reverb(original_shoot, delay_ms=40, decay=0.25, num_echoes=4)
+    if IS_WEB:
+        # Simplified sound loading for web - no audio processing
+        print("Web mode: loading sounds without processing...")
 
-    # Pre-generate 3 pitch variations
-    _shoot_sounds = [
-        change_pitch(shoot_reverb, 0.96),
-        change_pitch(shoot_reverb, 1.0),
-        change_pitch(shoot_reverb, 1.04),
-    ]
+        # Load shooting sound without processing
+        original_shoot = pygame.mixer.Sound("./sound-effects/shoot_01.wav")
+        _shoot_sounds = [original_shoot]  # Just use original without variations
 
-    # Load and process explosion sounds
-    original_explosion = pygame.mixer.Sound("./sound-effects/big-explosion.wav")
+        # Load explosion sound without processing
+        original_explosion = pygame.mixer.Sound("./sound-effects/big-explosion.wav")
+        _explosion_sounds['large'] = original_explosion
+        _explosion_sounds['medium'] = original_explosion
+        _explosion_sounds['small'] = original_explosion
 
-    _explosion_sounds['large'] = change_pitch(original_explosion, 0.4)   # Very deep boom
-    _explosion_sounds['medium'] = change_pitch(original_explosion, 1.0)  # Original
-    _explosion_sounds['small'] = change_pitch(original_explosion, 2.2)   # Very high crack
+    else:
+        # Full audio processing for desktop
+        print("Desktop mode: loading sounds with processing...")
 
-    # Load laser beam sound
+        # Load and process shooting sounds
+        original_shoot = pygame.mixer.Sound("./sound-effects/shoot_01.wav")
+        shoot_reverb = add_reverb(original_shoot, delay_ms=40, decay=0.25, num_echoes=4)
+
+        # Pre-generate 3 pitch variations
+        _shoot_sounds = [
+            change_pitch(shoot_reverb, 0.96),
+            change_pitch(shoot_reverb, 1.0),
+            change_pitch(shoot_reverb, 1.04),
+        ]
+
+        # Load and process explosion sounds
+        original_explosion = pygame.mixer.Sound("./sound-effects/big-explosion.wav")
+
+        _explosion_sounds['large'] = change_pitch(original_explosion, 0.4)   # Very deep boom
+        _explosion_sounds['medium'] = change_pitch(original_explosion, 1.0)  # Original
+        _explosion_sounds['small'] = change_pitch(original_explosion, 2.2)   # Very high crack
+
+    # Load laser beam sound (no processing needed)
     _laser_sound = pygame.mixer.Sound("./sound-effects/laser.ogg")
     _laser_sound.set_volume(0.7)  # Set volume to 70% so it's not too loud
 
-    # Load boost sound
+    # Load boost sound (no processing needed)
     _boost_sound = pygame.mixer.Sound("./sound-effects/boost-woosh.ogg")
     _boost_sound.set_volume(0.6)  # Set volume to 60%
 
@@ -198,6 +223,10 @@ def set_music_speed(speed_multiplier):
     """
     global _music_start_time, _music_offset, _sounds_loaded
 
+    # Skip music speed changes in web mode (mixer reinit causes issues)
+    if IS_WEB:
+        return
+
     if speed_multiplier != 1.0:
         # Get current mixer to determine current speed
         try:
@@ -244,6 +273,10 @@ def set_music_speed(speed_multiplier):
 def reset_music_speed():
     """Reset music to normal playback speed and pitch."""
     global _music_start_time, _music_offset, _sounds_loaded
+
+    # Skip music speed changes in web mode (mixer reinit causes issues)
+    if IS_WEB:
+        return
 
     # Get current mixer to determine speed multiplier
     try:
