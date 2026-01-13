@@ -116,11 +116,11 @@ def init_sounds():
     _explosion_sounds['small'] = change_pitch(original_explosion, 2.2)   # Very high crack
 
     # Load laser beam sound
-    _laser_sound = pygame.mixer.Sound("./sound-effects/laser.mp3")
+    _laser_sound = pygame.mixer.Sound("./sound-effects/laser.ogg")
     _laser_sound.set_volume(0.7)  # Set volume to 70% so it's not too loud
 
     # Load boost sound
-    _boost_sound = pygame.mixer.Sound("./sound-effects/boost-woosh.mp3")
+    _boost_sound = pygame.mixer.Sound("./sound-effects/boost-woosh.ogg")
     _boost_sound.set_volume(0.6)  # Set volume to 60%
 
     _sounds_loaded = True
