@@ -28,6 +28,7 @@ from starfield import Starfield
 from killstreak import KillStreakNotification
 from ufo import UFO
 import random
+import asyncio
 
 
 def handle_player_death(player, player_num, death_x, death_y, shared_lives_enabled):
@@ -453,7 +454,7 @@ def reset_game(updatable, player1_input=None, player2_input=None, speed_multipli
     return player1, player2, field
 
 
-def main():
+async def main():
     print("Starting Asteroids!")
     print("Screen width:", SCREEN_WIDTH)
     print("Screen height:", SCREEN_HEIGHT)
@@ -1919,7 +1920,8 @@ def main():
 
         pygame.display.flip()  # Update the display
         dt = clock.tick(60) / 1000  # Limit the frame rate to 60 FPS
+        await asyncio.sleep(0)  # Allow browser to process events
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
