@@ -36,19 +36,21 @@ class KillStreakNotification:
         # Pulse effect
         pulse_scale = 1.0 + (0.15 * abs((self.timer * 2) % 1.0 - 0.5))
 
-        # Slide in from top
+        # Slide in from right
         if progress < 0.2:
-            y_offset = -100 * (1.0 - (progress / 0.2))
+            x_offset = 200 * (1.0 - (progress / 0.2))
         else:
-            y_offset = 0
+            x_offset = 0
 
-        # Position - center of screen, slightly above middle
-        base_y = SCREEN_HEIGHT // 2 - 120
-        y_pos = base_y + y_offset
+        # Position - top-right corner
+        base_x = SCREEN_WIDTH - 150
+        base_y = 80
+        x_pos = base_x + x_offset
+        y_pos = base_y
 
-        # Create fonts
-        font_large = pygame.font.Font(None, int(100 * pulse_scale))
-        font_medium = pygame.font.Font(None, int(60 * pulse_scale))
+        # Create smaller fonts for corner display
+        font_large = pygame.font.Font(None, int(50 * pulse_scale))
+        font_medium = pygame.font.Font(None, int(30 * pulse_scale))
 
         # Apply alpha to color
         display_color = (
@@ -59,7 +61,7 @@ class KillStreakNotification:
 
         # Draw streak count
         count_text = font_medium.render(f"{self.streak_count} KILLS", True, display_color)
-        count_rect = count_text.get_rect(center=(SCREEN_WIDTH // 2, y_pos - 40))
+        count_rect = count_text.get_rect(center=(x_pos, y_pos - 25))
 
         # Create glow effect by drawing multiple times with offset
         glow_color = (
@@ -81,10 +83,10 @@ class KillStreakNotification:
 
         # Draw streak name
         name_text = font_large.render(self.streak_name, True, display_color)
-        name_rect = name_text.get_rect(center=(SCREEN_WIDTH // 2, y_pos + 40))
+        name_rect = name_text.get_rect(center=(x_pos, y_pos + 20))
 
-        # Draw glow for name
-        for offset in [(0, -3), (0, 3), (-3, 0), (3, 0), (-2, -2), (2, 2), (-2, 2), (2, -2)]:
+        # Draw glow for name (reduced for smaller size)
+        for offset in [(0, -2), (0, 2), (-2, 0), (2, 0), (-1, -1), (1, 1), (-1, 1), (1, -1)]:
             glow_rect = name_rect.copy()
             glow_rect.x += offset[0]
             glow_rect.y += offset[1]
