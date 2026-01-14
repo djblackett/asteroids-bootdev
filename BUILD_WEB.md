@@ -24,7 +24,12 @@ To build and test the game in your browser, run:
 
 ```bash
 pygbag main.py
+python scripts/force_debug_console.py build/web/index.html
 ```
+
+The helper script patches the generated `index.html` so the pygbag terminal UI
+is always visible in the browser, which makes debugging issues on the web build
+much easier.
 
 This will:
 1. Package your game with all assets
@@ -63,6 +68,7 @@ To create a build for itch.io or other hosting:
 
 ```bash
 pygbag --build main.py
+python scripts/force_debug_console.py build/web/index.html
 ```
 
 This creates a `build/web` directory containing all the files you need to upload.
