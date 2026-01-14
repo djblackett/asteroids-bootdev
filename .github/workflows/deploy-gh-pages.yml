@@ -34,7 +34,8 @@ jobs:
 
       - name: Build game with pygbag
         run: |
-          pygbag --build main.py
+          # --no_opt keeps our WAV references untouched on Linux runners
+          pygbag --no_opt --build main.py
 
       - name: Keep pygbag debug console visible
         run: |

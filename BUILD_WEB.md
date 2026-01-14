@@ -23,13 +23,18 @@ pip install -r requirements.txt
 To build and test the game in your browser, run:
 
 ```bash
-pygbag main.py
+pygbag --no_opt main.py
 python scripts/force_debug_console.py build/web/index.html
 ```
 
 The helper script patches the generated `index.html` so the pygbag terminal UI
 is always visible in the browser, which makes debugging issues on the web build
 much easier.
+
+> **Why `--no_opt`?** On Linux machines pygbag’s optimizer rewrites `.py` files
+> that reference `.wav` assets to `.ogg`, but our repo only ships `.wav` files.
+> Passing `--no_opt` keeps the file paths intact so sound loading works both
+> locally and in CI.
 
 This will:
 1. Package your game with all assets
@@ -67,7 +72,7 @@ The workflow will automatically rebuild and redeploy your game whenever you push
 To create a build for itch.io or other hosting:
 
 ```bash
-pygbag --build main.py
+pygbag --no_opt --build main.py
 python scripts/force_debug_console.py build/web/index.html
 ```
 
