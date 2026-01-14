@@ -33,6 +33,9 @@ from killstreak import KillStreakNotification
 from ufo import UFO
 import random
 import asyncio
+import sys
+
+IS_WEB = sys.platform == "emscripten"
 
 
 def handle_player_death(player, player_num, death_x, death_y, shared_lives_enabled):
@@ -467,15 +470,18 @@ async def main():
     pygame.mixer.pre_init(frequency=22050, size=-16, channels=2, buffer=128)
     pygame.init()
 
-    # Initialize joystick/gamepad support
-    pygame.joystick.init()
-    joysticks = [pygame.joystick.Joystick(i) for i in range(pygame.joystick.get_count())]
-    for joystick in joysticks:
-        joystick.init()
-        print(f"Gamepad detected: {joystick.get_name()}")
-
-    if not joysticks:
-        print("No gamepad detected - using keyboard controls only")
+    # Initialize joystick/gamepad support (desktop only)
+    joysticks = []
+    if not IS_WEB:
+        pygame.joystick.init()
+        joysticks = [pygame.joystick.Joystick(i) for i in range(pygame.joystick.get_count())]
+        for joystick in joysticks:
+            joystick.init()
+            print(f"Gamepad detected: {joystick.get_name()}")
+        if not joysticks:
+            print("No gamepad detected - using keyboard controls only")
+    else:
+        print("Web build detected: gamepad support disabled, keyboard controls only.")
 
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pygame.display.set_caption("Asteroids Game")
