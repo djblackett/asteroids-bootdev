@@ -1,6 +1,10 @@
 # this allows us to use code from
 # the open-source pygame library
 # throughout this file
+
+# pygbag: debug=1
+# This enables the Python console in the browser for debugging
+
 from asteroid import Asteroid
 from constants import (ASTEROID_MAX_RADIUS, ASTEROID_MIN_RADIUS, ASTEROID_SPAWN_RATE,
                       SCREEN_HEIGHT, SCREEN_WIDTH, MEGA_POWER_MUSIC_SPEEDUP_ENABLED,
