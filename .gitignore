@@ -8,6 +8,7 @@ wheels/
 
 .claude/
 
+remote.apk
 # Virtual environments
 .venv
 
