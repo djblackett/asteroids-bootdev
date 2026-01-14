@@ -108,17 +108,29 @@ def init_sounds():
         # Use pre-processed audio files for web - full quality without runtime processing
         print("Web mode: loading pre-processed sounds...")
 
-        # Load pre-processed shooting sound variations
-        _shoot_sounds = [
-            pygame.mixer.Sound("./sound-effects/processed/shoot_low.wav"),
-            pygame.mixer.Sound("./sound-effects/processed/shoot_mid.wav"),
-            pygame.mixer.Sound("./sound-effects/processed/shoot_high.wav"),
-        ]
+        try:
+            # Try to load pre-processed shooting sound variations
+            _shoot_sounds = [
+                pygame.mixer.Sound("./sound-effects/processed/shoot_low.wav"),
+                pygame.mixer.Sound("./sound-effects/processed/shoot_mid.wav"),
+                pygame.mixer.Sound("./sound-effects/processed/shoot_high.wav"),
+            ]
 
-        # Load pre-processed explosion sounds
-        _explosion_sounds['large'] = pygame.mixer.Sound("./sound-effects/processed/explosion_large.wav")
-        _explosion_sounds['medium'] = pygame.mixer.Sound("./sound-effects/processed/explosion_medium.wav")
-        _explosion_sounds['small'] = pygame.mixer.Sound("./sound-effects/processed/explosion_small.wav")
+            # Load pre-processed explosion sounds
+            _explosion_sounds['large'] = pygame.mixer.Sound("./sound-effects/processed/explosion_large.wav")
+            _explosion_sounds['medium'] = pygame.mixer.Sound("./sound-effects/processed/explosion_medium.wav")
+            _explosion_sounds['small'] = pygame.mixer.Sound("./sound-effects/processed/explosion_small.wav")
+            print("Loaded pre-processed sounds successfully!")
+        except Exception as e:
+            # Fallback to original sounds if processed files not found
+            print(f"Could not load processed sounds ({e}), using originals...")
+            original_shoot = pygame.mixer.Sound("./sound-effects/shoot_01.wav")
+            _shoot_sounds = [original_shoot]
+
+            original_explosion = pygame.mixer.Sound("./sound-effects/big-explosion.wav")
+            _explosion_sounds['large'] = original_explosion
+            _explosion_sounds['medium'] = original_explosion
+            _explosion_sounds['small'] = original_explosion
 
     else:
         # Full audio processing for desktop
