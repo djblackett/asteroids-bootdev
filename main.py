@@ -39,10 +39,10 @@ import sys
 IS_WEB = sys.platform == "emscripten"
 
 
-def debug_debug_print(*args, **kwargs):
+def debug_print(*args, **kwargs):
     """Print only on desktop, not on web."""
     if not IS_WEB:
-        debug_print(*args, **kwargs)
+        print(*args, **kwargs)
 
 
 def handle_player_death(player, player_num, death_x, death_y, shared_lives_enabled):
