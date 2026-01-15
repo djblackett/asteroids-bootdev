@@ -37,9 +37,10 @@ jobs:
           # --no_opt keeps our WAV references untouched on Linux runners
           pygbag --no_opt --build main.py
 
-      - name: Keep pygbag debug console visible
-        run: |
-          python scripts/force_debug_console.py build/web/index.html
+      # Disabled: debug console hidden for cleaner production experience
+      # - name: Keep pygbag debug console visible
+      #   run: |
+      #     python scripts/force_debug_console.py build/web/index.html
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
