@@ -282,9 +282,14 @@ class ControlConfig:
         """Draw the control configuration screen"""
         screen.fill((0, 0, 0))
 
+        # Use compressed spacing for 2-player mode to fit all options on screen
+        two_player = self.player_count == 2
+        item_spacing = 40 if two_player else 50
+
         # Use pre-created fonts
         title = self.font_title.render("CONTROL SETUP", True, (255, 255, 255))
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 80))
+        title_y = 50 if two_player else 80
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, title_y))
         screen.blit(title, title_rect)
 
         # Gamepad detection info
@@ -292,11 +297,12 @@ class ControlConfig:
             gamepad_text = self.font_small.render(f"{self.gamepad_count} gamepad(s) detected", True, (100, 255, 100))
         else:
             gamepad_text = self.font_small.render("No gamepads detected - using keyboards", True, (255, 200, 100))
-        gamepad_rect = gamepad_text.get_rect(center=(SCREEN_WIDTH // 2, 140))
+        gamepad_y = 95 if two_player else 140
+        gamepad_rect = gamepad_text.get_rect(center=(SCREEN_WIDTH // 2, gamepad_y))
         screen.blit(gamepad_text, gamepad_rect)
 
         # Player count selection
-        y_offset = 190
+        y_offset = 135 if two_player else 190
         player_count_color = (255, 255, 255) if self.selected_player == 0 else (150, 150, 150)
         player_count_label = self.font_large.render("PLAYERS", True, player_count_color)
         player_count_label_rect = player_count_label.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
@@ -305,17 +311,11 @@ class ControlConfig:
         # Player count display
         player_count_display = f"< {self.player_count} >"
         player_count_text = self.font_medium.render(player_count_display, True, player_count_color)
-        player_count_rect = player_count_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 50))
+        player_count_rect = player_count_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + item_spacing))
         screen.blit(player_count_text, player_count_rect)
 
-        # Selection indicator for player count
-        if self.selected_player == 0:
-            indicator = self.font_medium.render("^", True, (255, 255, 255))
-            indicator_rect = indicator.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 85))
-            screen.blit(indicator, indicator_rect)
-
         # Player 1 config
-        y_offset = 300
+        y_offset = 210 if two_player else 300
         p1_color = (100, 200, 255) if self.selected_player == 1 else (150, 150, 150)
         p1_label = self.font_large.render("PLAYER 1", True, p1_color)
         p1_label_rect = p1_label.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
@@ -324,18 +324,12 @@ class ControlConfig:
         # Player 1 input display
         p1_input_name = self.get_input_display_name(self.player1_input, 1)
         p1_input_text = self.font_medium.render(f"< {p1_input_name} >", True, p1_color)
-        p1_input_rect = p1_input_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 50))
+        p1_input_rect = p1_input_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + item_spacing))
         screen.blit(p1_input_text, p1_input_rect)
 
-        # Selection indicator for Player 1
-        if self.selected_player == 1:
-            indicator = self.font_medium.render("^", True, (100, 200, 255))
-            indicator_rect = indicator.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 85))
-            screen.blit(indicator, indicator_rect)
-
         # Player 2 config (only show if 2 players selected)
-        if self.player_count == 2:
-            y_offset = 410
+        if two_player:
+            y_offset = 285
             p2_color = (255, 200, 100) if self.selected_player == 2 else (150, 150, 150)
             p2_label = self.font_large.render("PLAYER 2", True, p2_color)
             p2_label_rect = p2_label.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
@@ -344,17 +338,11 @@ class ControlConfig:
             # Player 2 input display
             p2_input_name = self.get_input_display_name(self.player2_input, 2)
             p2_input_text = self.font_medium.render(f"< {p2_input_name} >", True, p2_color)
-            p2_input_rect = p2_input_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 50))
+            p2_input_rect = p2_input_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + item_spacing))
             screen.blit(p2_input_text, p2_input_rect)
 
-            # Selection indicator for Player 2
-            if self.selected_player == 2:
-                indicator = self.font_medium.render("^", True, (255, 200, 100))
-                indicator_rect = indicator.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 85))
-                screen.blit(indicator, indicator_rect)
-
         # Speed config
-        y_offset = 520 if self.player_count == 2 else 410
+        y_offset = 360 if two_player else 410
         speed_color = (100, 255, 100) if self.selected_player == 3 else (150, 150, 150)
         speed_label = self.font_large.render("SPEED", True, speed_color)
         speed_label_rect = speed_label.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
@@ -363,18 +351,12 @@ class ControlConfig:
         # Speed display
         speed_display = self.get_speed_label()
         speed_text = self.font_medium.render(f"< {speed_display} >", True, speed_color)
-        speed_rect = speed_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 50))
+        speed_rect = speed_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + item_spacing))
         screen.blit(speed_text, speed_rect)
 
-        # Selection indicator for Speed
-        if self.selected_player == 3:
-            indicator = self.font_medium.render("^", True, (100, 255, 100))
-            indicator_rect = indicator.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 85))
-            screen.blit(indicator, indicator_rect)
-
         # Friendly Fire config (only show if 2 players)
-        if self.player_count == 2:
-            y_offset = 615
+        if two_player:
+            y_offset = 435
             ff_color = (255, 100, 100) if self.selected_player == 4 else (150, 150, 150)
             ff_label = self.font_large.render("FRIENDLY FIRE", True, ff_color)
             ff_label_rect = ff_label.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
@@ -383,17 +365,11 @@ class ControlConfig:
             # Friendly Fire display
             ff_display = "ON" if self.friendly_fire_enabled else "OFF"
             ff_text = self.font_medium.render(f"< {ff_display} >", True, ff_color)
-            ff_rect = ff_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 50))
+            ff_rect = ff_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + item_spacing))
             screen.blit(ff_text, ff_rect)
 
-            # Selection indicator for Friendly Fire
-            if self.selected_player == 4:
-                indicator = self.font_medium.render("^", True, (255, 100, 100))
-                indicator_rect = indicator.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 85))
-                screen.blit(indicator, indicator_rect)
-
             # Shared Lives config
-            y_offset = 710
+            y_offset = 510
             sl_color = (100, 255, 255) if self.selected_player == 5 else (150, 150, 150)
             sl_label = self.font_large.render("SHARED LIVES", True, sl_color)
             sl_label_rect = sl_label.get_rect(center=(SCREEN_WIDTH // 2, y_offset))
@@ -402,17 +378,11 @@ class ControlConfig:
             # Shared Lives display
             sl_display = "ON" if self.shared_lives_enabled else "OFF"
             sl_text = self.font_medium.render(f"< {sl_display} >", True, sl_color)
-            sl_rect = sl_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 50))
+            sl_rect = sl_text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + item_spacing))
             screen.blit(sl_text, sl_rect)
 
-            # Selection indicator for Shared Lives
-            if self.selected_player == 5:
-                indicator = self.font_medium.render("^", True, (100, 255, 255))
-                indicator_rect = indicator.get_rect(center=(SCREEN_WIDTH // 2, y_offset + 85))
-                screen.blit(indicator, indicator_rect)
-
         # Instructions
-        y_offset = 805 if self.player_count == 2 else 505
+        y_offset = 600 if two_player else 505
         instructions = [
             "WASD or ARROWS: Navigate",
             "ENTER or SPACE: Start game"
@@ -420,7 +390,7 @@ class ControlConfig:
 
         for i, instruction in enumerate(instructions):
             text = self.font_small.render(instruction, True, (200, 200, 200))
-            text_rect = text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + i * 30))
+            text_rect = text.get_rect(center=(SCREEN_WIDTH // 2, y_offset + i * 25))
             screen.blit(text, text_rect)
 
         # Warning if both players use same input

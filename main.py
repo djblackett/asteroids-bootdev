@@ -53,7 +53,7 @@ def handle_player_death(player, player_num, death_x, death_y, shared_lives_enabl
     # Spawn revive power-up if enabled
     if REVIVE_SYSTEM_ENABLED and random.random() < REVIVE_SPAWN_CHANCE:
         PowerUp(death_x, death_y, PowerUp.REVIVE)
-        debug_debug_print(f"Revive power-up spawned at Player {player_num}'s death location!")
+        debug_print(f"Revive power-up spawned at Player {player_num}'s death location!")
 
     return True  # Game continues (player can be revived)
 
