@@ -14,7 +14,8 @@ from constants import (ASTEROID_MAX_RADIUS, ASTEROID_MIN_RADIUS, ASTEROID_SPAWN_
                       SHARED_LIVES_ENABLED, SHARED_LIVES_POOL, REVIVE_SYSTEM_ENABLED,
                       REVIVE_SPAWN_CHANCE, WAVE_SYSTEM_ENABLED, WAVE_BREAK_DURATION, WAVE_MAX_DURATION,
                       KILL_STREAK_ENABLED, KILL_STREAK_MILESTONES,
-                      UFO_ENABLED, UFO_LARGE_POINTS, UFO_SMALL_POINTS)
+                      UFO_ENABLED, UFO_LARGE_POINTS, UFO_SMALL_POINTS,
+                      DIFFICULTY_SPAWN_RATE_INCREMENT, DIFFICULTY_SPAWN_RATE_MIN)
 from player import Player
 import pygame
 from constants import *
@@ -558,6 +559,7 @@ async def main():
     game_time = 0.0
     difficulty_timer = 0.0
     asteroid_speed_multiplier = 1.0
+    asteroid_spawn_rate = ASTEROID_SPAWN_RATE  # Track current spawn rate
 
     # Starfield background
     starfield = Starfield(star_count=STARFIELD_STAR_COUNT) if STARFIELD_ENABLED else None
@@ -659,6 +661,7 @@ async def main():
                     game_time = 0.0
                     difficulty_timer = 0.0
                     asteroid_speed_multiplier = 1.0
+                    asteroid_spawn_rate = ASTEROID_SPAWN_RATE
                     laser_beams = []
                     current_wave = 1
                     wave_break_active = False
@@ -695,6 +698,7 @@ async def main():
                     game_time = 0.0
                     difficulty_timer = 0.0
                     asteroid_speed_multiplier = 1.0
+                    asteroid_spawn_rate = ASTEROID_SPAWN_RATE
                     laser_beams = []
                     current_wave = 1
                     wave_break_active = False
@@ -734,6 +738,7 @@ async def main():
                     game_time = 0.0
                     difficulty_timer = 0.0
                     asteroid_speed_multiplier = 1.0
+                    asteroid_spawn_rate = ASTEROID_SPAWN_RATE
                     laser_beams = []
                     current_wave = 1
                     wave_break_active = False
@@ -773,11 +778,13 @@ async def main():
                 game_time += dt
                 difficulty_timer += dt
 
-                # Increase asteroid speed every DIFFICULTY_INCREASE_INTERVAL seconds
+                # Increase asteroid speed and spawn rate every DIFFICULTY_INCREASE_INTERVAL seconds
                 if difficulty_timer >= DIFFICULTY_INCREASE_INTERVAL:
                     difficulty_timer = 0.0
                     asteroid_speed_multiplier += DIFFICULTY_SPEED_INCREMENT
-                    print(f"Difficulty increased! Asteroid speed multiplier: {asteroid_speed_multiplier:.2f}x")
+                    # Decrease spawn rate (faster spawning) but cap at minimum
+                    asteroid_spawn_rate = max(asteroid_spawn_rate - DIFFICULTY_SPAWN_RATE_INCREMENT, DIFFICULTY_SPAWN_RATE_MIN)
+                    print(f"Difficulty increased! Speed: {asteroid_speed_multiplier:.2f}x, Spawn rate: {asteroid_spawn_rate:.2f}s")
                 # Handle MEGA POWER music speed - ensure music state matches power-up state
                 if MEGA_POWER_MUSIC_SPEEDUP_ENABLED:
                     should_have_fast_music = player1.mega_power_active or player2.mega_power_active
@@ -825,7 +832,7 @@ async def main():
                 # Update asteroid field (spawns new asteroids)
                 for field in updatable:
                     if isinstance(field, AsteroidField):
-                        field.update(dt)
+                        field.update(dt, asteroid_spawn_rate)
 
                 # Wave system management
                 if WAVE_SYSTEM_ENABLED and asteroid_field_ref:

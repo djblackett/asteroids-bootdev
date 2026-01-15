@@ -3,7 +3,7 @@ SCREEN_HEIGHT = 720
 
 ASTEROID_MIN_RADIUS = 20
 ASTEROID_KINDS = 3
-ASTEROID_SPAWN_RATE = 0.8  # seconds
+ASTEROID_SPAWN_RATE = 0.5  # seconds - faster initial spawn rate
 ASTEROID_MAX_RADIUS = ASTEROID_MIN_RADIUS * ASTEROID_KINDS
 
 PLAYER_RADIUS = 20
@@ -145,6 +145,9 @@ BOOST_COOLDOWN = 8.0  # seconds before boost can be used again
 DIFFICULTY_INCREASE_INTERVAL = 30.0  # seconds between difficulty increases
 # Speed multiplier increase per interval (15%)
 DIFFICULTY_SPEED_INCREMENT = 0.15
+# Spawn rate increase - reduces time between spawns (more asteroids over time)
+DIFFICULTY_SPAWN_RATE_INCREMENT = 0.05  # reduces spawn delay by 0.05s each interval
+DIFFICULTY_SPAWN_RATE_MIN = 0.2  # minimum spawn delay (cap at 5 asteroids per second)
 
 # Starfield Background
 STARFIELD_ENABLED = True  # Set to False to disable starfield
