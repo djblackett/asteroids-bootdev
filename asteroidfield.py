@@ -4,6 +4,15 @@ import random
 from asteroid import Asteroid
 from constants import *
 from ufo import UFO
+import sys
+
+IS_WEB = sys.platform == "emscripten"
+
+
+def debug_print(*args, **kwargs):
+    """Print only on desktop, not on web."""
+    if not IS_WEB:
+        print(*args, **kwargs)
 
 
 class AsteroidField(pygame.sprite.Sprite):
@@ -55,7 +64,7 @@ class AsteroidField(pygame.sprite.Sprite):
         self.asteroids_to_spawn = WAVE_BASE_ASTEROIDS + (wave_number - 1) * WAVE_ASTEROID_INCREMENT
         self.wave_active = True
         self.spawn_timer = 0.0
-        print(f"Wave {wave_number} starting with {self.asteroids_to_spawn} asteroids!")
+        debug_print(f"Wave {wave_number} starting with {self.asteroids_to_spawn} asteroids!")
 
         # Schedule UFO spawn if conditions are met
         if UFO_ENABLED and wave_number >= UFO_SPAWN_WAVE_START:
@@ -82,7 +91,7 @@ class AsteroidField(pygame.sprite.Sprite):
 
         # Create UFO
         ufo = UFO(position.x, position.y, ufo_type, self.players)
-        print(f"UFO spawned! Type: {ufo_type}")
+        debug_print(f"UFO spawned! Type: {ufo_type}")
 
     def update(self, dt, spawn_rate=None):
         # Update UFO spawn timer if scheduled
@@ -109,7 +118,7 @@ class AsteroidField(pygame.sprite.Sprite):
                     position = edge[1](random.uniform(0, 1))
                     kind = random.randint(1, ASTEROID_KINDS)
                     self.spawn(ASTEROID_MIN_RADIUS * kind, position, velocity)
-                    # print(f"[DEBUG] Spawned asteroid, {self.asteroids_to_spawn} remaining in wave {self.current_wave}")
+                    # debug_print(f"[DEBUG] Spawned asteroid, {self.asteroids_to_spawn} remaining in wave {self.current_wave}")
         else:
             # Original continuous spawning with dynamic spawn rate
             self.spawn_timer += dt

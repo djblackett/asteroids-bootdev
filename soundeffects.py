@@ -95,6 +95,12 @@ def change_pitch(sound, pitch_factor):
 
     return pygame.sndarray.make_sound(new_array.astype(sound_array.dtype))
 
+def debug_print(*args, **kwargs):
+    """Print only on desktop, not on web."""
+    if not IS_WEB:
+        print(*args, **kwargs)
+
+
 def init_sounds():
     """Load and process sounds after pygame is initialized. Call this explicitly from main."""
     global _sounds_loaded, _shoot_sounds, _explosion_sounds, _laser_sound, _boost_sound
@@ -102,11 +108,11 @@ def init_sounds():
     if _sounds_loaded:
         return
 
-    print("Loading sounds...")
+    debug_print("Loading sounds...")
 
     if IS_WEB:
         # Use pre-processed audio files for web - full quality without runtime processing
-        print("Web mode: loading pre-processed sounds...")
+        debug_print("Web mode: loading pre-processed sounds...")
 
         try:
             # Try to load pre-processed shooting sound variations
@@ -120,10 +126,10 @@ def init_sounds():
             _explosion_sounds['large'] = pygame.mixer.Sound("./sound-effects/processed/explosion_large.wav")
             _explosion_sounds['medium'] = pygame.mixer.Sound("./sound-effects/processed/explosion_medium.wav")
             _explosion_sounds['small'] = pygame.mixer.Sound("./sound-effects/processed/explosion_small.wav")
-            print("Loaded pre-processed sounds successfully!")
+            debug_print("Loaded pre-processed sounds successfully!")
         except Exception as e:
             # Fallback to original sounds if processed files not found
-            print(f"Could not load processed sounds ({e}), using originals...")
+            debug_print(f"Could not load processed sounds ({e}), using originals...")
             original_shoot = pygame.mixer.Sound("./sound-effects/shoot_01.wav")
             _shoot_sounds = [original_shoot]
 
@@ -134,7 +140,7 @@ def init_sounds():
 
     else:
         # Full audio processing for desktop
-        print("Desktop mode: loading sounds with processing...")
+        debug_print("Desktop mode: loading sounds with processing...")
 
         # Load and process shooting sounds
         original_shoot = pygame.mixer.Sound("./sound-effects/shoot_01.wav")
@@ -163,7 +169,7 @@ def init_sounds():
     _boost_sound.set_volume(0.6)  # Set volume to 60%
 
     _sounds_loaded = True
-    print("Sounds loaded!")
+    debug_print("Sounds loaded!")
 
 def _ensure_sounds_loaded():
     """Check if sounds are loaded, and load them if not."""

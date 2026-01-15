@@ -2,8 +2,8 @@
 # the open-source pygame library
 # throughout this file
 
-# pygbag: debug=1
-# This enables the Python console in the browser for debugging
+# pygbag: debug=0
+# Debug console disabled for cleaner web experience
 
 from asteroid import Asteroid
 from constants import (ASTEROID_MAX_RADIUS, ASTEROID_MIN_RADIUS, ASTEROID_SPAWN_RATE,
@@ -39,6 +39,12 @@ import sys
 IS_WEB = sys.platform == "emscripten"
 
 
+def debug_debug_print(*args, **kwargs):
+    """Print only on desktop, not on web."""
+    if not IS_WEB:
+        debug_print(*args, **kwargs)
+
+
 def handle_player_death(player, player_num, death_x, death_y, shared_lives_enabled):
     """
     Handle player death logic including revive spawning.
@@ -47,7 +53,7 @@ def handle_player_death(player, player_num, death_x, death_y, shared_lives_enabl
     # Spawn revive power-up if enabled
     if REVIVE_SYSTEM_ENABLED and random.random() < REVIVE_SPAWN_CHANCE:
         PowerUp(death_x, death_y, PowerUp.REVIVE)
-        print(f"Revive power-up spawned at Player {player_num}'s death location!")
+        debug_debug_print(f"Revive power-up spawned at Player {player_num}'s death location!")
 
     return True  # Game continues (player can be revived)
 
@@ -470,9 +476,9 @@ def reset_game(updatable, player1_input=None, player2_input=None, speed_multipli
 
 
 async def main():
-    print("Starting Asteroids!")
-    print("Screen width:", SCREEN_WIDTH)
-    print("Screen height:", SCREEN_HEIGHT)
+    debug_print("Starting Asteroids!")
+    debug_print("Screen width:", SCREEN_WIDTH)
+    debug_print("Screen height:", SCREEN_HEIGHT)
 
     # Initialize mixer BEFORE pygame.init() with very low latency settings
     pygame.mixer.pre_init(frequency=22050, size=-16, channels=2, buffer=128)
@@ -485,11 +491,11 @@ async def main():
         joysticks = [pygame.joystick.Joystick(i) for i in range(pygame.joystick.get_count())]
         for joystick in joysticks:
             joystick.init()
-            print(f"Gamepad detected: {joystick.get_name()}")
+            debug_print(f"Gamepad detected: {joystick.get_name()}")
         if not joysticks:
-            print("No gamepad detected - using keyboard controls only")
+            debug_print("No gamepad detected - using keyboard controls only")
     else:
-        print("Web build detected: gamepad support disabled, keyboard controls only.")
+        debug_print("Web build detected: gamepad support disabled, keyboard controls only.")
 
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pygame.display.set_caption("Asteroids Game")
@@ -809,7 +815,7 @@ async def main():
                     asteroid_speed_multiplier += DIFFICULTY_SPEED_INCREMENT
                     # Decrease spawn rate (faster spawning) but cap at minimum
                     asteroid_spawn_rate = max(asteroid_spawn_rate - DIFFICULTY_SPAWN_RATE_INCREMENT, DIFFICULTY_SPAWN_RATE_MIN)
-                    print(f"Difficulty increased! Speed: {asteroid_speed_multiplier:.2f}x, Spawn rate: {asteroid_spawn_rate:.2f}s")
+                    debug_print(f"Difficulty increased! Speed: {asteroid_speed_multiplier:.2f}x, Spawn rate: {asteroid_spawn_rate:.2f}s")
                 # Handle MEGA POWER music speed - ensure music state matches power-up state
                 if MEGA_POWER_MUSIC_SPEEDUP_ENABLED:
                     should_have_fast_music = player1.mega_power_active or player2.mega_power_active
@@ -884,10 +890,10 @@ async def main():
                             wave_break_active = True
                             wave_break_timer = WAVE_BREAK_DURATION
                             if wave_complete:
-                                print(f"Wave {current_wave} cleared! Next wave in {WAVE_BREAK_DURATION} seconds...")
+                                debug_print(f"Wave {current_wave} cleared! Next wave in {WAVE_BREAK_DURATION} seconds...")
                             else:
-                                print(f"Wave {current_wave} time limit reached! ({len(asteroids)} asteroids remaining)")
-                                print(f"Next wave in {WAVE_BREAK_DURATION} seconds...")
+                                debug_print(f"Wave {current_wave} time limit reached! ({len(asteroids)} asteroids remaining)")
+                                debug_print(f"Next wave in {WAVE_BREAK_DURATION} seconds...")
                                 # Destroy remaining asteroids (no points) to avoid overlap
                                 for asteroid in list(asteroids):
                                     asteroid.kill()
@@ -1026,9 +1032,9 @@ async def main():
 
                             # Visual feedback
                             if combo_count > 1:
-                                print(f"Player 1: +{points_earned} points! ({combo_count}x COMBO) [BOOST RAM]")
+                                debug_print(f"Player 1: +{points_earned} points! ({combo_count}x COMBO) [BOOST RAM]")
                             else:
-                                print(f"Player 1: +{points_earned} points [BOOST RAM]")
+                                debug_print(f"Player 1: +{points_earned} points [BOOST RAM]")
 
                             # Destroy the asteroid
                             effect_info = asteroid.split()
@@ -1059,14 +1065,14 @@ async def main():
                                 if shared_lives_enabled:
                                     # Shared lives mode - deduct from pool
                                     player1.lives -= 1
-                                    print(f"Player 1 hit! Shared lives remaining: {player1.lives}")
+                                    debug_print(f"Player 1 hit! Shared lives remaining: {player1.lives}")
 
                                     if player1.lives > 0:
                                         # Respawn player 1
                                         player1.respawn(p1_spawn_x, p1_spawn_y)
                                     else:
                                         # Out of shared lives - mark both as dead
-                                        print("Out of shared lives! Game over!")
+                                        debug_print("Out of shared lives! Game over!")
                                         player1_dead = True
                                         player2_dead = True
                                         game_over = True
@@ -1080,14 +1086,14 @@ async def main():
                                         if player1.score > 0:
                                             p1_highscore_rank = add_score("Player 1", player1.score)
                                             if p1_highscore_rank:
-                                                print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
+                                                debug_print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
                                         else:
                                             p1_highscore_rank = None
 
                                         if player2.score > 0:
                                             p2_highscore_rank = add_score("Player 2", player2.score)
                                             if p2_highscore_rank:
-                                                print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
+                                                debug_print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
                                         else:
                                             p2_highscore_rank = None
 
@@ -1095,12 +1101,12 @@ async def main():
                                         break
                                 else:
                                     # Individual lives mode
-                                    print(f"Player 1 hit! Lives remaining: {player1.lives}")
+                                    debug_print(f"Player 1 hit! Lives remaining: {player1.lives}")
                                     if player1.lives > 0:
                                         # Respawn player 1
                                         player1.respawn(p1_spawn_x, p1_spawn_y)
                                     else:
-                                        print("Player 1 eliminated!")
+                                        debug_print("Player 1 eliminated!")
                                         player1_dead = True
 
                                         # Spawn revive power-up
@@ -1108,9 +1114,9 @@ async def main():
 
                                         # Check if both players are dead
                                         if player2.lives <= 0:
-                                            print("Game over!")
-                                            print(f"Player 1 Final Score: {player1.score}")
-                                            print(f"Player 2 Final Score: {player2.score}")
+                                            debug_print("Game over!")
+                                            debug_print(f"Player 1 Final Score: {player1.score}")
+                                            debug_print(f"Player 2 Final Score: {player2.score}")
                                             game_over = True
                                             game_over_retry_delay = 1.5
                                             taunt_animation = TauntAnimation()
@@ -1123,14 +1129,14 @@ async def main():
                                             if player1.score > 0:
                                                 p1_highscore_rank = add_score("Player 1", player1.score)
                                                 if p1_highscore_rank:
-                                                    print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
+                                                    debug_print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
                                             else:
                                                 p1_highscore_rank = None
 
                                             if player2.score > 0:
                                                 p2_highscore_rank = add_score("Player 2", player2.score)
                                                 if p2_highscore_rank:
-                                                    print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
+                                                    debug_print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
                                             else:
                                                 p2_highscore_rank = None
 
@@ -1138,7 +1144,7 @@ async def main():
                                             show_high_scores = (p1_is_high or p2_is_high)
                                             break
                             else:
-                                print("Player 1 shield absorbed hit!")
+                                debug_print("Player 1 shield absorbed hit!")
 
                             # Destroy the asteroid that hit the player
                             effect_info = asteroid.split()
@@ -1175,9 +1181,9 @@ async def main():
 
                             # Visual feedback
                             if combo_count > 1:
-                                print(f"Player 2: +{points_earned} points! ({combo_count}x COMBO) [BOOST RAM]")
+                                debug_print(f"Player 2: +{points_earned} points! ({combo_count}x COMBO) [BOOST RAM]")
                             else:
-                                print(f"Player 2: +{points_earned} points [BOOST RAM]")
+                                debug_print(f"Player 2: +{points_earned} points [BOOST RAM]")
 
                             # Destroy the asteroid
                             effect_info = asteroid.split()
@@ -1208,14 +1214,14 @@ async def main():
                                 if shared_lives_enabled:
                                     # Shared lives mode - deduct from pool
                                     player1.lives -= 1
-                                    print(f"Player 2 hit! Shared lives remaining: {player1.lives}")
+                                    debug_print(f"Player 2 hit! Shared lives remaining: {player1.lives}")
 
                                     if player1.lives > 0:
                                         # Respawn player 2
                                         player2.respawn(p2_spawn_x, p2_spawn_y)
                                     else:
                                         # Out of shared lives - mark both as dead
-                                        print("Out of shared lives! Game over!")
+                                        debug_print("Out of shared lives! Game over!")
                                         player1_dead = True
                                         player2_dead = True
                                         game_over = True
@@ -1229,14 +1235,14 @@ async def main():
                                         if player1.score > 0:
                                             p1_highscore_rank = add_score("Player 1", player1.score)
                                             if p1_highscore_rank:
-                                                print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
+                                                debug_print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
                                         else:
                                             p1_highscore_rank = None
 
                                         if player2.score > 0:
                                             p2_highscore_rank = add_score("Player 2", player2.score)
                                             if p2_highscore_rank:
-                                                print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
+                                                debug_print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
                                         else:
                                             p2_highscore_rank = None
 
@@ -1244,12 +1250,12 @@ async def main():
                                         break
                                 else:
                                     # Individual lives mode
-                                    print(f"Player 2 hit! Lives remaining: {player2.lives}")
+                                    debug_print(f"Player 2 hit! Lives remaining: {player2.lives}")
                                     if player2.lives > 0:
                                         # Respawn player 2
                                         player2.respawn(p2_spawn_x, p2_spawn_y)
                                     else:
-                                        print("Player 2 eliminated!")
+                                        debug_print("Player 2 eliminated!")
                                         player2_dead = True
 
                                         # Spawn revive power-up
@@ -1257,9 +1263,9 @@ async def main():
 
                                         # Check if both players are dead
                                         if player1.lives <= 0:
-                                            print("Game over!")
-                                            print(f"Player 1 Final Score: {player1.score}")
-                                            print(f"Player 2 Final Score: {player2.score}")
+                                            debug_print("Game over!")
+                                            debug_print(f"Player 1 Final Score: {player1.score}")
+                                            debug_print(f"Player 2 Final Score: {player2.score}")
                                             game_over = True
                                             game_over_retry_delay = 1.5
                                             taunt_animation = TauntAnimation()
@@ -1272,14 +1278,14 @@ async def main():
                                             if player1.score > 0:
                                                 p1_highscore_rank = add_score("Player 1", player1.score)
                                                 if p1_highscore_rank:
-                                                    print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
+                                                    debug_print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
                                             else:
                                                 p1_highscore_rank = None
 
                                             if player2.score > 0:
                                                 p2_highscore_rank = add_score("Player 2", player2.score)
                                                 if p2_highscore_rank:
-                                                    print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
+                                                    debug_print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
                                             else:
                                                 p2_highscore_rank = None
 
@@ -1287,7 +1293,7 @@ async def main():
                                             show_high_scores = (p1_is_high or p2_is_high)
                                             break
                             else:
-                                print("Player 2 shield absorbed hit!")
+                                debug_print("Player 2 shield absorbed hit!")
 
                             # Destroy the asteroid that hit the player
                             effect_info = asteroid.split()
@@ -1333,9 +1339,9 @@ async def main():
 
                             # Visual feedback for point value
                             if combo_count > 1:
-                                print(f"{player_name}: +{points_earned} points! ({combo_count}x COMBO)")
+                                debug_print(f"{player_name}: +{points_earned} points! ({combo_count}x COMBO)")
                             else:
-                                print(f"{player_name}: +{points_earned} points")
+                                debug_print(f"{player_name}: +{points_earned} points")
 
                             # Split the asteroid and get effect info
                             effect_info = asteroid.split()
@@ -1400,9 +1406,9 @@ async def main():
 
                             # Visual feedback
                             if combo_count > 1:
-                                print(f"{player_name}: +{points_earned} points! ({combo_count}x COMBO)")
+                                debug_print(f"{player_name}: +{points_earned} points! ({combo_count}x COMBO)")
                             else:
-                                print(f"{player_name}: +{points_earned} points")
+                                debug_print(f"{player_name}: +{points_earned} points")
 
                             # Split the asteroid
                             effect_info = asteroid.split()
@@ -1447,7 +1453,7 @@ async def main():
                             if shot.owner:
                                 shot.owner.score += points
                                 player_name = f"Player {shot.owner.player_number}"
-                                print(f"{player_name}: UFO destroyed! +{points} points")
+                                debug_print(f"{player_name}: UFO destroyed! +{points} points")
 
                             # Screen shake effect
                             if screen_shake_cooldown <= 0:
@@ -1480,7 +1486,7 @@ async def main():
                         if player1.boost_active:
                             points = UFO_LARGE_POINTS if ufo.ufo_type == "large" else UFO_SMALL_POINTS
                             player1.score += points
-                            print(f"Player 1: UFO destroyed by boost! +{points} points")
+                            debug_print(f"Player 1: UFO destroyed by boost! +{points} points")
 
                             # Effects
                             if screen_shake_cooldown <= 0:
@@ -1505,11 +1511,11 @@ async def main():
                             if player1.take_damage():
                                 if shared_lives_enabled:
                                     player1.lives -= 1
-                                    print(f"Player 1 hit by UFO! Shared lives remaining: {player1.lives}")
+                                    debug_print(f"Player 1 hit by UFO! Shared lives remaining: {player1.lives}")
                                     if player1.lives > 0:
                                         player1.respawn(p1_spawn_x, p1_spawn_y)
                                     else:
-                                        print("Out of shared lives! Game over!")
+                                        debug_print("Out of shared lives! Game over!")
                                         player1_dead = True
                                         player2_dead = True
                                         game_over = True
@@ -1517,7 +1523,7 @@ async def main():
                                         taunt_animation = TauntAnimation()
                                 else:
                                     player1.lives -= 1
-                                    print(f"Player 1 hit by UFO! Lives remaining: {player1.lives}")
+                                    debug_print(f"Player 1 hit by UFO! Lives remaining: {player1.lives}")
                                     if player1.lives > 0:
                                         player1.respawn(p1_spawn_x, p1_spawn_y)
                                     else:
@@ -1533,7 +1539,7 @@ async def main():
                         if player2.boost_active:
                             points = UFO_LARGE_POINTS if ufo.ufo_type == "large" else UFO_SMALL_POINTS
                             player2.score += points
-                            print(f"Player 2: UFO destroyed by boost! +{points} points")
+                            debug_print(f"Player 2: UFO destroyed by boost! +{points} points")
 
                             if screen_shake_cooldown <= 0:
                                 screen_shake = min(screen_shake + 6, SCREEN_SHAKE_MAX)
@@ -1554,11 +1560,11 @@ async def main():
                             if player2.take_damage():
                                 if shared_lives_enabled:
                                     player1.lives -= 1  # Shared lives use player1.lives
-                                    print(f"Player 2 hit by UFO! Shared lives remaining: {player1.lives}")
+                                    debug_print(f"Player 2 hit by UFO! Shared lives remaining: {player1.lives}")
                                     if player1.lives > 0:
                                         player2.respawn(p2_spawn_x, p2_spawn_y)
                                     else:
-                                        print("Out of shared lives! Game over!")
+                                        debug_print("Out of shared lives! Game over!")
                                         player1_dead = True
                                         player2_dead = True
                                         game_over = True
@@ -1566,7 +1572,7 @@ async def main():
                                         taunt_animation = TauntAnimation()
                                 else:
                                     player2.lives -= 1
-                                    print(f"Player 2 hit by UFO! Lives remaining: {player2.lives}")
+                                    debug_print(f"Player 2 hit by UFO! Lives remaining: {player2.lives}")
                                     if player2.lives > 0:
                                         player2.respawn(p2_spawn_x, p2_spawn_y)
                                     else:
@@ -1587,11 +1593,11 @@ async def main():
                         if player1.take_damage():
                             if shared_lives_enabled:
                                 player1.lives -= 1
-                                print(f"Player 1 hit by UFO shot! Shared lives remaining: {player1.lives}")
+                                debug_print(f"Player 1 hit by UFO shot! Shared lives remaining: {player1.lives}")
                                 if player1.lives > 0:
                                     player1.respawn(p1_spawn_x, p1_spawn_y)
                                 else:
-                                    print("Out of shared lives! Game over!")
+                                    debug_print("Out of shared lives! Game over!")
                                     player1_dead = True
                                     player2_dead = True
                                     game_over = True
@@ -1599,7 +1605,7 @@ async def main():
                                     taunt_animation = TauntAnimation()
                             else:
                                 player1.lives -= 1
-                                print(f"Player 1 hit by UFO shot! Lives remaining: {player1.lives}")
+                                debug_print(f"Player 1 hit by UFO shot! Lives remaining: {player1.lives}")
                                 if player1.lives > 0:
                                     player1.respawn(p1_spawn_x, p1_spawn_y)
                                 else:
@@ -1615,11 +1621,11 @@ async def main():
                         if player2.take_damage():
                             if shared_lives_enabled:
                                 player1.lives -= 1
-                                print(f"Player 2 hit by UFO shot! Shared lives remaining: {player1.lives}")
+                                debug_print(f"Player 2 hit by UFO shot! Shared lives remaining: {player1.lives}")
                                 if player1.lives > 0:
                                     player2.respawn(p2_spawn_x, p2_spawn_y)
                                 else:
-                                    print("Out of shared lives! Game over!")
+                                    debug_print("Out of shared lives! Game over!")
                                     player1_dead = True
                                     player2_dead = True
                                     game_over = True
@@ -1627,7 +1633,7 @@ async def main():
                                     taunt_animation = TauntAnimation()
                             else:
                                 player2.lives -= 1
-                                print(f"Player 2 hit by UFO shot! Lives remaining: {player2.lives}")
+                                debug_print(f"Player 2 hit by UFO shot! Lives remaining: {player2.lives}")
                                 if player2.lives > 0:
                                     player2.respawn(p2_spawn_x, p2_spawn_y)
                                 else:
@@ -1648,31 +1654,31 @@ async def main():
                             player1.activate_mega_power()
                             slow_motion_active = True
                             slow_motion_timer = MEGA_POWER_DURATION
-                            print("Player 1: MEGA POWER ACTIVATED!")
+                            debug_print("Player 1: MEGA POWER ACTIVATED!")
                         elif powerup.powerup_type == PowerUp.RAPID_FIRE:
                             player1.activate_rapid_fire()
-                            print("Player 1: Rapid Fire!")
+                            debug_print("Player 1: Rapid Fire!")
                         elif powerup.powerup_type == PowerUp.SHIELD:
                             player1.activate_shield()
-                            print("Player 1: Shield!")
+                            debug_print("Player 1: Shield!")
                         elif powerup.powerup_type == PowerUp.MULTI_SHOT:
                             player1.activate_multi_shot()
-                            print("Player 1: Multi-Shot!")
+                            debug_print("Player 1: Multi-Shot!")
                         elif powerup.powerup_type == PowerUp.SLOW_MOTION:
                             slow_motion_active = True
                             slow_motion_timer = SLOW_MOTION_DURATION
-                            print("Player 1: Slow Motion!")
+                            debug_print("Player 1: Slow Motion!")
                         elif powerup.powerup_type == PowerUp.REVIVE:
                             # Revive dead player
                             if player2_dead and player2.lives == 0:
                                 player2.lives = 3  # Revive with 3 lives
                                 player2.respawn(p2_spawn_x, p2_spawn_y)
                                 player2_dead = False
-                                print("Player 1 revived Player 2!")
+                                debug_print("Player 1 revived Player 2!")
                             elif player1_dead:
-                                print("Player 1 can't revive themselves!")
+                                debug_print("Player 1 can't revive themselves!")
                             else:
-                                print("Player 1: No one to revive!")
+                                debug_print("Player 1: No one to revive!")
                         collected = True
 
                     # Player 2 collection (only if alive)
@@ -1681,31 +1687,31 @@ async def main():
                             player2.activate_mega_power()
                             slow_motion_active = True
                             slow_motion_timer = MEGA_POWER_DURATION
-                            print("Player 2: MEGA POWER ACTIVATED!")
+                            debug_print("Player 2: MEGA POWER ACTIVATED!")
                         elif powerup.powerup_type == PowerUp.RAPID_FIRE:
                             player2.activate_rapid_fire()
-                            print("Player 2: Rapid Fire!")
+                            debug_print("Player 2: Rapid Fire!")
                         elif powerup.powerup_type == PowerUp.SHIELD:
                             player2.activate_shield()
-                            print("Player 2: Shield!")
+                            debug_print("Player 2: Shield!")
                         elif powerup.powerup_type == PowerUp.MULTI_SHOT:
                             player2.activate_multi_shot()
-                            print("Player 2: Multi-Shot!")
+                            debug_print("Player 2: Multi-Shot!")
                         elif powerup.powerup_type == PowerUp.SLOW_MOTION:
                             slow_motion_active = True
                             slow_motion_timer = SLOW_MOTION_DURATION
-                            print("Player 2: Slow Motion!")
+                            debug_print("Player 2: Slow Motion!")
                         elif powerup.powerup_type == PowerUp.REVIVE:
                             # Revive dead player
                             if player1_dead and player1.lives == 0:
                                 player1.lives = 3  # Revive with 3 lives
                                 player1.respawn(p1_spawn_x, p1_spawn_y)
                                 player1_dead = False
-                                print("Player 2 revived Player 1!")
+                                debug_print("Player 2 revived Player 1!")
                             elif player2_dead:
-                                print("Player 2 can't revive themselves!")
+                                debug_print("Player 2 can't revive themselves!")
                             else:
-                                print("Player 2: No one to revive!")
+                                debug_print("Player 2: No one to revive!")
                         collected = True
 
                     if collected:
@@ -1718,17 +1724,17 @@ async def main():
                         if shot.owner != player1 and not player1_dead and player1.lives > 0 and player1.check_collision(shot):
                             # Use take_damage to check if shield absorbed hit
                             if player1.take_damage():
-                                print(f"Player 1 hit by Player {shot.owner.player_number}'s shot! Lives remaining: {player1.lives}")
+                                debug_print(f"Player 1 hit by Player {shot.owner.player_number}'s shot! Lives remaining: {player1.lives}")
                                 if player1.lives > 0:
                                     # Respawn player 1
                                     player1.respawn(p1_spawn_x, p1_spawn_y)
                                 else:
-                                    print("Player 1 eliminated by friendly fire!")
+                                    debug_print("Player 1 eliminated by friendly fire!")
                                     # Check if both players are dead
                                     if player2.lives <= 0:
-                                        print("Game over!")
-                                        print(f"Player 1 Final Score: {player1.score}")
-                                        print(f"Player 2 Final Score: {player2.score}")
+                                        debug_print("Game over!")
+                                        debug_print(f"Player 1 Final Score: {player1.score}")
+                                        debug_print(f"Player 2 Final Score: {player2.score}")
                                         game_over = True
                                         game_over_retry_delay = 1.5
                                         taunt_animation = TauntAnimation()
@@ -1741,21 +1747,21 @@ async def main():
                                         if player1.score > 0:
                                             p1_highscore_rank = add_score("Player 1", player1.score)
                                             if p1_highscore_rank:
-                                                print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
+                                                debug_print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
                                         else:
                                             p1_highscore_rank = None
 
                                         if player2.score > 0:
                                             p2_highscore_rank = add_score("Player 2", player2.score)
                                             if p2_highscore_rank:
-                                                print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
+                                                debug_print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
                                         else:
                                             p2_highscore_rank = None
 
                                         # Show high scores if either player got one
                                         show_high_scores = (p1_is_high or p2_is_high)
                             else:
-                                print("Player 1 shield absorbed friendly fire!")
+                                debug_print("Player 1 shield absorbed friendly fire!")
                             shot.kill()
                             continue
 
@@ -1763,17 +1769,17 @@ async def main():
                         if shot.owner != player2 and not player2_dead and player2.lives > 0 and player2.check_collision(shot):
                             # Use take_damage to check if shield absorbed hit
                             if player2.take_damage():
-                                print(f"Player 2 hit by Player {shot.owner.player_number}'s shot! Lives remaining: {player2.lives}")
+                                debug_print(f"Player 2 hit by Player {shot.owner.player_number}'s shot! Lives remaining: {player2.lives}")
                                 if player2.lives > 0:
                                     # Respawn player 2
                                     player2.respawn(p2_spawn_x, p2_spawn_y)
                                 else:
-                                    print("Player 2 eliminated by friendly fire!")
+                                    debug_print("Player 2 eliminated by friendly fire!")
                                     # Check if both players are dead
                                     if player1.lives <= 0:
-                                        print("Game over!")
-                                        print(f"Player 1 Final Score: {player1.score}")
-                                        print(f"Player 2 Final Score: {player2.score}")
+                                        debug_print("Game over!")
+                                        debug_print(f"Player 1 Final Score: {player1.score}")
+                                        debug_print(f"Player 2 Final Score: {player2.score}")
                                         game_over = True
                                         game_over_retry_delay = 1.5
                                         taunt_animation = TauntAnimation()
@@ -1786,21 +1792,21 @@ async def main():
                                         if player1.score > 0:
                                             p1_highscore_rank = add_score("Player 1", player1.score)
                                             if p1_highscore_rank:
-                                                print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
+                                                debug_print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
                                         else:
                                             p1_highscore_rank = None
 
                                         if player2.score > 0:
                                             p2_highscore_rank = add_score("Player 2", player2.score)
                                             if p2_highscore_rank:
-                                                print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
+                                                debug_print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
                                         else:
                                             p2_highscore_rank = None
 
                                         # Show high scores if either player got one
                                         show_high_scores = (p1_is_high or p2_is_high)
                             else:
-                                print("Player 2 shield absorbed friendly fire!")
+                                debug_print("Player 2 shield absorbed friendly fire!")
                             shot.kill()
                             continue
 
@@ -1811,17 +1817,17 @@ async def main():
                         if laser.owner != player1 and not player1_dead and player1.lives > 0 and laser.check_hit(player1):
                             # Use take_damage to check if shield absorbed hit
                             if player1.take_damage():
-                                print(f"Player 1 hit by Player {laser.owner.player_number}'s laser! Lives remaining: {player1.lives}")
+                                debug_print(f"Player 1 hit by Player {laser.owner.player_number}'s laser! Lives remaining: {player1.lives}")
                                 if player1.lives > 0:
                                     # Respawn player 1
                                     player1.respawn(p1_spawn_x, p1_spawn_y)
                                 else:
-                                    print("Player 1 eliminated by laser!")
+                                    debug_print("Player 1 eliminated by laser!")
                                     # Check if both players are dead
                                     if player2.lives <= 0:
-                                        print("Game over!")
-                                        print(f"Player 1 Final Score: {player1.score}")
-                                        print(f"Player 2 Final Score: {player2.score}")
+                                        debug_print("Game over!")
+                                        debug_print(f"Player 1 Final Score: {player1.score}")
+                                        debug_print(f"Player 2 Final Score: {player2.score}")
                                         game_over = True
                                         game_over_retry_delay = 1.5
                                         taunt_animation = TauntAnimation()
@@ -1834,21 +1840,21 @@ async def main():
                                         if player1.score > 0:
                                             p1_highscore_rank = add_score("Player 1", player1.score)
                                             if p1_highscore_rank:
-                                                print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
+                                                debug_print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
                                         else:
                                             p1_highscore_rank = None
 
                                         if player2.score > 0:
                                             p2_highscore_rank = add_score("Player 2", player2.score)
                                             if p2_highscore_rank:
-                                                print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
+                                                debug_print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
                                         else:
                                             p2_highscore_rank = None
 
                                         # Show high scores if either player got one
                                         show_high_scores = (p1_is_high or p2_is_high)
                             else:
-                                print("Player 1 shield absorbed laser!")
+                                debug_print("Player 1 shield absorbed laser!")
                             # Don't remove laser, it continues through
                             continue
 
@@ -1856,17 +1862,17 @@ async def main():
                         if laser.owner != player2 and not player2_dead and player2.lives > 0 and laser.check_hit(player2):
                             # Use take_damage to check if shield absorbed hit
                             if player2.take_damage():
-                                print(f"Player 2 hit by Player {laser.owner.player_number}'s laser! Lives remaining: {player2.lives}")
+                                debug_print(f"Player 2 hit by Player {laser.owner.player_number}'s laser! Lives remaining: {player2.lives}")
                                 if player2.lives > 0:
                                     # Respawn player 2
                                     player2.respawn(p2_spawn_x, p2_spawn_y)
                                 else:
-                                    print("Player 2 eliminated by laser!")
+                                    debug_print("Player 2 eliminated by laser!")
                                     # Check if both players are dead
                                     if player1.lives <= 0:
-                                        print("Game over!")
-                                        print(f"Player 1 Final Score: {player1.score}")
-                                        print(f"Player 2 Final Score: {player2.score}")
+                                        debug_print("Game over!")
+                                        debug_print(f"Player 1 Final Score: {player1.score}")
+                                        debug_print(f"Player 2 Final Score: {player2.score}")
                                         game_over = True
                                         game_over_retry_delay = 1.5
                                         taunt_animation = TauntAnimation()
@@ -1879,21 +1885,21 @@ async def main():
                                         if player1.score > 0:
                                             p1_highscore_rank = add_score("Player 1", player1.score)
                                             if p1_highscore_rank:
-                                                print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
+                                                debug_print(f"Player 1 achieved high score rank #{p1_highscore_rank}!")
                                         else:
                                             p1_highscore_rank = None
 
                                         if player2.score > 0:
                                             p2_highscore_rank = add_score("Player 2", player2.score)
                                             if p2_highscore_rank:
-                                                print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
+                                                debug_print(f"Player 2 achieved high score rank #{p2_highscore_rank}!")
                                         else:
                                             p2_highscore_rank = None
 
                                         # Show high scores if either player got one
                                         show_high_scores = (p1_is_high or p2_is_high)
                             else:
-                                print("Player 2 shield absorbed laser!")
+                                debug_print("Player 2 shield absorbed laser!")
                             # Don't remove laser, it continues through
                             continue
 

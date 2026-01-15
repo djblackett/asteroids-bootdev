@@ -1,6 +1,15 @@
 import json
 import os
 from datetime import datetime
+import sys
+
+IS_WEB = sys.platform == "emscripten"
+
+
+def debug_print(*args, **kwargs):
+    """Print only on desktop, not on web."""
+    if not IS_WEB:
+        print(*args, **kwargs)
 
 
 HIGHSCORE_FILE = "highscores.json"
@@ -25,7 +34,7 @@ def save_highscores(scores):
         with open(HIGHSCORE_FILE, 'w') as f:
             json.dump(scores, f, indent=2)
     except IOError as e:
-        print(f"Error saving high scores: {e}")
+        debug_print(f"Error saving high scores: {e}")
 
 
 def add_score(player_name, score):
