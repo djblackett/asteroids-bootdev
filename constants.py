@@ -63,13 +63,13 @@ COMBO_MULTIPLIERS = {
 # Kill streak notifications
 KILL_STREAK_ENABLED = True  # Set to True to enable kill streak notifications
 KILL_STREAK_MILESTONES = {
-    3: {"name": "TRIPLE KILL!", "color": (255, 200, 50)},
-    5: {"name": "KILLING SPREE!", "color": (255, 150, 0)},
-    10: {"name": "RAMPAGE!", "color": (255, 100, 255)},
-    15: {"name": "UNSTOPPABLE!", "color": (255, 50, 50)},
-    20: {"name": "GODLIKE!", "color": (255, 0, 0)},
-    25: {"name": "LEGENDARY!", "color": (255, 215, 0)},
-    30: {"name": "BEYOND LEGENDARY!", "color": (0, 255, 255)},
+    15: {"name": "KILLING SPREE!", "color": (255, 200, 50)},
+    30: {"name": "RAMPAGE!", "color": (255, 150, 0)},
+    50: {"name": "DOMINATING!", "color": (255, 100, 255)},
+    75: {"name": "UNSTOPPABLE!", "color": (255, 50, 50)},
+    100: {"name": "GODLIKE!", "color": (255, 0, 0)},
+    150: {"name": "LEGENDARY!", "color": (255, 215, 0)},
+    200: {"name": "BEYOND LEGENDARY!", "color": (0, 255, 255)},
 }
 KILL_STREAK_NOTIFICATION_DURATION = 2.5  # seconds to display notification
 
@@ -163,7 +163,7 @@ REVIVE_DURATION = 15.0  # seconds before revive power-up despawns
 REVIVE_BLINK_SPEED = 3.0  # blinks per second when about to expire
 
 # Wave System
-WAVE_SYSTEM_ENABLED = True  # Set to True to enable wave-based spawning instead of continuous
+WAVE_SYSTEM_ENABLED = False  # Set to True to enable wave-based spawning instead of continuous
 WAVE_BASE_ASTEROIDS = 10  # Base number of asteroids in wave 1 (doubled for more chaos)
 WAVE_ASTEROID_INCREMENT = 3  # How many more asteroids per wave (faster ramp-up)
 WAVE_BREAK_DURATION = 1.5  # seconds of breathing room between waves (much shorter)

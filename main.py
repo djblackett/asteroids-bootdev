@@ -520,6 +520,7 @@ async def main():
 
     # Game state
     game_started = False  # Track if game has started (start screen)
+    game_start_cooldown = 0  # Cooldown to prevent shooting immediately after starting
     game_over = False
     game_over_retry_delay = 0  # Delay before accepting retry input
     show_high_scores = False  # Whether to show high scores on game over screen
@@ -610,11 +611,13 @@ async def main():
             if not game_started and event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
                     game_started = True
+                    game_start_cooldown = 0.2  # 200ms cooldown to prevent shooting immediately
 
             # Handle start screen - gamepad button (A button on Xbox, X on PlayStation)
             if not game_started and event.type == pygame.JOYBUTTONDOWN:
                 if event.button == 0:  # A button / X button
                     game_started = True
+                    game_start_cooldown = 0.2  # 200ms cooldown to prevent shooting immediately
 
             # Handle pause toggle
             if game_started and not game_over and event.type == pygame.KEYDOWN:
@@ -762,6 +765,10 @@ async def main():
         elif not game_over:
             # Only update game logic if not paused
             if not paused:
+                # Update game start cooldown
+                if game_start_cooldown > 0:
+                    game_start_cooldown -= dt
+
                 # Update game time and difficulty
                 game_time += dt
                 difficulty_timer += dt
@@ -859,6 +866,14 @@ async def main():
                     if asteroid_field_ref.ufo_spawn_timer >= asteroid_field_ref.ufo_spawn_delay:
                         asteroid_field_ref.spawn_ufo(ufos)
                         asteroid_field_ref.ufo_spawn_scheduled = False
+
+                # Control shooting during game start cooldown
+                if game_start_cooldown > 0:
+                    player1.can_shoot = False
+                    player2.can_shoot = False
+                else:
+                    player1.can_shoot = True
+                    player2.can_shoot = True
 
                 # Update both players at normal speed (only if alive or shared lives)
                 if not player1_dead or (shared_lives_enabled and player1.lives > 0):

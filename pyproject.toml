@@ -8,3 +8,6 @@ dependencies = [
     "pygame==2.6.1",
     "pygbag",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

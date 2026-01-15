@@ -1,23 +1,24 @@
-
 import pygame
 from circleshape import CircleShape
 from constants import (PLAYER_RADIUS, PLAYER_SHOOT_COOLDOWN, PLAYER_SHOOT_SPEED,
-                      PLAYER_SPEED, PLAYER_TURN_SPEED, SHOT_RADIUS,
-                      RAPID_FIRE_COOLDOWN, RAPID_FIRE_DURATION,
-                      MULTI_SHOT_DURATION, MULTI_SHOT_ANGLE_SPREAD,
-                      MEGA_POWER_DURATION, SCREEN_WIDTH, SCREEN_HEIGHT,
-                      BOUNDARY_BOUNCE_FORCE, EXHAUST_PARTICLE_SPAWN_RATE,
-                      LASER_BEAM_MAX_SHOTS, LASER_BEAM_COOLDOWN,
-                      BOOST_DURATION, BOOST_SPEED_MULTIPLIER, BOOST_COOLDOWN)
+                       PLAYER_SPEED, PLAYER_TURN_SPEED, SHOT_RADIUS,
+                       RAPID_FIRE_COOLDOWN, RAPID_FIRE_DURATION,
+                       MULTI_SHOT_DURATION, MULTI_SHOT_ANGLE_SPREAD,
+                       MEGA_POWER_DURATION, SCREEN_WIDTH, SCREEN_HEIGHT,
+                       BOUNDARY_BOUNCE_FORCE, EXHAUST_PARTICLE_SPAWN_RATE,
+                       LASER_BEAM_MAX_SHOTS, LASER_BEAM_COOLDOWN,
+                       BOOST_DURATION, BOOST_SPEED_MULTIPLIER, BOOST_COOLDOWN)
 from shot import Shot
 from soundeffects import play_shoot_sound, play_laser_sound, play_boost_sound
 
 
 class Player(CircleShape):
+
     def __init__(self, x, y, input_source="keyboard", player_number=1, speed_multiplier=1.0):
         super().__init__(x, y, PLAYER_RADIUS)
         self.rotation = 0
         self.timer = 0
+        self.can_shoot = True  # Flag to prevent shooting during game start
         self.rapid_fire_active = False
         self.rapid_fire_timer = 0
         self.shield_active = False
@@ -36,6 +37,9 @@ class Player(CircleShape):
         self.score = 0  # Player's score
         self.speed_multiplier = speed_multiplier  # Speed multiplier from config
 
+        self.position: pygame.Vector2 = pygame.Vector2(x, y)
+        self.velocity: pygame.Vector2 = pygame.Vector2(0, 0)
+
         # Laser beam
         self.laser_shots_remaining = LASER_BEAM_MAX_SHOTS
         self.laser_cooldown = 0
@@ -49,11 +53,12 @@ class Player(CircleShape):
 
         # Laser beam pending (to be picked up by main loop)
         self.pending_laser = None
-    
+
     # in the player class
     def triangle(self, offset=(0, 0)):
         forward = pygame.Vector2(0, 1).rotate(self.rotation)
-        right = pygame.Vector2(0, 1).rotate(self.rotation + 90) * self.radius / 1.5  # type: ignore
+        right = pygame.Vector2(0, 1).rotate(
+            self.rotation + 90) * self.radius / 1.5  # type: ignore
         offset_vec = pygame.Vector2(float(offset[0]), float(offset[1]))
         base_pos = self.position + offset_vec
         forward_scaled = forward * self.radius  # type: ignore
@@ -96,25 +101,29 @@ class Player(CircleShape):
         if self.boost_active:
             backward = pygame.Vector2(0, -1).rotate(self.rotation)
             for i in range(1, 4):
-                trail_pos = self.position + backward * self.radius * i * 0.5
+                trail_pos = self.position + backward * (self.radius * i * 0.5)
                 trail_alpha = 255 - (i * 60)
                 trail_radius = int(self.radius * (1 - i * 0.2))
                 trail_offset = pygame.Vector2(offset[0], offset[1])
                 draw_pos = trail_pos + trail_offset
-                pygame.draw.circle(screen, (255, 100, 255), (int(draw_pos.x), int(draw_pos.y)), trail_radius, 1)
+                pygame.draw.circle(screen, (255, 100, 255), (int(
+                    draw_pos.x), int(draw_pos.y)), trail_radius, 1)
 
             # Draw warning indicator when boost is about to wear off (last 1 second)
             if self.boost_timer <= 1.0:
                 # Create a pulsing ring effect
                 pulse_speed = 8.0  # pulses per second
-                pulse = abs((pygame.time.get_ticks() / 1000.0 * pulse_speed) % 2 - 1)  # 0 to 1 and back
+                pulse = abs((pygame.time.get_ticks() / 1000.0 *
+                            pulse_speed) % 2 - 1)  # 0 to 1 and back
 
                 # Warning ring around player
                 warning_radius = int(self.radius * (1.8 + 0.4 * pulse))
                 warning_color = (255, 255, 0)  # Yellow warning
                 warning_thickness = 2 if pulse > 0.5 else 3  # Pulsing thickness
-                warning_pos = self.position + pygame.Vector2(offset[0], offset[1])
-                pygame.draw.circle(screen, warning_color, (int(warning_pos.x), int(warning_pos.y)), warning_radius, warning_thickness)
+                warning_pos = self.position + \
+                    pygame.Vector2(offset[0], offset[1])
+                pygame.draw.circle(screen, warning_color, (int(warning_pos.x), int(
+                    warning_pos.y)), warning_radius, warning_thickness)
 
         # Draw shield if active
         if self.shield_active:
@@ -123,8 +132,9 @@ class Player(CircleShape):
             pulse = abs(pygame.time.get_ticks() % 1000 - 500) / 500
             shield_radius = int(self.radius * (1.5 + 0.3 * pulse))
             shield_pos = self.position + pygame.Vector2(offset[0], offset[1])
-            pygame.draw.circle(screen, shield_color, (int(shield_pos.x), int(shield_pos.y)), shield_radius, 2)
-    
+            pygame.draw.circle(screen, shield_color, (int(
+                shield_pos.x), int(shield_pos.y)), shield_radius, 2)
+
     def rotate(self, dt):
         self.rotation += dt * PLAYER_TURN_SPEED
 
@@ -290,7 +300,8 @@ class Player(CircleShape):
     def move(self, dt):
         forward = pygame.Vector2(0, 1).rotate(self.rotation)
         # Apply boost speed multiplier if boost is active
-        speed_mult = self.speed_multiplier * (BOOST_SPEED_MULTIPLIER if self.boost_active else 1.0)
+        speed_mult = self.speed_multiplier * \
+            (BOOST_SPEED_MULTIPLIER if self.boost_active else 1.0)
         self.position += forward * PLAYER_SPEED * speed_mult * dt
 
         # Check for boundary collisions and apply bounce
@@ -348,7 +359,7 @@ class Player(CircleShape):
 
             # Calculate exhaust spawn position (behind the ship)
             backward = pygame.Vector2(0, -1).rotate(self.rotation)
-            exhaust_pos = self.position + backward * self.radius
+            exhaust_pos = self.position + backward * float(self.radius)
 
             # Return exhaust info for particle creation
             return {
@@ -362,6 +373,10 @@ class Player(CircleShape):
         if self.timer > 0:
             return None  # Prevent shooting if cooldown is active
 
+        # Can't shoot if disabled (e.g., during game start)
+        if not self.can_shoot:
+            return None
+
         # Can't shoot while boosting
         if self.boost_active:
             return None
@@ -369,12 +384,16 @@ class Player(CircleShape):
         if self.multi_shot_active:
             # Shoot 3 bullets in a spread pattern
             for angle_offset in [-MULTI_SHOT_ANGLE_SPREAD, 0, MULTI_SHOT_ANGLE_SPREAD]:
-                shot = Shot(self.position.x, self.position.y, SHOT_RADIUS, self.rotation + angle_offset, self)
-                shot.velocity = pygame.Vector2(0, 1).rotate(self.rotation + angle_offset) * PLAYER_SHOOT_SPEED
+                shot = Shot(self.position.x, self.position.y,
+                            SHOT_RADIUS, self.rotation + angle_offset, self)
+                shot.velocity = pygame.Vector2(0, 1).rotate(
+                    self.rotation + angle_offset) * PLAYER_SHOOT_SPEED
         else:
             # Shoot single bullet
-            shot = Shot(self.position.x, self.position.y, SHOT_RADIUS, self.rotation, self)
-            shot.velocity = pygame.Vector2(0, 1).rotate(self.rotation) * PLAYER_SHOOT_SPEED
+            shot = Shot(self.position.x, self.position.y,
+                        SHOT_RADIUS, self.rotation, self)
+            shot.velocity = pygame.Vector2(0, 1).rotate(
+                self.rotation) * PLAYER_SHOOT_SPEED
 
         play_shoot_sound()
 
@@ -455,10 +474,11 @@ class Player(CircleShape):
 
         # Calculate laser starting position at the tip of the ship
         forward = pygame.Vector2(0, 1).rotate(self.rotation)
-        laser_start = self.position + forward * self.radius
+        laser_start = self.position + forward * float(self.radius)
 
         # Create laser beam from the tip of the ship
-        self.pending_laser = LaserBeam(laser_start.x, laser_start.y, self.rotation, self)
+        self.pending_laser = LaserBeam(
+            laser_start.x, laser_start.y, self.rotation, self)
 
         # Update cooldown and shots remaining
         self.laser_cooldown = LASER_BEAM_COOLDOWN

@@ -36,21 +36,21 @@ class KillStreakNotification:
         # Pulse effect
         pulse_scale = 1.0 + (0.15 * abs((self.timer * 2) % 1.0 - 0.5))
 
-        # Slide in from right
+        # Slide in from top
         if progress < 0.2:
-            x_offset = 200 * (1.0 - (progress / 0.2))
+            y_offset = -100 * (1.0 - (progress / 0.2))
         else:
-            x_offset = 0
+            y_offset = 0
 
-        # Position - top-right corner
-        base_x = SCREEN_WIDTH - 150
+        # Position - top center
+        base_x = SCREEN_WIDTH // 2
         base_y = 80
-        x_pos = base_x + x_offset
-        y_pos = base_y
+        x_pos = base_x
+        y_pos = base_y + y_offset
 
-        # Create smaller fonts for corner display
-        font_large = pygame.font.Font(None, int(50 * pulse_scale))
-        font_medium = pygame.font.Font(None, int(30 * pulse_scale))
+        # Create fonts for top center display
+        font_large = pygame.font.Font(None, int(60 * pulse_scale))
+        font_medium = pygame.font.Font(None, int(35 * pulse_scale))
 
         # Apply alpha to color
         display_color = (
@@ -85,8 +85,8 @@ class KillStreakNotification:
         name_text = font_large.render(self.streak_name, True, display_color)
         name_rect = name_text.get_rect(center=(x_pos, y_pos + 20))
 
-        # Draw glow for name (reduced for smaller size)
-        for offset in [(0, -2), (0, 2), (-2, 0), (2, 0), (-1, -1), (1, 1), (-1, 1), (1, -1)]:
+        # Draw glow for name
+        for offset in [(0, -3), (0, 3), (-3, 0), (3, 0), (-2, -2), (2, 2), (-2, 2), (2, -2)]:
             glow_rect = name_rect.copy()
             glow_rect.x += offset[0]
             glow_rect.y += offset[1]
