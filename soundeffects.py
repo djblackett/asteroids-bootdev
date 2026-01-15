@@ -227,6 +227,18 @@ def stop_background_music():
     """Stop the background music."""
     pygame.mixer.music.stop()
 
+def is_music_playing():
+    """Check if music is currently playing."""
+    return pygame.mixer.music.get_busy()
+
+def pause_music():
+    """Pause the background music."""
+    pygame.mixer.music.pause()
+
+def unpause_music():
+    """Unpause the background music."""
+    pygame.mixer.music.unpause()
+
 def set_music_speed(speed_multiplier):
     """
     Pitch shift the background music up by adjusting mixer frequency.

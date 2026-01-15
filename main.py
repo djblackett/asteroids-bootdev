@@ -21,7 +21,7 @@ import pygame
 from constants import *
 from asteroidfield import AsteroidField
 from shot import Shot
-from soundeffects import start_background_music, init_sounds, set_music_speed, reset_music_speed
+from soundeffects import start_background_music, init_sounds, set_music_speed, reset_music_speed, pause_music, unpause_music
 from powerup import PowerUp
 from laserbeam import LaserBeam
 from particle import Particle
@@ -282,7 +282,7 @@ def draw_powerup_indicator(screen, player, slow_motion_active, slow_motion_timer
             screen.blit(powerup_text, powerup_rect)
 
 
-def draw_pause_screen(screen):
+def draw_pause_screen(screen, music_muted):
     """Draw the pause screen overlay"""
     # Semi-transparent overlay
     overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -304,10 +304,17 @@ def draw_pause_screen(screen):
     instruction_rect = instruction_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 10))
     screen.blit(instruction_text, instruction_rect)
 
-    # Quit instruction
-    quit_text = font_tiny.render("Press Q to Quit", True, (180, 180, 180))
-    quit_rect = quit_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 60))
-    screen.blit(quit_text, quit_rect)
+    # Music toggle instruction
+    music_status = "Muted" if music_muted else "On"
+    music_text = font_tiny.render(f"Press M to Toggle Music ({music_status})", True, (180, 180, 180))
+    music_rect = music_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 60))
+    screen.blit(music_text, music_rect)
+
+    # Quit instruction (only show on desktop, not web)
+    if not IS_WEB:
+        quit_text = font_tiny.render("Press Q to Quit", True, (180, 180, 180))
+        quit_rect = quit_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 100))
+        screen.blit(quit_text, quit_rect)
 
 
 def draw_game_over_screen(screen, player1, player2, retry_delay=0, show_high_scores=False, p1_rank=None, p2_rank=None):
@@ -528,6 +535,7 @@ async def main():
     p1_highscore_rank = None  # Player 1's rank on high score board
     p2_highscore_rank = None  # Player 2's rank on high score board
     paused = False  # Track if game is paused
+    music_muted = False  # Track if music is muted
     button_rect = None
     slow_motion_active = False
     slow_motion_timer = 0
@@ -625,14 +633,31 @@ async def main():
             if game_started and not game_over and event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_p:
                     paused = not paused
-                # Handle quit from pause menu
-                elif event.key == pygame.K_q and paused:
+                    # Pause/unpause music when game is paused/unpaused
+                    if paused:
+                        pause_music()
+                    elif not music_muted:
+                        unpause_music()
+                # Handle music mute toggle from pause menu
+                elif event.key == pygame.K_m and paused:
+                    music_muted = not music_muted
+                    if music_muted:
+                        pause_music()
+                    else:
+                        unpause_music()
+                # Handle quit from pause menu (only on desktop)
+                elif event.key == pygame.K_q and paused and not IS_WEB:
                     running = False
 
             # Handle pause toggle - gamepad (Start button)
             if game_started and not game_over and event.type == pygame.JOYBUTTONDOWN:
                 if event.button == 7:  # Start button on most controllers
                     paused = not paused
+                    # Pause/unpause music when game is paused/unpaused
+                    if paused:
+                        pause_music()
+                    elif not music_muted:
+                        unpause_music()
 
             # Handle retry button click (only if delay has expired)
             if game_over and game_over_retry_delay <= 0 and event.type == pygame.MOUSEBUTTONDOWN:
@@ -1912,7 +1937,7 @@ async def main():
 
             # Draw pause overlay if paused
             if paused:
-                draw_pause_screen(screen)
+                draw_pause_screen(screen, music_muted)
         else:
             # Update game over retry delay timer
             if game_over_retry_delay > 0:
