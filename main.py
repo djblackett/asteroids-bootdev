@@ -58,8 +58,8 @@ def handle_player_death(player, player_num, death_x, death_y, shared_lives_enabl
     return True  # Game continues (player can be revived)
 
 
-def draw_scores(screen, player1, player2, shared_lives_enabled=False):
-    """Draw scores and lives for both players"""
+def draw_scores(screen, player1, player2, shared_lives_enabled=False, player_count=2):
+    """Draw scores and lives for players"""
     font = pygame.font.Font(None, 36)
 
     # Player 1 - Top left
@@ -68,14 +68,20 @@ def draw_scores(screen, player1, player2, shared_lives_enabled=False):
     p1_score_rect = p1_score_text.get_rect(topleft=(10, 10))
     screen.blit(p1_score_text, p1_score_rect)
 
-    # Player 2 - Top right
-    p2_color = (255, 200, 100) if player2.lives > 0 or (shared_lives_enabled and player1.lives > 0) else (100, 100, 100)
-    p2_score_text = font.render(f"P2: {player2.score}", True, p2_color)
-    p2_score_rect = p2_score_text.get_rect(topright=(SCREEN_WIDTH - 10, 10))
-    screen.blit(p2_score_text, p2_score_rect)
+    # Player 2 - Top right (only in 2-player mode)
+    if player_count == 2:
+        p2_color = (255, 200, 100) if player2.lives > 0 or (shared_lives_enabled and player1.lives > 0) else (100, 100, 100)
+        p2_score_text = font.render(f"P2: {player2.score}", True, p2_color)
+        p2_score_rect = p2_score_text.get_rect(topright=(SCREEN_WIDTH - 10, 10))
+        screen.blit(p2_score_text, p2_score_rect)
 
-    # Lives display - centered if shared, separate if not
-    if shared_lives_enabled and player2.lives == 0:
+    # Lives display
+    if player_count == 1:
+        # Single player - just show lives for player 1
+        lives_text = font.render(f"Lives: {player1.lives}", True, p1_color)
+        lives_rect = lives_text.get_rect(topleft=(10, 45))
+        screen.blit(lives_text, lives_rect)
+    elif shared_lives_enabled and player2.lives == 0:
         # Shared lives - show in center
         lives_color = (100, 255, 255)
         lives_text = font.render(f"SHARED LIVES: {player1.lives}", True, lives_color)
@@ -83,6 +89,7 @@ def draw_scores(screen, player1, player2, shared_lives_enabled=False):
         screen.blit(lives_text, lives_rect)
     else:
         # Individual lives - show separately
+        p2_color = (255, 200, 100) if player2.lives > 0 else (100, 100, 100)
         # Player 1 lives
         lives_text = font.render(f"Lives: {player1.lives}", True, p1_color)
         lives_rect = lives_text.get_rect(topleft=(10, 45))
@@ -536,6 +543,7 @@ async def main():
     game_started = False  # Track if game has started (start screen)
     game_start_cooldown = 0  # Cooldown to prevent shooting immediately after starting
     game_over = False
+    current_player_count = 2  # Track number of players (1 or 2)
     game_over_retry_delay = 0  # Delay before accepting retry input
     show_high_scores = False  # Whether to show high scores on game over screen
     p1_highscore_rank = None  # Player 1's rank on high score board
@@ -611,6 +619,7 @@ async def main():
                     p1_input, p2_input = control_config.get_player_inputs()
                     speed_mult = control_config.get_speed_multiplier()
                     player_cnt = control_config.get_player_count()
+                    current_player_count = player_cnt
                     friendly_fire_enabled = control_config.get_friendly_fire_enabled()
                     shared_lives_enabled = control_config.get_shared_lives_enabled()
                     player1, player2, asteroid_field_ref = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
@@ -671,6 +680,7 @@ async def main():
                     p1_input, p2_input = control_config.get_player_inputs()
                     speed_mult = control_config.get_speed_multiplier()
                     player_cnt = control_config.get_player_count()
+                    current_player_count = player_cnt
                     player1, player2, asteroid_field_ref = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
                     game_over = False
                     player1_dead = False
@@ -708,6 +718,7 @@ async def main():
                     p1_input, p2_input = control_config.get_player_inputs()
                     speed_mult = control_config.get_speed_multiplier()
                     player_cnt = control_config.get_player_count()
+                    current_player_count = player_cnt
                     player1, player2, asteroid_field_ref = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
                     game_over = False
                     player1_dead = False
@@ -748,6 +759,7 @@ async def main():
                     p1_input, p2_input = control_config.get_player_inputs()
                     speed_mult = control_config.get_speed_multiplier()
                     player_cnt = control_config.get_player_count()
+                    current_player_count = player_cnt
                     player1, player2, asteroid_field_ref = reset_game(updatable, p1_input, p2_input, speed_mult, player_cnt)
                     game_over = False
                     player1_dead = False
@@ -1927,8 +1939,8 @@ async def main():
             for laser in laser_beams:
                 laser.draw(screen, shake_offset)
 
-            # Draw scores and lives for both players
-            draw_scores(screen, player1, player2, shared_lives_enabled)
+            # Draw scores and lives for players
+            draw_scores(screen, player1, player2, shared_lives_enabled, current_player_count)
             # Draw combo
             draw_combo(screen, combo_count, combo_timer)
             # Draw wave info if wave system is enabled
@@ -1967,7 +1979,7 @@ async def main():
                 particle.draw(screen, shake_offset)
 
             # Draw scores on frozen game
-            draw_scores(screen, player1, player2, shared_lives_enabled)
+            draw_scores(screen, player1, player2, shared_lives_enabled, current_player_count)
             # Draw power-up indicators on frozen game
             draw_powerup_indicator(screen, player1, slow_motion_active, slow_motion_timer)
 
