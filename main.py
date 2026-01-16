@@ -137,6 +137,28 @@ def draw_combo(screen, combo_count, combo_timer):
     screen.blit(multiplier_text, multiplier_rect)
 
 
+def draw_timer(screen, elapsed_time):
+    """Draw the game timer at the top center of the screen.
+
+    Args:
+        screen: The pygame screen surface to draw on
+        elapsed_time: Time elapsed in seconds since game started
+    """
+    font = pygame.font.Font(None, 48)
+
+    # Format time as MM:SS
+    minutes = int(elapsed_time // 60)
+    seconds = int(elapsed_time % 60)
+    timer_text = f"{minutes:02d}:{seconds:02d}"
+
+    # White color for the timer
+    timer_color = (255, 255, 255)
+
+    text_surface = font.render(timer_text, True, timer_color)
+    text_rect = text_surface.get_rect(midtop=(SCREEN_WIDTH // 2, 10))
+    screen.blit(text_surface, text_rect)
+
+
 def draw_wave_info(screen, wave_number, wave_break_active, wave_break_timer, wave_duration=None, wave_max_duration=None):
     """Draw wave number and break countdown"""
     font_medium = pygame.font.Font(None, 48)
@@ -1943,10 +1965,12 @@ async def main():
             draw_scores(screen, player1, player2, shared_lives_enabled, current_player_count)
             # Draw combo
             draw_combo(screen, combo_count, combo_timer)
-            # Draw wave info if wave system is enabled
+            # Draw wave info if wave system is enabled, otherwise draw game timer
             if WAVE_SYSTEM_ENABLED:
                 draw_wave_info(screen, current_wave, wave_break_active, wave_break_timer,
                              wave_duration_timer, WAVE_MAX_DURATION)
+            else:
+                draw_timer(screen, game_time)
             # Draw kill streak notification if active
             if active_streak_notification:
                 active_streak_notification.draw(screen)
