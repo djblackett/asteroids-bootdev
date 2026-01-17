@@ -1,6 +1,7 @@
 import pygame
 from constants import SCREEN_WIDTH, SCREEN_HEIGHT
 from powerup import PowerUp
+import frametime  # OPTIMIZATION: Use cached get_ticks() per frame
 
 
 def draw_start_screen(screen):
@@ -103,6 +104,7 @@ def draw_start_screen(screen):
     screen.blit(start_text, start_rect)
 
     # Add a pulsing effect to the start text
-    pulse = abs(pygame.time.get_ticks() % 1000 - 500) / 500
+    # OPTIMIZATION: Use cached get_ticks() instead of calling pygame.time.get_ticks()
+    pulse = abs(frametime.get_ticks() % 1000 - 500) / 500
     alpha = int(150 + 105 * pulse)
     start_text.set_alpha(alpha)

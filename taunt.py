@@ -1,7 +1,7 @@
 import pygame
 import random
 import math
-import colorsys
+import colorsys  # Used for taunt colors (rare, not per-frame)
 from constants import DEATH_TAUNTS, TAUNT_DURATION, TAUNT_FADE_IN, TAUNT_FADE_OUT, SCREEN_WIDTH, SCREEN_HEIGHT
 
 
@@ -15,11 +15,23 @@ class TauntAnimation:
     ANIM_ZOOM = 3
     ANIM_RAINBOW_SPIN = 4
 
+    # OPTIMIZATION: Cache fonts at class level to avoid per-frame recreation
+    # Font recreation is expensive (~1ms per call) and was happening every frame
+    # for animations that use scaling. Pre-cache common sizes.
+    _font_cache = {}
+
+    @classmethod
+    def get_font(cls, size):
+        """Get a cached font of the given size, creating it if needed."""
+        if size not in cls._font_cache:
+            cls._font_cache[size] = pygame.font.Font(None, size)
+        return cls._font_cache[size]
+
     def __init__(self):
         self.message = random.choice(DEATH_TAUNTS)
         self.timer = TAUNT_DURATION
         self.base_font_size = random.randint(100, 140)  # Larger, varied size
-        self.font = pygame.font.Font(None, self.base_font_size)
+        self.font = self.get_font(self.base_font_size)
 
         # Choose random animation style
         self.animation_type = random.randint(0, 4)
@@ -91,9 +103,10 @@ class TauntAnimation:
             rotation = math.sin(self.elapsed_time * 2) * 15  # -15 to +15 degrees
             scale = 1.0 + math.sin(self.elapsed_time * 3) * 0.1
 
-        # Apply scale to font size
+        # OPTIMIZATION: Use cached font instead of creating new one each frame
+        # Apply scale to font size and get from cache
         current_font_size = int(self.base_font_size * scale)
-        scaled_font = pygame.font.Font(None, current_font_size)
+        scaled_font = self.get_font(current_font_size)
 
         # Render text with rainbow color
         text_surface = scaled_font.render(self.message, True, color)
@@ -107,6 +120,7 @@ class TauntAnimation:
 
         # Create outline/shadow effect for more prominence
         # Draw shadow (slightly offset dark version)
+        # Note: Reusing scaled_font from cache (no new font creation)
         shadow_surface = scaled_font.render(self.message, True, (0, 0, 0))
         if rotation != 0:
             shadow_surface = pygame.transform.rotate(shadow_surface, rotation)
@@ -125,6 +139,7 @@ class TauntAnimation:
         screen.blit(text_surface, text_rect)
 
         # Add extra glow effect by drawing a slightly transparent version behind
+        # Note: Reusing scaled_font from cache (no new font creation)
         glow_surface = scaled_font.render(self.message, True, color)
         if rotation != 0:
             glow_surface = pygame.transform.rotate(glow_surface, rotation)

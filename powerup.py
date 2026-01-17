@@ -1,6 +1,8 @@
 import pygame
 from circleshape import CircleShape
 import random
+import frametime  # OPTIMIZATION: Use cached get_ticks() per frame
+import colorutils  # OPTIMIZATION: Pre-computed rainbow colors
 
 
 class PowerUp(CircleShape):
@@ -33,7 +35,9 @@ class PowerUp(CircleShape):
     def draw(self, screen, offset=(0, 0)):
         pos = self.position + pygame.Vector2(offset[0], offset[1])
         center = (int(pos.x), int(pos.y))
-        pulse = abs(pygame.time.get_ticks() % 1000 - 500) / 500
+        # OPTIMIZATION: Use cached get_ticks() instead of calling pygame.time.get_ticks()
+        ticks = frametime.get_ticks()
+        pulse = abs(ticks % 1000 - 500) / 500
         radius = int(self.radius * (0.8 + 0.4 * pulse))
 
         if self.powerup_type == self.RAPID_FIRE:
@@ -107,36 +111,28 @@ class PowerUp(CircleShape):
             pygame.draw.circle(screen, color, center, radius, 3)
 
             # Draw clock hands
+            # OPTIMIZATION: Reuse cached ticks from earlier in draw()
             # Hour hand (short)
-            hand_angle = (pygame.time.get_ticks() / 20) % 360
+            hand_angle = (ticks / 20) % 360
             hand_x = center[0] + pygame.math.Vector2(0, 1).rotate(hand_angle).x * (radius * 0.5)
             hand_y = center[1] + pygame.math.Vector2(0, 1).rotate(hand_angle).y * (radius * 0.5)
             pygame.draw.line(screen, color, center, (hand_x, hand_y), 3)
 
             # Minute hand (long)
-            hand_angle2 = (pygame.time.get_ticks() / 5) % 360
+            hand_angle2 = (ticks / 5) % 360
             hand_x2 = center[0] + pygame.math.Vector2(0, 1).rotate(hand_angle2).x * (radius * 0.8)
             hand_y2 = center[1] + pygame.math.Vector2(0, 1).rotate(hand_angle2).y * (radius * 0.8)
             pygame.draw.line(screen, color, center, (hand_x2, hand_y2), 2)
 
         elif self.powerup_type == self.MEGA_POWER:
             # Rainbow spinning star for MEGA POWER
-            # Create rainbow effect with cycling colors
-            time = pygame.time.get_ticks() / 100
-            hue = (time % 360) / 360.0
-
-            # Convert HSV to RGB for rainbow effect
-            def hsv_to_rgb(h, s, v):
-                import colorsys
-                r, g, b = colorsys.hsv_to_rgb(h, s, v)
-                return (int(r * 255), int(g * 255), int(b * 255))
-
-            color1 = hsv_to_rgb(hue, 1.0, 1.0)
-            color2 = hsv_to_rgb((hue + 0.33) % 1.0, 1.0, 1.0)
-            color3 = hsv_to_rgb((hue + 0.66) % 1.0, 1.0, 1.0)
+            # OPTIMIZATION: Use pre-computed rainbow lookup table instead of colorsys
+            color1 = colorutils.get_rainbow_color(ticks, speed=100)
+            color2 = colorutils.get_rainbow_color_offset(ticks, 120, speed=100)  # +120 degrees
+            color3 = colorutils.get_rainbow_color_offset(ticks, 240, speed=100)  # +240 degrees
 
             # Draw multiple rotating stars
-            rotation = (pygame.time.get_ticks() / 10) % 360
+            rotation = (ticks / 10) % 360
 
             # Outer star (8 points)
             for i in range(8):
@@ -158,9 +154,10 @@ class PowerUp(CircleShape):
             color = (0, 255, 100)
 
             # Blink faster when about to expire
+            # OPTIMIZATION: Reuse cached ticks from earlier in draw()
             if self.lifetime <= 3.0:
                 from constants import REVIVE_BLINK_SPEED
-                blink_cycle = (pygame.time.get_ticks() / 1000.0) * REVIVE_BLINK_SPEED
+                blink_cycle = (ticks / 1000.0) * REVIVE_BLINK_SPEED
                 if int(blink_cycle) % 2 == 0:
                     color = (255, 255, 255)  # Flash white
 

@@ -10,9 +10,15 @@ from constants import (PLAYER_RADIUS, PLAYER_SHOOT_COOLDOWN, PLAYER_SHOOT_SPEED,
                        BOOST_DURATION, BOOST_SPEED_MULTIPLIER, BOOST_COOLDOWN)
 from shot import Shot
 from soundeffects import play_shoot_sound, play_laser_sound, play_boost_sound
+import frametime  # OPTIMIZATION: Use cached get_ticks() per frame
+import colorutils  # OPTIMIZATION: Pre-computed rainbow colors
 
 
 class Player(CircleShape):
+    # OPTIMIZATION: Cache unit vectors to avoid repeated Vector2 creation
+    # These are used frequently in triangle(), move(), and draw()
+    _UNIT_FORWARD = pygame.Vector2(0, 1)
+    _UNIT_BACKWARD = pygame.Vector2(0, -1)
 
     def __init__(self, x, y, input_source="keyboard", player_number=1, speed_multiplier=1.0):
         super().__init__(x, y, PLAYER_RADIUS)
@@ -56,8 +62,9 @@ class Player(CircleShape):
 
     # in the player class
     def triangle(self, offset=(0, 0)):
-        forward = pygame.Vector2(0, 1).rotate(self.rotation)
-        right = pygame.Vector2(0, 1).rotate(
+        # OPTIMIZATION: Use cached unit vectors instead of creating new ones
+        forward = self._UNIT_FORWARD.rotate(self.rotation)
+        right = self._UNIT_FORWARD.rotate(
             self.rotation + 90) * self.radius / 1.5  # type: ignore
         offset_vec = pygame.Vector2(float(offset[0]), float(offset[1]))
         base_pos = self.position + offset_vec
@@ -73,19 +80,18 @@ class Player(CircleShape):
             return
 
         # Change color based on active power-ups or respawn state
+        # OPTIMIZATION: Use cached get_ticks() instead of calling pygame.time.get_ticks()
+        ticks = frametime.get_ticks()
         if self.is_respawning:
             # Flashing effect during respawn invulnerability
-            if (pygame.time.get_ticks() // 100) % 2 == 0:
+            if (ticks // 100) % 2 == 0:
                 color = (100, 100, 100)  # Dim gray when flashing
             else:
                 color = (255, 255, 255)  # White
         elif self.mega_power_active:
             # Rainbow effect for MEGA POWER
-            time = pygame.time.get_ticks() / 100
-            hue = (time % 360) / 360.0
-            import colorsys
-            r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
-            color = (int(r * 255), int(g * 255), int(b * 255))
+            # OPTIMIZATION: Use pre-computed rainbow lookup table instead of colorsys
+            color = colorutils.get_rainbow_color(ticks, speed=100)
         elif self.boost_active:
             color = (255, 100, 255)  # Magenta for boost
         elif self.rapid_fire_active:
@@ -99,7 +105,8 @@ class Player(CircleShape):
 
         # Draw boost trail effect
         if self.boost_active:
-            backward = pygame.Vector2(0, -1).rotate(self.rotation)
+            # OPTIMIZATION: Use cached unit vector
+            backward = self._UNIT_BACKWARD.rotate(self.rotation)
             for i in range(1, 4):
                 trail_pos = self.position + backward * (self.radius * i * 0.5)
                 trail_alpha = 255 - (i * 60)
@@ -113,7 +120,8 @@ class Player(CircleShape):
             if self.boost_timer <= 1.0:
                 # Create a pulsing ring effect
                 pulse_speed = 8.0  # pulses per second
-                pulse = abs((pygame.time.get_ticks() / 1000.0 *
+                # OPTIMIZATION: Reuse cached ticks from earlier in draw()
+                pulse = abs((ticks / 1000.0 *
                             pulse_speed) % 2 - 1)  # 0 to 1 and back
 
                 # Warning ring around player
@@ -129,7 +137,8 @@ class Player(CircleShape):
         if self.shield_active:
             shield_color = (0, 255, 255)  # Cyan
             # Pulsing shield effect
-            pulse = abs(pygame.time.get_ticks() % 1000 - 500) / 500
+            # OPTIMIZATION: Reuse cached ticks from earlier in draw()
+            pulse = abs(ticks % 1000 - 500) / 500
             shield_radius = int(self.radius * (1.5 + 0.3 * pulse))
             shield_pos = self.position + pygame.Vector2(offset[0], offset[1])
             pygame.draw.circle(screen, shield_color, (int(
@@ -298,7 +307,8 @@ class Player(CircleShape):
             self.boost_key_pressed = False
 
     def move(self, dt):
-        forward = pygame.Vector2(0, 1).rotate(self.rotation)
+        # OPTIMIZATION: Use cached unit vector instead of creating new one
+        forward = self._UNIT_FORWARD.rotate(self.rotation)
         # Apply boost speed multiplier if boost is active
         speed_mult = self.speed_multiplier * \
             (BOOST_SPEED_MULTIPLIER if self.boost_active else 1.0)
@@ -358,7 +368,8 @@ class Player(CircleShape):
             self.exhaust_timer = EXHAUST_PARTICLE_SPAWN_RATE
 
             # Calculate exhaust spawn position (behind the ship)
-            backward = pygame.Vector2(0, -1).rotate(self.rotation)
+            # OPTIMIZATION: Use cached unit vector
+            backward = self._UNIT_BACKWARD.rotate(self.rotation)
             exhaust_pos = self.position + backward * float(self.radius)
 
             # Return exhaust info for particle creation
@@ -386,13 +397,15 @@ class Player(CircleShape):
             for angle_offset in [-MULTI_SHOT_ANGLE_SPREAD, 0, MULTI_SHOT_ANGLE_SPREAD]:
                 shot = Shot(self.position.x, self.position.y,
                             SHOT_RADIUS, self.rotation + angle_offset, self)
-                shot.velocity = pygame.Vector2(0, 1).rotate(
+                # OPTIMIZATION: Use cached unit vector
+                shot.velocity = self._UNIT_FORWARD.rotate(
                     self.rotation + angle_offset) * PLAYER_SHOOT_SPEED
         else:
             # Shoot single bullet
             shot = Shot(self.position.x, self.position.y,
                         SHOT_RADIUS, self.rotation, self)
-            shot.velocity = pygame.Vector2(0, 1).rotate(
+            # OPTIMIZATION: Use cached unit vector
+            shot.velocity = self._UNIT_FORWARD.rotate(
                 self.rotation) * PLAYER_SHOOT_SPEED
 
         play_shoot_sound()
@@ -473,7 +486,8 @@ class Player(CircleShape):
         from laserbeam import LaserBeam
 
         # Calculate laser starting position at the tip of the ship
-        forward = pygame.Vector2(0, 1).rotate(self.rotation)
+        # OPTIMIZATION: Use cached unit vector
+        forward = self._UNIT_FORWARD.rotate(self.rotation)
         laser_start = self.position + forward * float(self.radius)
 
         # Create laser beam from the tip of the ship

@@ -17,6 +17,27 @@ class UFO(CircleShape):
     # Will be set in main.py
     containers = None
 
+    # OPTIMIZATION: Cache unit vector for rotation calculations
+    _UNIT_VECTOR = pygame.Vector2(0, 1)
+
+    # OPTIMIZATION: Pre-computed light offset directions for each UFO type
+    # These are unit vectors that get scaled by radius at draw time
+    _LARGE_LIGHT_OFFSETS = None
+    _SMALL_LIGHT_OFFSETS = None
+
+    @classmethod
+    def _init_light_offsets(cls):
+        """Pre-compute light offset unit vectors (called once)"""
+        if cls._LARGE_LIGHT_OFFSETS is None:
+            # Large UFO has 3 lights
+            cls._LARGE_LIGHT_OFFSETS = [
+                cls._UNIT_VECTOR.rotate((360 / 3) * i) for i in range(3)
+            ]
+            # Small UFO has 2 lights
+            cls._SMALL_LIGHT_OFFSETS = [
+                cls._UNIT_VECTOR.rotate((360 / 2) * i) for i in range(2)
+            ]
+
     def __init__(self, x, y, ufo_type="large", players=None):
         """
         Initialize a UFO
@@ -56,11 +77,22 @@ class UFO(CircleShape):
         self.blink_timer = 0
         self.blink_state = False
 
+        # OPTIMIZATION: Initialize light offsets if not already done
+        self._init_light_offsets()
+
+        # OPTIMIZATION: Pre-compute scaled light offsets for this UFO's radius
+        light_dist = self.radius * 0.6
+        if ufo_type == "large":
+            self._light_offsets = [v * light_dist for v in self._LARGE_LIGHT_OFFSETS]
+        else:
+            self._light_offsets = [v * light_dist for v in self._SMALL_LIGHT_OFFSETS]
+
     def _set_random_movement(self):
         """Set a random movement direction"""
         # Random angle for movement
+        # OPTIMIZATION: Use cached unit vector
         angle = random.uniform(0, 360)
-        self.target_velocity = pygame.Vector2(0, 1).rotate(angle) * self.speed
+        self.target_velocity = self._UNIT_VECTOR.rotate(angle) * self.speed
 
         # Small UFOs have more erratic movement
         if self.ufo_type == "small":
@@ -183,10 +215,8 @@ class UFO(CircleShape):
         pygame.draw.circle(screen, "white", draw_pos, self.radius, 2)
 
         # Draw lights/windows (small dots)
-        num_lights = 3 if self.ufo_type == "large" else 2
-        for i in range(num_lights):
-            angle = (360 / num_lights) * i
-            light_offset = pygame.Vector2(0, self.radius * 0.6).rotate(angle)
+        # OPTIMIZATION: Use pre-computed light offsets instead of creating Vector2 each frame
+        light_color = (255, 255, 0) if self.blink_state else (100, 100, 0)
+        for light_offset in self._light_offsets:
             light_pos = draw_pos + light_offset
-            light_color = (255, 255, 0) if self.blink_state else (100, 100, 0)
             pygame.draw.circle(screen, light_color, light_pos, 2)

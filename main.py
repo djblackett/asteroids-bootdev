@@ -33,6 +33,8 @@ from starfield import Starfield
 from killstreak import KillStreakNotification
 from ufo import UFO
 from spatialgrid import SpatialGrid
+import frametime  # OPTIMIZATION: Cached get_ticks() per frame
+import colorutils  # OPTIMIZATION: Pre-computed rainbow colors
 import random
 import asyncio
 import sys
@@ -265,11 +267,8 @@ def draw_powerup_indicator(screen, player, slow_motion_active, slow_motion_timer
     if player.mega_power_active:
         time_left = int(player.mega_power_timer) + 1
         # Rainbow color cycling
-        time = pygame.time.get_ticks() / 100
-        hue = (time % 360) / 360.0
-        import colorsys
-        r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
-        mega_color = (int(r * 255), int(g * 255), int(b * 255))
+        # OPTIMIZATION: Use pre-computed rainbow lookup table instead of colorsys
+        mega_color = colorutils.get_rainbow_color(frametime.get_ticks(), speed=100)
         powerup_text = FONT_40.render(f"*** MEGA POWER: {time_left}s ***", True, mega_color)
         powerup_rect = powerup_text.get_rect(topleft=(10, y_offset))
         screen.blit(powerup_text, powerup_rect)
@@ -650,6 +649,10 @@ async def main():
     # Main game loop
     running = True
     while running:
+        # OPTIMIZATION: Cache get_ticks() once per frame for all animations
+        # This avoids 12+ redundant syscalls per frame across Player, PowerUp, etc.
+        frametime.update()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -1781,7 +1784,8 @@ async def main():
 
                 # Friendly fire - check if shots hit players
                 if friendly_fire_enabled:
-                    for shot in shots.copy():  # Use copy to avoid modification during iteration
+                    # OPTIMIZATION: Use list() instead of .copy() - creates tuple iterator, faster than set copy
+                    for shot in list(shots):
                         # Check if shot hits Player 1 (skip if dead)
                         if shot.owner != player1 and not player1_dead and player1.lives > 0 and player1.check_collision(shot):
                             # Use take_damage to check if shield absorbed hit
@@ -1874,7 +1878,8 @@ async def main():
 
                 # Friendly fire - check if laser beams hit players
                 if friendly_fire_enabled:
-                    for laser in laser_beams.copy():  # Use copy to avoid modification during iteration
+                    # OPTIMIZATION: No need for .copy() - lasers aren't removed during iteration
+                    for laser in laser_beams:
                         # Check if laser hits Player 1 (skip if dead)
                         if laser.owner != player1 and not player1_dead and player1.lives > 0 and laser.check_hit(player1):
                             # Use take_damage to check if shield absorbed hit
