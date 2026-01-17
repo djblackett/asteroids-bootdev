@@ -422,3 +422,9 @@ class ControlConfig:
     def get_shared_lives_enabled(self):
         """Return the configured shared lives setting"""
         return self.shared_lives_enabled
+
+    def reset(self):
+        """Reset config_complete flag so the config screen can be shown again.
+        Preserves all settings so user can review/modify them."""
+        self.config_complete = False
+        self.selected_player = 0  # Reset selection to top row

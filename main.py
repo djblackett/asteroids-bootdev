@@ -327,10 +327,15 @@ def draw_pause_screen(screen, music_muted):
     music_rect = music_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 60))
     screen.blit(music_text, music_rect)
 
+    # Back to menu instruction
+    menu_text = FONT_32.render("Press ESC for Main Menu", True, (180, 180, 180))
+    menu_rect = menu_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 100))
+    screen.blit(menu_text, menu_rect)
+
     # Quit instruction (only show on desktop, not web)
     if not IS_WEB:
         quit_text = FONT_32.render("Press Q to Quit", True, (180, 180, 180))
-        quit_rect = quit_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 100))
+        quit_rect = quit_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 140))
         screen.blit(quit_text, quit_rect)
 
 
@@ -427,9 +432,14 @@ def draw_game_over_screen(screen, player1, player2, retry_delay=0, show_high_sco
         center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 220))
     screen.blit(instruction_text, instruction_rect)
 
+    # Menu instruction
+    menu_text = FONT_24.render("Press ESC for Main Menu", True, (180, 180, 180))
+    menu_rect = menu_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 260))
+    screen.blit(menu_text, menu_rect)
+
     # Quit instruction
     quit_text = FONT_24.render("Press Q to Quit", True, (180, 180, 180))
-    quit_rect = quit_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 260))
+    quit_rect = quit_text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 290))
     screen.blit(quit_text, quit_rect)
 
     return button_rect
@@ -651,14 +661,18 @@ async def main():
                     config_phase = False
                 continue  # Skip other event handling during config
 
-            # Handle start screen
-            if not game_started and event.type == pygame.KEYDOWN:
+            # Handle start screen (powerups/controls info)
+            if not game_started and not config_phase and event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
                     game_started = True
                     game_start_cooldown = 0.2  # 200ms cooldown to prevent shooting immediately
+                # ESC to go back to control config
+                elif event.key == pygame.K_ESCAPE:
+                    config_phase = True
+                    control_config.reset()
 
             # Handle start screen - gamepad button (A button on Xbox, X on PlayStation)
-            if not game_started and event.type == pygame.JOYBUTTONDOWN:
+            if not game_started and not config_phase and event.type == pygame.JOYBUTTONDOWN:
                 if event.button == 0:  # A button / X button
                     game_started = True
                     game_start_cooldown = 0.2  # 200ms cooldown to prevent shooting immediately
@@ -679,6 +693,13 @@ async def main():
                         pause_music()
                     else:
                         unpause_music()
+                # Handle return to config screen from pause screen
+                elif event.key == pygame.K_ESCAPE and paused:
+                    paused = False
+                    game_started = False
+                    config_phase = True  # Return to control config screen
+                    control_config.reset()  # Reset so config screen shows again
+                    unpause_music()
                 # Handle quit from pause menu (only on desktop)
                 elif event.key == pygame.K_q and paused and not IS_WEB:
                     running = False
@@ -768,6 +789,12 @@ async def main():
                     if music_sped_up:
                         reset_music_speed()
                         music_sped_up = False
+                # Handle return to config screen from game over screen
+                elif event.key == pygame.K_ESCAPE:
+                    game_over = False
+                    game_started = False
+                    config_phase = True  # Return to control config screen
+                    control_config.reset()  # Reset so config screen shows again
                 # Handle quit from game over screen
                 elif event.key == pygame.K_q:
                     running = False

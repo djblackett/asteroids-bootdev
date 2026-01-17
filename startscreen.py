@@ -90,8 +90,14 @@ def draw_start_screen(screen):
     # Restore the original containers
     PowerUp.containers = original_containers
 
-    # Start instruction - add more space from bottom
-    start_y = SCREEN_HEIGHT - 60
+    # Back instruction
+    back_y = SCREEN_HEIGHT - 90
+    back_text = font_small.render("Press ESC to go back to config", True, (180, 180, 180))
+    back_rect = back_text.get_rect(center=(SCREEN_WIDTH // 2, back_y))
+    screen.blit(back_text, back_rect)
+
+    # Start instruction
+    start_y = SCREEN_HEIGHT - 50
     start_text = font_header.render("Press SPACE to Start", True, (100, 255, 100))
     start_rect = start_text.get_rect(center=(SCREEN_WIDTH // 2, start_y))
     screen.blit(start_text, start_rect)
