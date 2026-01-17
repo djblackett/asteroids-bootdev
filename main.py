@@ -32,6 +32,7 @@ from highscores import add_score, is_high_score, get_top_scores
 from starfield import Starfield
 from killstreak import KillStreakNotification
 from ufo import UFO
+from spatialgrid import SpatialGrid
 import random
 import asyncio
 import sys
@@ -501,6 +502,9 @@ async def main():
     FONT_74 = pygame.font.Font(None, 74)
     FONT_80 = pygame.font.Font(None, 80)
     FONT_100 = pygame.font.Font(None, 100)
+
+    # Create spatial grid for collision detection (cell size = largest asteroid diameter + buffer)
+    collision_grid = SpatialGrid(SCREEN_WIDTH, SCREEN_HEIGHT, cell_size=140)
 
     # Initialize joystick/gamepad support (desktop only)
     joysticks = []
@@ -1029,12 +1033,14 @@ async def main():
                 for powerup in powerups:
                     powerup.update(dt)
 
-                # Check collisions for both players
+                # Build spatial grid with active (non-dying) asteroids for efficient collision detection
+                collision_grid.clear()
                 for asteroid in asteroids:
-                    # Skip collision check if asteroid is dying (playing death animation)
-                    if asteroid.dying:
-                        continue
+                    if not asteroid.dying:
+                        collision_grid.insert(asteroid)
 
+                # Check collisions for both players using spatial grid
+                for asteroid in collision_grid.get_nearby(player1):
                     # Player 1 collision (skip if dead)
                     if not player1_dead and player1.lives > 0 and player1.check_collision(asteroid):
                         # If player is boosting, ram through the asteroid
@@ -1182,8 +1188,10 @@ async def main():
                                     velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
                                     particle = Particle(effect_info['position'].x, effect_info['position'].y, velocity)
                                     particles.append(particle)
-                        continue
+                        break  # Only handle one collision per frame for player 1
 
+                # Player 2 collisions using spatial grid (separate loop)
+                for asteroid in collision_grid.get_nearby(player2):
                     # Player 2 collision (skip if dead)
                     if not player2_dead and player2.lives > 0 and player2.check_collision(asteroid):
                         # If player is boosting, ram through the asteroid
@@ -1331,16 +1339,14 @@ async def main():
                                     velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
                                     particle = Particle(effect_info['position'].x, effect_info['position'].y, velocity)
                                     particles.append(particle)
-                        continue
+                        break  # Only handle one collision per frame for player 2
 
                 # Update particles
                 particles = [p for p in particles if p.update(dt)]
 
-                for asteroid in asteroids:
-                    # Skip collision check if asteroid is dying (playing death animation)
-                    if asteroid.dying:
-                        continue
-                    for shot in shots:
+                # Shot-asteroid collisions using spatial grid
+                for shot in list(shots):  # Use list() since we may kill shots during iteration
+                    for asteroid in collision_grid.get_nearby(shot):
                         if asteroid.check_collision(shot):
                             # Increase combo and check for kill streak
                             combo_count, last_streak_milestone, active_streak_notification = increment_combo_and_check_streak(
