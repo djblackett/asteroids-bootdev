@@ -17,6 +17,12 @@ _explosion_sounds = {}
 _laser_sound = None
 _boost_sound = None
 
+# AUDIO OPTIMIZATION: Dedicated channels for high-priority sounds
+# This prevents important sounds (like shooting) from being cut off
+# when many sounds play simultaneously
+_shoot_channels = []  # Reserved channels for shoot sounds
+_next_shoot_channel = 0  # Round-robin index for shoot channels
+
 # Music position tracking for pitch shifting
 _music_start_time = 0
 _music_offset = 0  # Offset in seconds from when music started
@@ -168,6 +174,16 @@ def init_sounds():
     _boost_sound = pygame.mixer.Sound("./sound-effects/boost-woosh.ogg")
     _boost_sound.set_volume(0.6)  # Set volume to 60%
 
+    # AUDIO OPTIMIZATION: Reserve dedicated channels for shoot sounds (desktop only)
+    # Channels 0-5 are reserved for shooting (most frequent sound)
+    # This ensures shoot sounds always have a channel available and play immediately
+    # Note: Skip on web - pygbag has limited Channel support
+    global _shoot_channels
+    if not IS_WEB:
+        _shoot_channels = [pygame.mixer.Channel(i) for i in range(6)]
+    else:
+        _shoot_channels = []  # Web uses default .play() behavior
+
     _sounds_loaded = True
     debug_print("Sounds loaded!")
 
@@ -177,12 +193,27 @@ def _ensure_sounds_loaded():
         init_sounds()
 
 def play_shoot_sound():
-    """Play the shooting sound effect with reverb and pitch variation."""
+    """
+    Play the shooting sound effect with reverb and pitch variation.
+
+    AUDIO OPTIMIZATION: Uses dedicated channels with round-robin allocation
+    to ensure shoot sounds always play immediately without delay or cutoff.
+    """
+    global _next_shoot_channel
     _ensure_sounds_loaded()
 
     # Randomly select one of the pre-generated varied sounds
     sound = random.choice(_shoot_sounds)
-    sound.play()
+
+    # Use dedicated channel with round-robin to prevent channel conflicts
+    # This ensures the sound plays immediately on a guaranteed-available channel
+    if _shoot_channels:
+        channel = _shoot_channels[_next_shoot_channel]
+        channel.play(sound)
+        _next_shoot_channel = (_next_shoot_channel + 1) % len(_shoot_channels)
+    else:
+        # Fallback to default behavior if channels not initialized
+        sound.play()
 
 def play_laser_sound():
     """Play the laser beam sound effect."""
@@ -203,6 +234,9 @@ def play_explosion_sound(asteroid_radius):
     Play the explosion sound effect when an asteroid is destroyed.
     Uses pre-generated pitch-shifted versions based on asteroid size.
 
+    AUDIO OPTIMIZATION: Limits concurrent explosion sounds to prevent audio mudding
+    when many asteroids explode simultaneously (e.g., chain reactions).
+
     Args:
         asteroid_radius: The radius of the asteroid being destroyed
     """
@@ -211,11 +245,30 @@ def play_explosion_sound(asteroid_radius):
     # Select the appropriate pre-generated sound based on asteroid size
     # Asteroid sizes: Large = 60, Medium = 40, Small = 20
     if asteroid_radius >= 50:
-        _explosion_sounds['large'].play()
+        sound = _explosion_sounds['large']
     elif asteroid_radius >= 30:
-        _explosion_sounds['medium'].play()
+        sound = _explosion_sounds['medium']
     else:
-        _explosion_sounds['small'].play()
+        sound = _explosion_sounds['small']
+
+    # AUDIO OPTIMIZATION: Limit concurrent explosion sounds (desktop only)
+    # If this exact sound is already playing on 3+ channels, skip it
+    # This prevents audio mudding during chain explosions while still
+    # allowing different explosion types to play
+    # Note: Skip channel checking on web - pygbag has limited Channel/get_num_channels support
+    if not IS_WEB:
+        playing_count = 0
+        try:
+            for i in range(pygame.mixer.get_num_channels()):
+                channel = pygame.mixer.Channel(i)
+                if channel.get_sound() == sound and channel.get_busy():
+                    playing_count += 1
+                    if playing_count >= 3:
+                        return  # Skip playing, already have enough of this sound
+        except Exception:
+            pass  # If channel checking fails, just play the sound
+
+    sound.play()
 
 def start_background_music():
     """
@@ -283,7 +336,8 @@ def set_music_speed(speed_multiplier):
 
         # Reinitialize mixer with new frequency (this also pitch shifts)
         pygame.mixer.quit()
-        pygame.mixer.init(frequency=new_freq, size=current_size, channels=current_channels, buffer=128)
+        pygame.mixer.init(frequency=new_freq, size=current_size, channels=current_channels, buffer=512)
+        pygame.mixer.set_num_channels(32)  # Restore channel count after reinit
 
         # Reload music and start from calculated position
         pygame.mixer.music.load("./music/retro-bgmusic.ogg")
@@ -327,7 +381,8 @@ def reset_music_speed():
 
     # Reset mixer to normal frequency
     pygame.mixer.quit()
-    pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=128)
+    pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
+    pygame.mixer.set_num_channels(32)  # Restore channel count after reinit
 
     # Reload music and continue from position
     pygame.mixer.music.load("./music/retro-bgmusic.ogg")

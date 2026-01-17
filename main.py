@@ -497,9 +497,23 @@ async def main():
     debug_print("Screen width:", SCREEN_WIDTH)
     debug_print("Screen height:", SCREEN_HEIGHT)
 
-    # Initialize mixer BEFORE pygame.init() with very low latency settings
-    pygame.mixer.pre_init(frequency=22050, size=-16, channels=2, buffer=128)
+    # Initialize mixer BEFORE pygame.init()
+    # AUDIO OPTIMIZATION:
+    # - frequency=22050: Standard quality, lower CPU usage than 44100
+    # - buffer=512: Balance between latency and stability (128 was too small, caused dropouts)
+    # - Larger buffer prevents audio cutouts when many sounds play simultaneously
+    pygame.mixer.pre_init(frequency=22050, size=-16, channels=2, buffer=512)
     pygame.init()
+
+    # AUDIO OPTIMIZATION: Increase channel count for simultaneous sounds
+    # Default is 8, but during intense gameplay we may have:
+    # - Multiple shoot sounds (rapid fire)
+    # - Multiple explosions (chain reactions)
+    # - Laser beams, boost sounds
+    # 32 channels ensures sounds don't get cut off
+    # Note: Only apply on desktop - web/pygbag has limited mixer support
+    if not IS_WEB:
+        pygame.mixer.set_num_channels(32)
 
     # Cache font objects to avoid creating them every frame
     global FONT_24, FONT_28, FONT_32, FONT_36, FONT_40, FONT_48, FONT_74, FONT_80, FONT_100
