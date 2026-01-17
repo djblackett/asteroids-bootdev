@@ -45,29 +45,24 @@ class LaserBeam:
 
     def draw(self, screen, offset=(0, 0)):
         """Draw the laser beam"""
-        # Calculate alpha based on remaining lifetime (fade out)
-        alpha = int(255 * (1 - self.timer / self.lifetime))
-
-        # Create a surface for the laser with alpha
-        laser_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        # Calculate fade factor based on remaining lifetime (fade out)
+        fade = 1 - self.timer / self.lifetime
 
         # Draw the laser beam (bright cyan/blue color)
         start = self.start_pos + pygame.Vector2(offset[0], offset[1])
         end = self.end_pos + pygame.Vector2(offset[0], offset[1])
 
-        # Draw outer glow (thicker, more transparent)
-        glow_color = (100, 200, 255, alpha // 3)
-        pygame.draw.line(laser_surface, glow_color, start, end, self.width * 3)
+        # Draw outer glow (thicker, dimmer)
+        glow_color = (int(100 * fade), int(200 * fade), int(255 * fade))
+        pygame.draw.line(screen, glow_color, start, end, self.width * 3)
 
         # Draw main beam (brighter, thinner)
-        beam_color = (200, 240, 255, alpha)
-        pygame.draw.line(laser_surface, beam_color, start, end, self.width)
+        beam_color = (int(200 * fade), int(240 * fade), int(255 * fade))
+        pygame.draw.line(screen, beam_color, start, end, self.width)
 
         # Draw core (brightest, thinnest)
-        core_color = (255, 255, 255, alpha)
-        pygame.draw.line(laser_surface, core_color, start, end, 1)
-
-        screen.blit(laser_surface, (0, 0))
+        core_color = (int(255 * fade), int(255 * fade), int(255 * fade))
+        pygame.draw.line(screen, core_color, start, end, 1)
 
     def check_hit(self, asteroid):
         """Check if the laser beam hits an asteroid"""
