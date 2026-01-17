@@ -24,7 +24,7 @@ from shot import Shot
 from soundeffects import start_background_music, init_sounds, set_music_speed, reset_music_speed, pause_music, unpause_music
 from powerup import PowerUp
 from laserbeam import LaserBeam
-from particle import Particle
+from particlesystem import ParticleSystem
 from taunt import TauntAnimation
 from startscreen import draw_start_screen
 from controlconfig import ControlConfig
@@ -587,7 +587,11 @@ async def main():
     # Screen shake and particles
     screen_shake = 0.0
     screen_shake_cooldown = 0.0
-    particles = []
+    # OPTIMIZATION: Use pooled particle system instead of list
+    # - Avoids per-frame memory allocation from list comprehension filtering
+    # - Pre-allocates particles to eliminate runtime object creation
+    # - Batches draw calls into a single surface blit
+    particle_system = ParticleSystem(max_particles=500)
 
     # Taunt animation
     taunt_animation = None
@@ -712,7 +716,7 @@ async def main():
                     slow_motion_timer = 0
                     screen_shake = 0.0
                     screen_shake_cooldown = 0.0
-                    particles = []
+                    particle_system.clear()
                     taunt_animation = None
                     game_time = 0.0
                     difficulty_timer = 0.0
@@ -750,7 +754,7 @@ async def main():
                     slow_motion_timer = 0
                     screen_shake = 0.0
                     screen_shake_cooldown = 0.0
-                    particles = []
+                    particle_system.clear()
                     taunt_animation = None
                     game_time = 0.0
                     difficulty_timer = 0.0
@@ -791,7 +795,7 @@ async def main():
                     slow_motion_timer = 0
                     screen_shake = 0.0
                     screen_shake_cooldown = 0.0
-                    particles = []
+                    particle_system.clear()
                     taunt_animation = None
                     game_time = 0.0
                     difficulty_timer = 0.0
@@ -968,10 +972,9 @@ async def main():
                         angle_spread = 60  # degrees of spread
                         angle = base_angle + random.uniform(-angle_spread/2, angle_spread/2)
                         velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED * 0.8
-                        particle = Particle(player1.bounce_info['position'].x,
-                                          player1.bounce_info['position'].y,
-                                          velocity)
-                        particles.append(particle)
+                        particle_system.emit(player1.bounce_info['position'].x,
+                                           player1.bounce_info['position'].y,
+                                           velocity)
 
                     # Clear bounce info after processing
                     player1.bounce_info = None
@@ -989,10 +992,9 @@ async def main():
                         angle_spread = 60
                         angle = base_angle + random.uniform(-angle_spread/2, angle_spread/2)
                         velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED * 0.8
-                        particle = Particle(player2.bounce_info['position'].x,
-                                          player2.bounce_info['position'].y,
-                                          velocity)
-                        particles.append(particle)
+                        particle_system.emit(player2.bounce_info['position'].x,
+                                           player2.bounce_info['position'].y,
+                                           velocity)
 
                     player2.bounce_info = None
 
@@ -1002,10 +1004,9 @@ async def main():
                     base_angle = exhaust_info['direction'].angle_to(pygame.Vector2(0, 1))
                     angle = base_angle + random.uniform(-EXHAUST_PARTICLE_SPREAD/2, EXHAUST_PARTICLE_SPREAD/2)
                     velocity = pygame.Vector2(0, 1).rotate(angle) * EXHAUST_PARTICLE_SPEED
-                    particle = Particle(exhaust_info['position'].x,
-                                      exhaust_info['position'].y,
-                                      velocity)
-                    particles.append(particle)
+                    particle_system.emit(exhaust_info['position'].x,
+                                       exhaust_info['position'].y,
+                                       velocity)
 
                 # Generate exhaust particles for player 2
                 exhaust_info = player2.get_exhaust_info()
@@ -1013,10 +1014,9 @@ async def main():
                     base_angle = exhaust_info['direction'].angle_to(pygame.Vector2(0, 1))
                     angle = base_angle + random.uniform(-EXHAUST_PARTICLE_SPREAD/2, EXHAUST_PARTICLE_SPREAD/2)
                     velocity = pygame.Vector2(0, 1).rotate(angle) * EXHAUST_PARTICLE_SPEED
-                    particle = Particle(exhaust_info['position'].x,
-                                      exhaust_info['position'].y,
-                                      velocity)
-                    particles.append(particle)
+                    particle_system.emit(exhaust_info['position'].x,
+                                       exhaust_info['position'].y,
+                                       velocity)
 
                 for shot in shots:
                     shot.update(dt)
@@ -1076,8 +1076,7 @@ async def main():
                                 for i in range(effect_info['particle_count']):
                                     angle = (360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
                                     velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
-                                    particle = Particle(effect_info['position'].x, effect_info['position'].y, velocity)
-                                    particles.append(particle)
+                                    particle_system.emit(effect_info['position'].x, effect_info['position'].y, velocity)
 
                             # Chance to spawn power-up (if enabled)
                             if POWERUP_SPAWN_ENABLED:
@@ -1186,8 +1185,7 @@ async def main():
                                 for i in range(effect_info['particle_count']):
                                     angle = (360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
                                     velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
-                                    particle = Particle(effect_info['position'].x, effect_info['position'].y, velocity)
-                                    particles.append(particle)
+                                    particle_system.emit(effect_info['position'].x, effect_info['position'].y, velocity)
                         break  # Only handle one collision per frame for player 1
 
                 # Player 2 collisions using spatial grid (separate loop)
@@ -1227,8 +1225,7 @@ async def main():
                                 for i in range(effect_info['particle_count']):
                                     angle = (360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
                                     velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
-                                    particle = Particle(effect_info['position'].x, effect_info['position'].y, velocity)
-                                    particles.append(particle)
+                                    particle_system.emit(effect_info['position'].x, effect_info['position'].y, velocity)
 
                             # Chance to spawn power-up (if enabled)
                             if POWERUP_SPAWN_ENABLED:
@@ -1337,12 +1334,12 @@ async def main():
                                 for i in range(effect_info['particle_count']):
                                     angle = (360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
                                     velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
-                                    particle = Particle(effect_info['position'].x, effect_info['position'].y, velocity)
-                                    particles.append(particle)
+                                    particle_system.emit(effect_info['position'].x, effect_info['position'].y, velocity)
                         break  # Only handle one collision per frame for player 2
 
-                # Update particles
-                particles = [p for p in particles if p.update(dt)]
+                # OPTIMIZATION: Update particles in-place using pooled system
+                # (No list reallocation - just iterates and updates active particles)
+                particle_system.update(dt)
 
                 # Shot-asteroid collisions using spatial grid
                 for shot in list(shots):  # Use list() since we may kill shots during iteration
@@ -1384,8 +1381,7 @@ async def main():
                                 for i in range(effect_info['particle_count']):
                                     angle = (360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
                                     velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
-                                    particle = Particle(effect_info['position'].x, effect_info['position'].y, velocity)
-                                    particles.append(particle)
+                                    particle_system.emit(effect_info['position'].x, effect_info['position'].y, velocity)
 
                             shot.kill()
 
@@ -1450,8 +1446,7 @@ async def main():
                                 for i in range(effect_info['particle_count']):
                                     angle = (360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
                                     velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
-                                    particle = Particle(effect_info['position'].x, effect_info['position'].y, velocity)
-                                    particles.append(particle)
+                                    particle_system.emit(effect_info['position'].x, effect_info['position'].y, velocity)
 
                             # Chance to spawn power-up (if enabled)
                             if POWERUP_SPAWN_ENABLED:
@@ -1494,8 +1489,7 @@ async def main():
                             for i in range(particle_count):
                                 angle = (360 / particle_count) * i + random.uniform(-15, 15)
                                 velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
-                                particle = Particle(ufo.position.x, ufo.position.y, velocity)
-                                particles.append(particle)
+                                particle_system.emit(ufo.position.x, ufo.position.y, velocity)
 
                             # Always spawn a power-up (guaranteed drop from UFOs)
                             powerup_types = [PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
@@ -1526,8 +1520,7 @@ async def main():
                             for i in range(10):
                                 angle = (360 / 10) * i + random.uniform(-15, 15)
                                 velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
-                                particle = Particle(ufo.position.x, ufo.position.y, velocity)
-                                particles.append(particle)
+                                particle_system.emit(ufo.position.x, ufo.position.y, velocity)
 
                             # Guaranteed power-up
                             powerup_types = [PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
@@ -1577,8 +1570,7 @@ async def main():
                             for i in range(10):
                                 angle = (360 / 10) * i + random.uniform(-15, 15)
                                 velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED
-                                particle = Particle(ufo.position.x, ufo.position.y, velocity)
-                                particles.append(particle)
+                                particle_system.emit(ufo.position.x, ufo.position.y, velocity)
 
                             powerup_types = [PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
                             chosen_type = random.choice(powerup_types)
@@ -1948,9 +1940,9 @@ async def main():
             for sprite in drawable:
                 sprite.draw(screen, shake_offset)
 
-            # Draw particles with shake offset
-            for particle in particles:
-                particle.draw(screen, shake_offset)
+            # OPTIMIZATION: Draw all particles with single batched blit
+            # (Draws to internal surface, then blits once instead of N draw calls)
+            particle_system.draw(screen, shake_offset)
 
             # Draw laser beams with shake offset
             for laser in laser_beams:
@@ -1992,10 +1984,9 @@ async def main():
             for sprite in drawable:
                 sprite.draw(screen, shake_offset)
 
-            # Draw particles even when game is over
-            particles = [p for p in particles if p.update(dt)]
-            for particle in particles:
-                particle.draw(screen, shake_offset)
+            # Draw particles even when game is over (using optimized pooled system)
+            particle_system.update(dt)
+            particle_system.draw(screen, shake_offset)
 
             # Draw scores on frozen game
             draw_scores(screen, player1, player2, shared_lives_enabled, current_player_count)
