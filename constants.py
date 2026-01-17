@@ -146,13 +146,16 @@ DIFFICULTY_INCREASE_INTERVAL = 30.0  # seconds between difficulty increases
 # Speed multiplier increase per interval (15%)
 DIFFICULTY_SPEED_INCREMENT = 0.15
 # Spawn rate increase - reduces time between spawns (more asteroids over time)
-DIFFICULTY_SPAWN_RATE_INCREMENT = 0.05  # reduces spawn delay by 0.05s each interval
-DIFFICULTY_SPAWN_RATE_MIN = 0.2  # minimum spawn delay (cap at 5 asteroids per second)
+# reduces spawn delay by 0.05s each interval
+DIFFICULTY_SPAWN_RATE_INCREMENT = 0.05
+# minimum spawn delay (cap at 5 asteroids per second)
+DIFFICULTY_SPAWN_RATE_MIN = 0.2
 
 # Starfield Background
 STARFIELD_ENABLED = True  # Set to False to disable starfield
 STARFIELD_STAR_COUNT = 200  # Total number of stars across all layers
-STARFIELD_PARALLAX_STRENGTH = 0.05  # How much stars move based on player velocity (0.0 - 1.0)
+# How much stars move based on player velocity (0.0 - 1.0)
+STARFIELD_PARALLAX_STRENGTH = 0.05
 
 # Friendly Fire
 FRIENDLY_FIRE_ENABLED = True  # Set to False to disable shooting other players
@@ -166,12 +169,18 @@ REVIVE_DURATION = 15.0  # seconds before revive power-up despawns
 REVIVE_BLINK_SPEED = 3.0  # blinks per second when about to expire
 
 # Wave System
-WAVE_SYSTEM_ENABLED = False  # Set to True to enable wave-based spawning instead of continuous
-WAVE_BASE_ASTEROIDS = 10  # Base number of asteroids in wave 1 (doubled for more chaos)
-WAVE_ASTEROID_INCREMENT = 3  # How many more asteroids per wave (faster ramp-up)
-WAVE_BREAK_DURATION = 1.5  # seconds of breathing room between waves (much shorter)
-WAVE_SPAWN_DELAY = 0.1  # seconds between spawning each asteroid in a wave (rapid fire!)
-WAVE_MAX_DURATION = 25.0  # Maximum seconds for a wave before forcing next wave (keep it moving!)
+# Set to True to enable wave-based spawning instead of continuous
+WAVE_SYSTEM_ENABLED = False
+# Base number of asteroids in wave 1 (doubled for more chaos)
+WAVE_BASE_ASTEROIDS = 10
+# How many more asteroids per wave (faster ramp-up)
+WAVE_ASTEROID_INCREMENT = 3
+# seconds of breathing room between waves (much shorter)
+WAVE_BREAK_DURATION = 1.5
+# seconds between spawning each asteroid in a wave (rapid fire!)
+WAVE_SPAWN_DELAY = 0.1
+# Maximum seconds for a wave before forcing next wave (keep it moving!)
+WAVE_MAX_DURATION = 25.0
 
 # UFO System
 UFO_ENABLED = True  # Set to False to disable UFO spawning entirely
@@ -190,7 +199,8 @@ UFO_LARGE_POINTS = 200  # points awarded for destroying
 UFO_SMALL_RADIUS = 20  # pixels
 UFO_SMALL_SPEED = 180  # pixels per second (faster, more aggressive)
 UFO_SMALL_SHOOT_COOLDOWN = 1.5  # seconds between shots
-UFO_SMALL_SHOOT_ACCURACY = 0.7  # 70% accuracy aiming at player (with some randomness)
+# 70% accuracy aiming at player (with some randomness)
+UFO_SMALL_SHOOT_ACCURACY = 0.7
 UFO_SMALL_POINTS = 500  # points awarded for destroying (high value target!)
 UFO_SMALL_WAVE_START = 5  # Small UFOs start appearing from wave 5 onwards
 
@@ -201,3 +211,7 @@ UFO_SHOT_RADIUS = 6  # slightly larger than player shots
 # UFO Spawn Timing
 UFO_SPAWN_MIN_DELAY = 8.0  # minimum seconds into wave before UFO can spawn
 UFO_SPAWN_MAX_DELAY = 15.0  # maximum seconds into wave before UFO spawns
+
+# Debug Mode - Skip config/start screens for instant gameplay testing
+# Set to True to immediately start the game with default settings
+GAMEPLAY_DEBUG = True
