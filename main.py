@@ -1,43 +1,67 @@
-# this allows us to use code from
-# the open-source pygame library
-# throughout this file
+"""Asteroids game - Main entry point."""
 
 # pygbag: debug=0
 # Debug console disabled for cleaner web experience
 
-from asteroid import Asteroid
-from constants import (ASTEROID_MAX_RADIUS, ASTEROID_MIN_RADIUS, ASTEROID_SPAWN_RATE,
-                       SCREEN_HEIGHT, SCREEN_WIDTH, MEGA_POWER_MUSIC_SPEEDUP_ENABLED,
-                       BOUNDARY_PARTICLE_COUNT, BOUNDARY_SHAKE_AMOUNT, PARTICLE_SPEED,
-                       EXHAUST_PARTICLE_SPEED, EXHAUST_PARTICLE_SPREAD, BACKGROUND_MUSIC_ENABLED,
-                       STARFIELD_ENABLED, STARFIELD_STAR_COUNT, FRIENDLY_FIRE_ENABLED,
-                       SHARED_LIVES_ENABLED, SHARED_LIVES_POOL, REVIVE_SYSTEM_ENABLED,
-                       REVIVE_SPAWN_CHANCE, WAVE_SYSTEM_ENABLED, WAVE_BREAK_DURATION, WAVE_MAX_DURATION,
-                       KILL_STREAK_ENABLED, KILL_STREAK_MILESTONES,
-                       UFO_ENABLED, UFO_LARGE_POINTS, UFO_SMALL_POINTS,
-                       DIFFICULTY_SPAWN_RATE_INCREMENT, DIFFICULTY_SPAWN_RATE_MIN)
-from player import Player
 import pygame
-from constants import *
+import random
+import asyncio
+import sys
+
+from asteroid import Asteroid
 from asteroidfield import AsteroidField
+from player import Player
 from shot import Shot
-from soundeffects import start_background_music, init_sounds, set_music_speed, reset_music_speed, pause_music, unpause_music
 from powerup import PowerUp
 from laserbeam import LaserBeam
 from particlesystem import ParticleSystem
 from taunt import TauntAnimation
 from startscreen import draw_start_screen
 from controlconfig import ControlConfig
-from highscores import add_score, is_high_score, get_top_scores
 from starfield import Starfield
-from killstreak import KillStreakNotification
 from ufo import UFO
 from spatialgrid import SpatialGrid
-import frametime  # OPTIMIZATION: Cached get_ticks() per frame
-import colorutils  # OPTIMIZATION: Pre-computed rainbow colors
-import random
-import asyncio
-import sys
+from soundeffects import (
+    start_background_music, init_sounds, set_music_speed,
+    reset_music_speed, unpause_music
+)
+from constants import (
+    SCREEN_HEIGHT, SCREEN_WIDTH,
+    ASTEROID_SPAWN_RATE,
+    BOUNDARY_PARTICLE_COUNT, BOUNDARY_SHAKE_AMOUNT, PARTICLE_SPEED,
+    EXHAUST_PARTICLE_SPEED, EXHAUST_PARTICLE_SPREAD,
+    BACKGROUND_MUSIC_ENABLED,
+    STARFIELD_ENABLED, STARFIELD_STAR_COUNT,
+    SHARED_LIVES_POOL,
+    REVIVE_SYSTEM_ENABLED, REVIVE_SPAWN_CHANCE,
+    WAVE_SYSTEM_ENABLED, WAVE_BREAK_DURATION, WAVE_MAX_DURATION,
+    UFO_ENABLED,
+    DIFFICULTY_INCREASE_INTERVAL, DIFFICULTY_SPEED_INCREMENT,
+    DIFFICULTY_SPAWN_RATE_INCREMENT, DIFFICULTY_SPAWN_RATE_MIN,
+    SCREEN_SHAKE_DECAY, SCREEN_SHAKE_MAX, SCREEN_SHAKE_COOLDOWN,
+    SLOW_MOTION_FACTOR,
+    MEGA_POWER_MUSIC_SPEEDUP_ENABLED, MEGA_POWER_MUSIC_SPEED,
+    GAMEPLAY_DEBUG,
+)
+import frametime
+
+# Import new modules
+from gamestate import GameState
+import hud
+from events import process_events
+from collisions import (
+    handle_player_asteroid_collision,
+    handle_shot_asteroid_collisions,
+    handle_laser_asteroid_collisions,
+    handle_ufo_shot_collision,
+    handle_ufo_player_collision,
+    handle_ufo_shot_hitting_player,
+    handle_powerup_collection,
+    handle_friendly_fire_shot,
+    handle_friendly_fire_laser,
+    spawn_particles,
+    add_screen_shake,
+)
 
 IS_WEB = sys.platform == "emscripten"
 
@@ -48,436 +72,15 @@ def debug_print(*args, **kwargs):
         print(*args, **kwargs)
 
 
-def handle_player_death(player, player_num, death_x, death_y, shared_lives_enabled):
-    """
-    Handle player death logic including revive spawning.
-    Returns True if game should continue, False if game over.
-    """
-    # Spawn revive power-up if enabled
+def handle_player_death(player, player_num, death_x, death_y):
+    """Handle player death logic including revive spawning."""
     if REVIVE_SYSTEM_ENABLED and random.random() < REVIVE_SPAWN_CHANCE:
         PowerUp(death_x, death_y, PowerUp.REVIVE)
-        debug_print(
-            f"Revive power-up spawned at Player {player_num}'s death location!")
-
-    return True  # Game continues (player can be revived)
-
-
-def draw_scores(screen, player1, player2, shared_lives_enabled=False, player_count=2):
-    """Draw scores and lives for players"""
-    font = FONT_36
-
-    # Player 1 - Top left
-    p1_color = (100, 200, 255) if player1.lives > 0 or (
-        shared_lives_enabled and player1.lives > 0) else (100, 100, 100)
-    p1_score_text = FONT_28.render(f"P1: {player1.score}", True, p1_color)
-    p1_score_rect = p1_score_text.get_rect(topleft=(10, 10))
-    screen.blit(p1_score_text, p1_score_rect)
-
-    # Player 2 - Top right (only in 2-player mode)
-    if player_count == 2:
-        p2_color = (255, 200, 100) if player2.lives > 0 or (
-            shared_lives_enabled and player1.lives > 0) else (100, 100, 100)
-        p2_score_text = FONT_28.render(f"P2: {player2.score}", True, p2_color)
-        p2_score_rect = p2_score_text.get_rect(
-            topright=(SCREEN_WIDTH - 10, 10))
-        screen.blit(p2_score_text, p2_score_rect)
-
-    # Lives display
-    if player_count == 1:
-        # Single player - just show lives for player 1
-        lives_text = FONT_28.render(f"Lives: {player1.lives}", True, p1_color)
-        lives_rect = lives_text.get_rect(topleft=(10, 45))
-        screen.blit(lives_text, lives_rect)
-    elif shared_lives_enabled and player2.lives == 0:
-        # Shared lives - show in center
-        lives_color = (100, 255, 255)
-        lives_text = FONT_28.render(
-            f"SHARED LIVES: {player1.lives}", True, lives_color)
-        lives_rect = lives_text.get_rect(midtop=(SCREEN_WIDTH // 2, 10))
-        screen.blit(lives_text, lives_rect)
-    else:
-        # Individual lives - show separately
-        p2_color = (255, 200, 100) if player2.lives > 0 else (100, 100, 100)
-        # Player 1 lives
-        lives_text = FONT_28.render(f"Lives: {player1.lives}", True, p1_color)
-        lives_rect = lives_text.get_rect(topleft=(10, 45))
-        screen.blit(lives_text, lives_rect)
-
-        # Player 2 lives
-        lives_text = FONT_28.render(f"Lives: {player2.lives}", True, p2_color)
-        lives_rect = lives_text.get_rect(topright=(SCREEN_WIDTH - 10, 45))
-        screen.blit(lives_text, lives_rect)
-
-
-def draw_combo(screen, combo_count, combo_timer):
-    """Draw the combo counter with animations"""
-    if combo_count <= 1:
-        return  # Don't show for 1x
-
-    # Get multiplier
-    multiplier = COMBO_MULTIPLIERS.get(combo_count, COMBO_MULTIPLIERS[5])
-
-    # Position in center-right of screen
-    x_pos = SCREEN_WIDTH - 250
-    y_pos = 100
-
-    # Color intensity based on combo level
-    if combo_count >= 5:
-        color = (255, 100, 255)  # Purple for high combos
-    elif combo_count >= 3:
-        color = (255, 165, 0)  # Orange
-    else:
-        color = (255, 255, 0)  # Yellow
-
-    # Large combo text (use cached font, scale effect via rect positioning)
-    combo_text = FONT_80.render(f"{combo_count}x COMBO", True, color)
-    combo_rect = combo_text.get_rect(center=(x_pos, y_pos))
-    screen.blit(combo_text, combo_rect)
-
-    # Multiplier text
-    multiplier_text = FONT_32.render(f"{multiplier}x Points!", True, color)
-    multiplier_rect = multiplier_text.get_rect(center=(x_pos, y_pos + 50))
-    screen.blit(multiplier_text, multiplier_rect)
-
-
-def draw_timer(screen, elapsed_time):
-    """Draw the game timer at the top center of the screen.
-
-    Args:
-        screen: The pygame screen surface to draw on
-        elapsed_time: Time elapsed in seconds since game started
-    """
-    # Format time as MM:SS
-    minutes = int(elapsed_time // 60)
-    seconds = int(elapsed_time % 60)
-    timer_text = f"{minutes:02d}:{seconds:02d}"
-
-    # White color for the timer
-    timer_color = (255, 255, 255)
-
-    text_surface = FONT_48.render(timer_text, True, timer_color)
-    text_rect = text_surface.get_rect(midtop=(SCREEN_WIDTH // 2, 10))
-    screen.blit(text_surface, text_rect)
-
-
-def draw_wave_info(screen, wave_number, wave_break_active, wave_break_timer, wave_duration=None, wave_max_duration=None):
-    """Draw wave number and break countdown"""
-
-    # Always show current wave number in top center
-    wave_color = (100, 255, 255)
-    wave_text = FONT_48.render(f"WAVE {wave_number}", True, wave_color)
-    wave_rect = wave_text.get_rect(midtop=(SCREEN_WIDTH // 2, 10))
-    screen.blit(wave_text, wave_rect)
-
-    # Show wave timer below wave number (if not in break and timer provided)
-    if not wave_break_active and wave_duration is not None and wave_max_duration is not None:
-        time_remaining = max(0, wave_max_duration - wave_duration)
-        minutes = int(time_remaining // 60)
-        seconds = int(time_remaining % 60)
-
-        # Color changes as time runs out
-        if time_remaining <= 10:
-            timer_color = (255, 100, 100)  # Red - urgent!
-        elif time_remaining <= 20:
-            timer_color = (255, 200, 100)  # Orange - warning
-        else:
-            timer_color = (150, 150, 150)  # Gray - plenty of time
-
-        timer_text = FONT_32.render(
-            f"{minutes}:{seconds:02d}", True, timer_color)
-        timer_rect = timer_text.get_rect(midtop=(SCREEN_WIDTH // 2, 58))
-        screen.blit(timer_text, timer_rect)
-
-    # Show "GET READY" message during wave break
-    if wave_break_active:
-        # Large "GET READY" text
-        ready_color = (255, 255, 100)
-        ready_text = FONT_80.render("GET READY!", True, ready_color)
-        ready_rect = ready_text.get_rect(
-            center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40))
-        screen.blit(ready_text, ready_rect)
-
-        # Countdown timer
-        countdown = int(wave_break_timer) + 1
-        timer_text = FONT_80.render(str(countdown), True, ready_color)
-        timer_rect = timer_text.get_rect(
-            center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 40))
-        screen.blit(timer_text, timer_rect)
-
-
-def check_kill_streak_milestone(combo_count, last_milestone):
-    """Check if a new kill streak milestone has been reached. Returns milestone info or None."""
-    if not KILL_STREAK_ENABLED:
-        return None
-
-    # Find the highest milestone we've reached that's higher than the last one
-    for milestone in sorted(KILL_STREAK_MILESTONES.keys(), reverse=True):
-        if combo_count >= milestone and milestone > last_milestone:
-            streak_info = KILL_STREAK_MILESTONES[milestone]
-            return {
-                'milestone': milestone,
-                'name': streak_info['name'],
-                'color': streak_info['color']
-            }
-
-    return None
-
-
-def increment_combo_and_check_streak(combo_count, last_streak_milestone, active_notification):
-    """Increment combo and check for kill streak milestones. Returns (new_combo, new_milestone, new_notification)."""
-    combo_count += 1
-
-    # Check if we hit a new milestone
-    milestone_info = check_kill_streak_milestone(
-        combo_count, last_streak_milestone)
-    if milestone_info:
-        # Create new notification
-        notification = KillStreakNotification(
-            combo_count,
-            milestone_info['name'],
-            milestone_info['color']
-        )
-        return combo_count, milestone_info['milestone'], notification
-
-    return combo_count, last_streak_milestone, active_notification
-
-
-def draw_powerup_indicator(screen, player, slow_motion_active, slow_motion_timer):
-    """Draw power-up status indicators"""
-    y_offset = 80  # Moved down to make room for lives display
-
-    # Draw laser beam shots remaining
-    laser_color = (100, 200, 255) if player.laser_shots_remaining > 0 else (
-        100, 100, 100)
-    laser_text = FONT_28.render(
-        f"LASER: {player.laser_shots_remaining}/{LASER_BEAM_MAX_SHOTS}", True, laser_color)
-    laser_rect = laser_text.get_rect(topleft=(10, y_offset))
-    screen.blit(laser_text, laser_rect)
-    y_offset += 30
-
-    # Draw boost status
-    if player.boost_active:
-        time_left = int(player.boost_timer) + 1
-        boost_text = FONT_28.render(
-            f"BOOST: {time_left}s", True, (255, 100, 255))
-        boost_rect = boost_text.get_rect(topleft=(10, y_offset))
-        screen.blit(boost_text, boost_rect)
-        y_offset += 30
-    elif player.boost_cooldown > 0:
-        cooldown_left = int(player.boost_cooldown) + 1
-        boost_text = FONT_28.render(
-            f"BOOST: {cooldown_left}s CD", True, (150, 150, 150))
-        boost_rect = boost_text.get_rect(topleft=(10, y_offset))
-        screen.blit(boost_text, boost_rect)
-        y_offset += 30
-    else:
-        boost_text = FONT_28.render("BOOST: READY", True, (100, 255, 100))
-        boost_rect = boost_text.get_rect(topleft=(10, y_offset))
-        screen.blit(boost_text, boost_rect)
-        y_offset += 30
-
-    # MEGA POWER gets special treatment - larger, rainbow text
-    if player.mega_power_active:
-        time_left = int(player.mega_power_timer) + 1
-        # Rainbow color cycling
-        # OPTIMIZATION: Use pre-computed rainbow lookup table instead of colorsys
-        mega_color = colorutils.get_rainbow_color(
-            frametime.get_ticks(), speed=100)
-        powerup_text = FONT_40.render(
-            f"*** MEGA POWER: {time_left}s ***", True, mega_color)
-        powerup_rect = powerup_text.get_rect(topleft=(10, y_offset))
-        screen.blit(powerup_text, powerup_rect)
-        y_offset += 45
-    else:
-        # Show individual power-ups only if MEGA POWER is not active
-        if player.rapid_fire_active:
-            time_left = int(player.rapid_fire_timer) + 1
-            powerup_text = FONT_28.render(
-                f"RAPID FIRE: {time_left}s", True, (255, 255, 0))
-            powerup_rect = powerup_text.get_rect(topleft=(10, y_offset))
-            screen.blit(powerup_text, powerup_rect)
-            y_offset += 30
-
-        if player.multi_shot_active:
-            time_left = int(player.multi_shot_timer) + 1
-            powerup_text = FONT_28.render(
-                f"MULTI-SHOT: {time_left}s", True, (255, 165, 0))
-            powerup_rect = powerup_text.get_rect(topleft=(10, y_offset))
-            screen.blit(powerup_text, powerup_rect)
-            y_offset += 30
-
-        if player.shield_active:
-            powerup_text = FONT_28.render(
-                "SHIELD: ACTIVE", True, (0, 255, 255))
-            powerup_rect = powerup_text.get_rect(topleft=(10, y_offset))
-            screen.blit(powerup_text, powerup_rect)
-            y_offset += 30
-
-        if slow_motion_active:
-            time_left = int(slow_motion_timer) + 1
-            powerup_text = FONT_28.render(
-                f"SLOW MOTION: {time_left}s", True, (255, 0, 255))
-            powerup_rect = powerup_text.get_rect(topleft=(10, y_offset))
-            screen.blit(powerup_text, powerup_rect)
-
-
-def draw_pause_screen(screen, music_muted):
-    """Draw the pause screen overlay"""
-    # Semi-transparent overlay
-    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-    overlay.set_alpha(150)
-    overlay.fill((0, 0, 0))
-    screen.blit(overlay, (0, 0))
-
-    # Pause text
-    pause_text = FONT_100.render("PAUSED", True, (255, 255, 255))
-    pause_rect = pause_text.get_rect(
-        center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 80))
-    screen.blit(pause_text, pause_rect)
-
-    # Instructions
-    instruction_text = FONT_40.render(
-        "Press P to Resume", True, (200, 200, 200))
-    instruction_rect = instruction_text.get_rect(
-        center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 10))
-    screen.blit(instruction_text, instruction_rect)
-
-    # Music toggle instruction
-    music_status = "Muted" if music_muted else "On"
-    music_text = FONT_32.render(
-        f"Press M to Toggle Music ({music_status})", True, (180, 180, 180))
-    music_rect = music_text.get_rect(
-        center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 60))
-    screen.blit(music_text, music_rect)
-
-    # Back to menu instruction
-    menu_text = FONT_32.render(
-        "Press ESC for Main Menu", True, (180, 180, 180))
-    menu_rect = menu_text.get_rect(
-        center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 100))
-    screen.blit(menu_text, menu_rect)
-
-    # Quit instruction (only show on desktop, not web)
-    if not IS_WEB:
-        quit_text = FONT_32.render("Press Q to Quit", True, (180, 180, 180))
-        quit_rect = quit_text.get_rect(
-            center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 140))
-        screen.blit(quit_text, quit_rect)
-
-
-def draw_game_over_screen(screen, player1, player2, retry_delay=0, show_high_scores=False, p1_rank=None, p2_rank=None):
-    """Draw the game over screen with retry button and optional high scores"""
-    # Semi-transparent overlay
-    overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-    overlay.set_alpha(180)
-    overlay.fill((0, 0, 0))
-    screen.blit(overlay, (0, 0))
-
-    # Game Over text
-    game_over_text = FONT_74.render("GAME OVER", True, (255, 255, 255))
-    game_over_rect = game_over_text.get_rect(
-        center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 250))
-    screen.blit(game_over_text, game_over_rect)
-
-    # Final scores
-    p1_score_text = FONT_36.render(
-        f"Player 1: {player1.score}", True, (100, 200, 255))
-    p1_score_rect = p1_score_text.get_rect(
-        center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 190))
-    screen.blit(p1_score_text, p1_score_rect)
-
-    p2_score_text = FONT_36.render(
-        f"Player 2: {player2.score}", True, (255, 200, 100))
-    p2_score_rect = p2_score_text.get_rect(
-        center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 150))
-    screen.blit(p2_score_text, p2_score_rect)
-
-    # Show high scores if requested
-    if show_high_scores:
-        high_scores = get_top_scores(5)
-
-        # High scores title
-        hs_title = FONT_36.render("HIGH SCORES", True, (255, 215, 0))
-        hs_title_rect = hs_title.get_rect(
-            center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 100))
-        screen.blit(hs_title, hs_title_rect)
-
-        # Display top 5 high scores
-        y_offset = SCREEN_HEIGHT // 2 - 60
-        for i, entry in enumerate(high_scores):
-            rank = i + 1
-            # Highlight if this is player 1's or player 2's rank
-            if rank == p1_rank:
-                rank_color = (100, 200, 255)  # Player 1 color
-            elif rank == p2_rank:
-                rank_color = (255, 200, 100)  # Player 2 color
-            else:
-                rank_color = (200, 200, 200)  # Default gray
-
-            score_text = FONT_24.render(
-                f"{rank}. {entry['player']}: {entry['score']}",
-                True,
-                rank_color
-            )
-            score_rect = score_text.get_rect(
-                center=(SCREEN_WIDTH // 2, y_offset))
-            screen.blit(score_text, score_rect)
-            y_offset += 30
-
-    # Retry button - positioned below high scores
-    button_width = 200
-    button_height = 60
-    button_x = SCREEN_WIDTH // 2 - button_width // 2
-    button_y = SCREEN_HEIGHT // 2 + 140
-    button_rect = pygame.Rect(button_x, button_y, button_width, button_height)
-
-    # Draw button - grayed out if delay is active
-    if retry_delay > 0:
-        button_color = (60, 60, 60)
-        border_color = (100, 100, 100)
-        text_color = (150, 150, 150)
-    else:
-        button_color = (100, 100, 100)
-        border_color = (255, 255, 255)
-        text_color = (255, 255, 255)
-
-    pygame.draw.rect(screen, button_color, button_rect)
-    pygame.draw.rect(screen, border_color, button_rect, 3)
-
-    retry_text = FONT_36.render("RETRY", True, text_color)
-    retry_text_rect = retry_text.get_rect(center=button_rect.center)
-    screen.blit(retry_text, retry_text_rect)
-
-    # Instructions - show countdown if delay is active
-    if retry_delay > 0:
-        countdown = int(retry_delay) + 1
-        instruction_text = FONT_36.render(
-            f"Wait {countdown}...", True, (150, 150, 150))
-    else:
-        instruction_text = FONT_36.render(
-            "Press R or click RETRY", True, (200, 200, 200))
-    instruction_rect = instruction_text.get_rect(
-        center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 220))
-    screen.blit(instruction_text, instruction_rect)
-
-    # Menu instruction
-    menu_text = FONT_24.render(
-        "Press ESC for Main Menu", True, (180, 180, 180))
-    menu_rect = menu_text.get_rect(
-        center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 260))
-    screen.blit(menu_text, menu_rect)
-
-    # Quit instruction
-    quit_text = FONT_24.render("Press Q to Quit", True, (180, 180, 180))
-    quit_rect = quit_text.get_rect(
-        center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 290))
-    screen.blit(quit_text, quit_rect)
-
-    return button_rect
+        debug_print(f"Revive power-up spawned at Player {player_num}'s death location!")
 
 
 def reset_game(updatable, player1_input=None, player2_input=None, speed_multiplier=1.0, player_count=2):
-    """Reset all game objects for a new game"""
+    """Reset all game objects for a new game."""
     # Clear all sprite groups
     for sprite in updatable:
         sprite.kill()
@@ -497,29 +100,21 @@ def reset_game(updatable, player1_input=None, player2_input=None, speed_multipli
 
     # Create players based on player_count
     if player_count == 1:
-        # Single player - centered position
-        player1 = Player(SCREEN_WIDTH // 2, SCREEN_HEIGHT //
-                         2, player1_input, 1, speed_multiplier)
+        player1 = Player(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2, player1_input, 1, speed_multiplier)
         player1.score = 0
-        # Create a dummy player2 that's inactive
         player2 = Player(-1000, -1000, player2_input, 2, speed_multiplier)
-        player2.lives = 0  # Inactive
+        player2.lives = 0
         player2.score = 0
     else:
-        # Two players at different positions (25% and 75% horizontally, centered vertically)
-        player1 = Player(SCREEN_WIDTH * 0.25, SCREEN_HEIGHT //
-                         2, player1_input, 1, speed_multiplier)
+        player1 = Player(SCREEN_WIDTH * 0.25, SCREEN_HEIGHT // 2, player1_input, 1, speed_multiplier)
         player1.score = 0
-        player2 = Player(SCREEN_WIDTH * 0.75, SCREEN_HEIGHT //
-                         2, player2_input, 2, speed_multiplier)
+        player2 = Player(SCREEN_WIDTH * 0.75, SCREEN_HEIGHT // 2, player2_input, 2, speed_multiplier)
         player2.score = 0
 
     # Create asteroid field
     field = AsteroidField()
-    # Set players reference for UFO targeting
     field.players = [player1, player2]
 
-    # Start first wave if wave system is enabled
     if WAVE_SYSTEM_ENABLED:
         field.start_wave(1)
 
@@ -532,73 +127,49 @@ async def main():
     debug_print("Screen height:", SCREEN_HEIGHT)
 
     # Initialize mixer BEFORE pygame.init()
-    # AUDIO OPTIMIZATION:
-    # - frequency=22050: Standard quality, lower CPU usage than 44100
-    # - buffer=512: Balance between latency and stability (128 was too small, caused dropouts)
-    # - Larger buffer prevents audio cutouts when many sounds play simultaneously
     pygame.mixer.pre_init(frequency=22050, size=-16, channels=2, buffer=512)
     pygame.init()
 
-    # AUDIO OPTIMIZATION: Increase channel count for simultaneous sounds
-    # Default is 8, but during intense gameplay we may have:
-    # - Multiple shoot sounds (rapid fire)
-    # - Multiple explosions (chain reactions)
-    # - Laser beams, boost sounds
-    # 32 channels ensures sounds don't get cut off
-    # Note: Only apply on desktop - web/pygbag has limited mixer support
     if not IS_WEB:
         pygame.mixer.set_num_channels(32)
 
-    # Cache font objects to avoid creating them every frame
-    global FONT_24, FONT_28, FONT_32, FONT_36, FONT_40, FONT_48, FONT_74, FONT_80, FONT_100
-    FONT_24 = pygame.font.Font(None, 24)
-    FONT_28 = pygame.font.Font(None, 28)
-    FONT_32 = pygame.font.Font(None, 32)
-    FONT_36 = pygame.font.Font(None, 36)
-    FONT_40 = pygame.font.Font(None, 40)
-    FONT_48 = pygame.font.Font(None, 48)
-    FONT_74 = pygame.font.Font(None, 74)
-    FONT_80 = pygame.font.Font(None, 80)
-    FONT_100 = pygame.font.Font(None, 100)
+    # Initialize fonts
+    hud.init_fonts()
 
-    # Create spatial grid for collision detection (cell size = largest asteroid diameter + buffer)
+    # Create spatial grid for collision detection
     collision_grid = SpatialGrid(SCREEN_WIDTH, SCREEN_HEIGHT, cell_size=140)
 
     # Initialize joystick/gamepad support (desktop only)
     joysticks = []
     if not IS_WEB:
         pygame.joystick.init()
-        joysticks = [pygame.joystick.Joystick(
-            i) for i in range(pygame.joystick.get_count())]
+        joysticks = [pygame.joystick.Joystick(i) for i in range(pygame.joystick.get_count())]
         for joystick in joysticks:
             joystick.init()
             debug_print(f"Gamepad detected: {joystick.get_name()}")
         if not joysticks:
             debug_print("No gamepad detected - using keyboard controls only")
     else:
-        debug_print(
-            "Web build detected: gamepad support disabled, keyboard controls only.")
+        debug_print("Web build detected: gamepad support disabled, keyboard controls only.")
 
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
     pygame.display.set_caption("Asteroids Game")
 
-    # Pre-load and process all sound effects at startup
     init_sounds()
-
-    # Start background music (if enabled) - after display and sounds are loaded
     if BACKGROUND_MUSIC_ENABLED:
         start_background_music()
 
-    clock = pygame.time.Clock()  # Create a clock to control the frame rate
+    clock = pygame.time.Clock()
     dt = 0
 
+    # Sprite groups
     updatable = pygame.sprite.Group()
     drawable = pygame.sprite.Group()
     asteroids = pygame.sprite.Group()
     shots = pygame.sprite.Group()
     powerups = pygame.sprite.Group()
-    ufos = pygame.sprite.Group()  # Group for UFO enemies
-    laser_beams = []  # List to track active laser beams
+    ufos = pygame.sprite.Group()
+    laser_beams = []
 
     Player.containers = (updatable, drawable)
     Asteroid.containers = (asteroids, updatable, drawable)
@@ -610,449 +181,197 @@ async def main():
     # Control configuration
     control_config = ControlConfig()
 
-    # Debug mode: skip config and start screens for instant testing
-    if GAMEPLAY_DEBUG:
-        config_phase = False
-        debug_print("DEBUG MODE: Skipping config/start screens")
-        # Initialize with 1 player, keyboard controls, normal speed
-        player1, player2, asteroid_field_ref = reset_game(
-            updatable, "keyboard", "keyboard_2", 1.0, 1)
-        current_player_count = 1
-        game_started = True
-    else:
-        config_phase = True  # Start with config screen
-        # Create two players (will be recreated after config)
-        player1, player2, asteroid_field_ref = reset_game(updatable)
-        current_player_count = 2  # Track number of players (1 or 2)
-        game_started = False  # Track if game has started (start screen)
-
     # Game state
-    game_start_cooldown = 0  # Cooldown to prevent shooting immediately after starting
-    game_over = False
-    game_over_retry_delay = 0  # Delay before accepting retry input
-    show_high_scores = False  # Whether to show high scores on game over screen
-    p1_highscore_rank = None  # Player 1's rank on high score board
-    p2_highscore_rank = None  # Player 2's rank on high score board
-    paused = False  # Track if game is paused
-    music_muted = False  # Track if music is muted
-    button_rect = None
-    slow_motion_active = False
-    slow_motion_timer = 0
-    music_sped_up = False
+    state = GameState()
 
-    # Combo system state (shared between players)
-    combo_count = 0
-    combo_timer = 0.0
+    # Debug mode: skip config and start screens
+    if GAMEPLAY_DEBUG:
+        state.config_phase = False
+        debug_print("DEBUG MODE: Skipping config/start screens")
+        player1, player2, asteroid_field_ref = reset_game(updatable, "keyboard", "keyboard_2", 1.0, 1)
+        state.current_player_count = 1
+        state.game_started = True
+    else:
+        player1, player2, asteroid_field_ref = reset_game(updatable)
 
-    # Kill streak notifications
-    active_streak_notification = None  # Currently displaying kill streak notification
-    last_streak_milestone = 0  # Track last milestone to avoid duplicate notifications
-
-    # Respawn positions for each player
-    p1_spawn_x = SCREEN_WIDTH * 0.25
-    p1_spawn_y = SCREEN_HEIGHT // 2
-    p2_spawn_x = SCREEN_WIDTH * 0.75
-    p2_spawn_y = SCREEN_HEIGHT // 2
-
-    # Screen shake and particles
-    screen_shake = 0.0
-    screen_shake_cooldown = 0.0
-    # OPTIMIZATION: Use pooled particle system instead of list
-    # - Avoids per-frame memory allocation from list comprehension filtering
-    # - Pre-allocates particles to eliminate runtime object creation
-    # - Batches draw calls into a single surface blit
+    # Particle system
     particle_system = ParticleSystem(max_particles=500)
 
-    # Taunt animation
-    taunt_animation = None
-
-    # Progressive difficulty
-    game_time = 0.0
-    difficulty_timer = 0.0
-    asteroid_speed_multiplier = 1.0
-    asteroid_spawn_rate = ASTEROID_SPAWN_RATE  # Track current spawn rate
-
     # Starfield background
-    starfield = Starfield(
-        star_count=STARFIELD_STAR_COUNT) if STARFIELD_ENABLED else None
+    starfield = Starfield(star_count=STARFIELD_STAR_COUNT) if STARFIELD_ENABLED else None
 
-    # Friendly fire state (will be set from control config)
-    friendly_fire_enabled = FRIENDLY_FIRE_ENABLED
-
-    # Shared lives state (will be set from control config)
-    shared_lives_enabled = SHARED_LIVES_ENABLED
-    shared_lives_pool = SHARED_LIVES_POOL
-
-    # Player death state (for revive system)
-    player1_dead = False
-    player2_dead = False
-
-    # Wave system state
-    current_wave = 1
-    wave_break_active = False
-    wave_break_timer = 0.0
-    wave_duration_timer = 0.0  # Tracks how long current wave has been active
-    # Note: asteroid_field_ref is already set by reset_game() above
+    # Respawn positions
+    p1_spawn_x, p1_spawn_y = SCREEN_WIDTH * 0.25, SCREEN_HEIGHT // 2
+    p2_spawn_x, p2_spawn_y = SCREEN_WIDTH * 0.75, SCREEN_HEIGHT // 2
 
     # Main game loop
-    running = True
-    while running:
-        # OPTIMIZATION: Cache get_ticks() once per frame for all animations
-        # This avoids 12+ redundant syscalls per frame across Player, PowerUp, etc.
+    while state.running:
         frametime.update()
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
+        # Process events
+        event_result = process_events(state, control_config)
 
-            # Handle control config phase
-            if config_phase:
-                control_config.handle_event(event)
-                if control_config.is_complete():
-                    # Get configured inputs and recreate players
-                    p1_input, p2_input = control_config.get_player_inputs()
-                    speed_mult = control_config.get_speed_multiplier()
-                    player_cnt = control_config.get_player_count()
-                    current_player_count = player_cnt
-                    friendly_fire_enabled = control_config.get_friendly_fire_enabled()
-                    shared_lives_enabled = control_config.get_shared_lives_enabled()
-                    player1, player2, asteroid_field_ref = reset_game(
-                        updatable, p1_input, p2_input, speed_mult, player_cnt)
+        if event_result.should_quit:
+            state.running = False
+            continue
 
-                    # Set up shared lives if enabled
-                    if shared_lives_enabled and player_cnt == 2:
-                        player1.lives = shared_lives_pool
-                        player2.lives = 0  # Player 2 doesn't have separate lives
+        if event_result.should_reset_game:
+            if state.config_phase:
+                # Config just completed - get settings and reset
+                control_config.reset()
+            else:
+                # Retry from game over or config complete
+                p1_input, p2_input = control_config.get_player_inputs()
+                speed_mult = control_config.get_speed_multiplier()
+                player_cnt = control_config.get_player_count()
+                state.current_player_count = player_cnt
+                state.friendly_fire_enabled = control_config.get_friendly_fire_enabled()
+                state.shared_lives_enabled = control_config.get_shared_lives_enabled()
 
-                    config_phase = False
-                continue  # Skip other event handling during config
+                player1, player2, asteroid_field_ref = reset_game(
+                    updatable, p1_input, p2_input, speed_mult, player_cnt)
 
-            # Handle start screen (powerups/controls info)
-            if not game_started and not config_phase and event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    game_started = True
-                    game_start_cooldown = 0.2  # 200ms cooldown to prevent shooting immediately
-                # ESC to go back to control config
-                elif event.key == pygame.K_ESCAPE:
-                    config_phase = True
-                    control_config.reset()
+                if state.shared_lives_enabled and player_cnt == 2:
+                    player1.lives = SHARED_LIVES_POOL
+                    player2.lives = 0
 
-            # Handle start screen - gamepad button (A button on Xbox, X on PlayStation)
-            if not game_started and not config_phase and event.type == pygame.JOYBUTTONDOWN:
-                if event.button == 0:  # A button / X button
-                    game_started = True
-                    game_start_cooldown = 0.2  # 200ms cooldown to prevent shooting immediately
+                state.reset_for_new_game()
+                particle_system.clear()
+                laser_beams = []
 
-            # Handle pause toggle
-            if game_started and not game_over and event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_p:
-                    paused = not paused
-                    # Pause/unpause music when game is paused/unpaused
-                    if paused:
-                        pause_music()
-                    elif not music_muted:
-                        unpause_music()
-                # Handle music mute toggle from pause menu
-                elif event.key == pygame.K_m and paused:
-                    music_muted = not music_muted
-                    if music_muted:
-                        pause_music()
-                    else:
-                        unpause_music()
-                # Handle return to config screen from pause screen
-                elif event.key == pygame.K_ESCAPE and paused:
-                    paused = False
-                    game_started = False
-                    config_phase = True  # Return to control config screen
-                    control_config.reset()  # Reset so config screen shows again
-                    unpause_music()
-                # Handle quit from pause menu (only on desktop)
-                elif event.key == pygame.K_q and paused and not IS_WEB:
-                    running = False
+                if state.music_sped_up:
+                    reset_music_speed()
+                    state.music_sped_up = False
 
-            # Handle pause toggle - gamepad (Start button)
-            if game_started and not game_over and event.type == pygame.JOYBUTTONDOWN:
-                if event.button == 7:  # Start button on most controllers
-                    paused = not paused
-                    # Pause/unpause music when game is paused/unpaused
-                    if paused:
-                        pause_music()
-                    elif not music_muted:
-                        unpause_music()
+        if event_result.return_to_config:
+            # Already handled by process_events setting state flags
+            pass
 
-            # Handle retry button click (only if delay has expired)
-            if game_over and game_over_retry_delay <= 0 and event.type == pygame.MOUSEBUTTONDOWN:
-                if button_rect and button_rect.collidepoint(event.pos):
-                    p1_input, p2_input = control_config.get_player_inputs()
-                    speed_mult = control_config.get_speed_multiplier()
-                    player_cnt = control_config.get_player_count()
-                    current_player_count = player_cnt
-                    player1, player2, asteroid_field_ref = reset_game(
-                        updatable, p1_input, p2_input, speed_mult, player_cnt)
-                    game_over = False
-                    player1_dead = False
-                    player2_dead = False
-                    game_over_retry_delay = 0
-                    show_high_scores = False
-                    p1_highscore_rank = None
-                    p2_highscore_rank = None
-                    combo_count = 0
-                    combo_timer = 0.0
-                    last_streak_milestone = 0
-                    active_streak_notification = None
-                    slow_motion_active = False
-                    slow_motion_timer = 0
-                    screen_shake = 0.0
-                    screen_shake_cooldown = 0.0
-                    particle_system.clear()
-                    taunt_animation = None
-                    game_time = 0.0
-                    difficulty_timer = 0.0
-                    asteroid_speed_multiplier = 1.0
-                    asteroid_spawn_rate = ASTEROID_SPAWN_RATE
-                    laser_beams = []
-                    current_wave = 1
-                    wave_break_active = False
-                    wave_break_timer = 0.0
-                    wave_duration_timer = 0.0
-                    if music_sped_up:
-                        reset_music_speed()
-                        music_sped_up = False
+        # Fill screen
+        screen.fill((0, 0, 0))
 
-            # Handle retry key press (only if delay has expired)
-            if game_over and game_over_retry_delay <= 0 and event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_r:
-                    p1_input, p2_input = control_config.get_player_inputs()
-                    speed_mult = control_config.get_speed_multiplier()
-                    player_cnt = control_config.get_player_count()
-                    current_player_count = player_cnt
-                    player1, player2, asteroid_field_ref = reset_game(
-                        updatable, p1_input, p2_input, speed_mult, player_cnt)
-                    game_over = False
-                    player1_dead = False
-                    player2_dead = False
-                    game_over_retry_delay = 0
-                    show_high_scores = False
-                    p1_highscore_rank = None
-                    p2_highscore_rank = None
-                    combo_count = 0
-                    combo_timer = 0.0
-                    last_streak_milestone = 0
-                    active_streak_notification = None
-                    slow_motion_active = False
-                    slow_motion_timer = 0
-                    screen_shake = 0.0
-                    screen_shake_cooldown = 0.0
-                    particle_system.clear()
-                    taunt_animation = None
-                    game_time = 0.0
-                    difficulty_timer = 0.0
-                    asteroid_speed_multiplier = 1.0
-                    asteroid_spawn_rate = ASTEROID_SPAWN_RATE
-                    laser_beams = []
-                    current_wave = 1
-                    wave_break_active = False
-                    wave_break_timer = 0.0
-                    wave_duration_timer = 0.0
-                    if music_sped_up:
-                        reset_music_speed()
-                        music_sped_up = False
-                # Handle return to config screen from game over screen
-                elif event.key == pygame.K_ESCAPE:
-                    game_over = False
-                    game_started = False
-                    config_phase = True  # Return to control config screen
-                    control_config.reset()  # Reset so config screen shows again
-                # Handle quit from game over screen
-                elif event.key == pygame.K_q:
-                    running = False
-
-            # Handle retry - gamepad button (A button, only if delay has expired)
-            if game_over and game_over_retry_delay <= 0 and event.type == pygame.JOYBUTTONDOWN:
-                if event.button == 0:  # A button / X button
-                    p1_input, p2_input = control_config.get_player_inputs()
-                    speed_mult = control_config.get_speed_multiplier()
-                    player_cnt = control_config.get_player_count()
-                    current_player_count = player_cnt
-                    player1, player2, asteroid_field_ref = reset_game(
-                        updatable, p1_input, p2_input, speed_mult, player_cnt)
-                    game_over = False
-                    player1_dead = False
-                    player2_dead = False
-                    game_over_retry_delay = 0
-                    show_high_scores = False
-                    p1_highscore_rank = None
-                    p2_highscore_rank = None
-                    combo_count = 0
-                    combo_timer = 0.0
-                    last_streak_milestone = 0
-                    active_streak_notification = None
-                    slow_motion_active = False
-                    slow_motion_timer = 0
-                    screen_shake = 0.0
-                    screen_shake_cooldown = 0.0
-                    particle_system.clear()
-                    taunt_animation = None
-                    game_time = 0.0
-                    difficulty_timer = 0.0
-                    asteroid_speed_multiplier = 1.0
-                    asteroid_spawn_rate = ASTEROID_SPAWN_RATE
-                    laser_beams = []
-                    current_wave = 1
-                    wave_break_active = False
-                    wave_break_timer = 0.0
-                    wave_duration_timer = 0.0
-                    if music_sped_up:
-                        reset_music_speed()
-                        music_sped_up = False
-
-        screen.fill((0, 0, 0))  # Fill the screen with black
-
-        # Show control config screen first
-        if config_phase:
+        # Config phase
+        if state.config_phase:
             control_config.draw(screen)
-        # Show start screen if game hasn't started
-        elif not game_started:
-            # Draw the game in the background (frozen)
-            shake_offset = (0, 0)
 
-            # Draw starfield
+        # Start screen
+        elif not state.game_started:
+            shake_offset = (0, 0)
             if starfield:
                 starfield.draw(screen)
-
             for sprite in drawable:
                 sprite.draw(screen, shake_offset)
-
-            # Draw start screen overlay
             draw_start_screen(screen)
-        elif not game_over:
-            # Only update game logic if not paused
-            if not paused:
-                # Update game start cooldown
-                if game_start_cooldown > 0:
-                    game_start_cooldown -= dt
+
+        # Active gameplay
+        elif not state.game_over:
+            if not state.paused:
+                # Update cooldowns
+                if state.game_start_cooldown > 0:
+                    state.game_start_cooldown -= dt
 
                 # Update game time and difficulty
-                game_time += dt
-                difficulty_timer += dt
+                state.game_time += dt
+                state.difficulty_timer += dt
 
-                # Increase asteroid speed and spawn rate every DIFFICULTY_INCREASE_INTERVAL seconds
-                if difficulty_timer >= DIFFICULTY_INCREASE_INTERVAL:
-                    difficulty_timer = 0.0
-                    asteroid_speed_multiplier += DIFFICULTY_SPEED_INCREMENT
-                    # Decrease spawn rate (faster spawning) but cap at minimum
-                    asteroid_spawn_rate = max(
-                        asteroid_spawn_rate - DIFFICULTY_SPAWN_RATE_INCREMENT, DIFFICULTY_SPAWN_RATE_MIN)
-                    debug_print(
-                        f"Difficulty increased! Speed: {asteroid_speed_multiplier:.2f}x, Spawn rate: {asteroid_spawn_rate:.2f}s")
-                # Handle MEGA POWER music speed - ensure music state matches power-up state
+                if state.difficulty_timer >= DIFFICULTY_INCREASE_INTERVAL:
+                    state.difficulty_timer = 0.0
+                    state.asteroid_speed_multiplier += DIFFICULTY_SPEED_INCREMENT
+                    state.asteroid_spawn_rate = max(
+                        state.asteroid_spawn_rate - DIFFICULTY_SPAWN_RATE_INCREMENT,
+                        DIFFICULTY_SPAWN_RATE_MIN)
+                    debug_print(f"Difficulty increased! Speed: {state.asteroid_speed_multiplier:.2f}x")
+
+                # Music speed for MEGA POWER
                 if MEGA_POWER_MUSIC_SPEEDUP_ENABLED:
                     should_have_fast_music = player1.mega_power_active or player2.mega_power_active
-                    if should_have_fast_music != music_sped_up:
+                    if should_have_fast_music != state.music_sped_up:
                         if should_have_fast_music:
                             set_music_speed(MEGA_POWER_MUSIC_SPEED)
-                            music_sped_up = True
+                            state.music_sped_up = True
                         else:
                             reset_music_speed()
-                            music_sped_up = False
+                            state.music_sped_up = False
 
                 # Update combo timer
-                if combo_timer > 0:
-                    combo_timer -= dt
-                    if combo_timer <= 0:
-                        combo_count = 0
-                        combo_timer = 0.0
-                        last_streak_milestone = 0  # Reset streak milestone tracking
+                if state.combo_timer > 0:
+                    state.combo_timer -= dt
+                    if state.combo_timer <= 0:
+                        state.combo_count = 0
+                        state.combo_timer = 0.0
+                        state.last_streak_milestone = 0
 
                 # Update kill streak notification
-                if active_streak_notification:
-                    if not active_streak_notification.update(dt):
-                        active_streak_notification = None
+                if state.active_streak_notification:
+                    if not state.active_streak_notification.update(dt):
+                        state.active_streak_notification = None
 
-                # Update slow motion timer
-                if slow_motion_active:
-                    slow_motion_timer -= dt
-                    if slow_motion_timer <= 0:
-                        slow_motion_active = False
+                # Update slow motion
+                if state.slow_motion_active:
+                    state.slow_motion_timer -= dt
+                    if state.slow_motion_timer <= 0:
+                        state.slow_motion_active = False
 
-                # Update screen shake (decay over time)
-                if screen_shake > 0:
-                    screen_shake -= SCREEN_SHAKE_DECAY * dt
-                    if screen_shake < 0:
-                        screen_shake = 0
+                # Update screen shake
+                if state.screen_shake > 0:
+                    state.screen_shake -= SCREEN_SHAKE_DECAY * dt
+                    if state.screen_shake < 0:
+                        state.screen_shake = 0
+                if state.screen_shake_cooldown > 0:
+                    state.screen_shake_cooldown -= dt
 
-                # Update screen shake cooldown
-                if screen_shake_cooldown > 0:
-                    screen_shake_cooldown -= dt
-
-                # Update starfield based on player movement
+                # Update starfield
                 if starfield:
                     starfield.update(player1, player2)
 
-                # Update asteroid field (spawns new asteroids)
+                # Update asteroid field
                 for field in updatable:
                     if isinstance(field, AsteroidField):
-                        field.update(dt, asteroid_spawn_rate)
+                        field.update(dt, state.asteroid_spawn_rate)
 
-                # Wave system management
+                # Wave system
                 if WAVE_SYSTEM_ENABLED and asteroid_field_ref:
-                    # Check if we're in a wave break
-                    if wave_break_active:
-                        wave_break_timer -= dt
-                        if wave_break_timer <= 0:
-                            # Start the next wave
-                            current_wave += 1
-                            asteroid_field_ref.start_wave(current_wave)
-                            wave_break_active = False
-                            wave_duration_timer = 0.0  # Reset wave timer
+                    if state.wave_break_active:
+                        state.wave_break_timer -= dt
+                        if state.wave_break_timer <= 0:
+                            state.current_wave += 1
+                            asteroid_field_ref.start_wave(state.current_wave)
+                            state.wave_break_active = False
+                            state.wave_duration_timer = 0.0
                     else:
-                        # Track wave duration
-                        wave_duration_timer += dt
+                        state.wave_duration_timer += dt
+                        wave_complete = asteroid_field_ref.asteroids_to_spawn == 0 and len(asteroids) == 0
+                        wave_timeout = state.wave_duration_timer >= WAVE_MAX_DURATION
 
-                        # Check if all asteroids are cleared and wave spawning is done
-                        # OR if maximum wave duration exceeded (keeps pace fast!)
-                        wave_complete = asteroid_field_ref.asteroids_to_spawn == 0 and len(
-                            asteroids) == 0
-                        wave_timeout = wave_duration_timer >= WAVE_MAX_DURATION
-
-                        if (wave_complete or wave_timeout) and not wave_break_active:
-                            # Start wave break
-                            wave_break_active = True
-                            wave_break_timer = WAVE_BREAK_DURATION
-                            if wave_complete:
-                                debug_print(
-                                    f"Wave {current_wave} cleared! Next wave in {WAVE_BREAK_DURATION} seconds...")
-                            else:
-                                debug_print(
-                                    f"Wave {current_wave} time limit reached! ({len(asteroids)} asteroids remaining)")
-                                debug_print(
-                                    f"Next wave in {WAVE_BREAK_DURATION} seconds...")
-                                # Destroy remaining asteroids (no points) to avoid overlap
+                        if (wave_complete or wave_timeout) and not state.wave_break_active:
+                            state.wave_break_active = True
+                            state.wave_break_timer = WAVE_BREAK_DURATION
+                            if wave_timeout:
                                 for asteroid in list(asteroids):
                                     asteroid.kill()
-                            wave_duration_timer = 0.0  # Reset timer
+                            state.wave_duration_timer = 0.0
 
-                # Check if UFO should spawn (wave system scheduled spawn)
+                # UFO spawning
                 if UFO_ENABLED and asteroid_field_ref.ufo_spawn_scheduled:
                     if asteroid_field_ref.ufo_spawn_timer >= asteroid_field_ref.ufo_spawn_delay:
                         asteroid_field_ref.spawn_ufo(ufos)
                         asteroid_field_ref.ufo_spawn_scheduled = False
 
-                # Control shooting during game start cooldown
-                if game_start_cooldown > 0:
+                # Control shooting cooldown
+                if state.game_start_cooldown > 0:
                     player1.can_shoot = False
                     player2.can_shoot = False
                 else:
                     player1.can_shoot = True
                     player2.can_shoot = True
 
-                # Update both players at normal speed (only if alive or shared lives)
-                if not player1_dead or (shared_lives_enabled and player1.lives > 0):
+                # Update players
+                if not state.player1_dead or (state.shared_lives_enabled and player1.lives > 0):
                     player1.update(dt)
-                if not player2_dead or (shared_lives_enabled and player1.lives > 0):
+                if not state.player2_dead or (state.shared_lives_enabled and player1.lives > 0):
                     player2.update(dt)
 
-                # Check for new laser beams from players
+                # Check for new laser beams
                 if player1.pending_laser:
                     laser_beams.append(player1.pending_laser)
                     player1.pending_laser = None
@@ -1060,1247 +379,202 @@ async def main():
                     laser_beams.append(player2.pending_laser)
                     player2.pending_laser = None
 
-                # Check for boundary bounce effects for player 1
-                if player1.bounce_info:
-                    # Add screen shake for wall bounce only if cooldown expired
-                    if screen_shake_cooldown <= 0:
-                        screen_shake = min(
-                            screen_shake + BOUNDARY_SHAKE_AMOUNT, SCREEN_SHAKE_MAX)
-                        screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
+                # Boundary bounce effects
+                for player, p_num in [(player1, 1), (player2, 2)]:
+                    if player.bounce_info:
+                        if state.screen_shake_cooldown <= 0:
+                            state.screen_shake = min(state.screen_shake + BOUNDARY_SHAKE_AMOUNT, SCREEN_SHAKE_MAX)
+                            state.screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
+                        for _ in range(BOUNDARY_PARTICLE_COUNT):
+                            base_angle = player.bounce_info['direction'].angle_to(pygame.Vector2(0, 1))
+                            angle = base_angle + random.uniform(-30, 30)
+                            velocity = pygame.Vector2(0, 1).rotate(angle) * PARTICLE_SPEED * 0.8
+                            particle_system.emit(player.bounce_info['position'].x,
+                                                 player.bounce_info['position'].y, velocity)
+                        player.bounce_info = None
 
-                    # Spawn particles in the bounce direction
-                    for i in range(BOUNDARY_PARTICLE_COUNT):
-                        # Create particles spreading out from the collision point
-                        base_angle = player1.bounce_info['direction'].angle_to(
-                            pygame.Vector2(0, 1))
-                        angle_spread = 60  # degrees of spread
-                        angle = base_angle + \
-                            random.uniform(-angle_spread/2, angle_spread/2)
-                        velocity = pygame.Vector2(0, 1).rotate(
-                            angle) * PARTICLE_SPEED * 0.8
-                        particle_system.emit(player1.bounce_info['position'].x,
-                                             player1.bounce_info['position'].y,
-                                             velocity)
+                # Exhaust particles
+                for player in [player1, player2]:
+                    exhaust_info = player.get_exhaust_info()
+                    if exhaust_info:
+                        base_angle = exhaust_info['direction'].angle_to(pygame.Vector2(0, 1))
+                        angle = base_angle + random.uniform(-EXHAUST_PARTICLE_SPREAD/2, EXHAUST_PARTICLE_SPREAD/2)
+                        velocity = pygame.Vector2(0, 1).rotate(angle) * EXHAUST_PARTICLE_SPEED
+                        particle_system.emit(exhaust_info['position'].x, exhaust_info['position'].y, velocity)
 
-                    # Clear bounce info after processing
-                    player1.bounce_info = None
-
-                # Check for boundary bounce effects for player 2
-                if player2.bounce_info:
-                    # Add screen shake for wall bounce only if cooldown expired
-                    if screen_shake_cooldown <= 0:
-                        screen_shake = min(
-                            screen_shake + BOUNDARY_SHAKE_AMOUNT, SCREEN_SHAKE_MAX)
-                        screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
-
-                    # Spawn particles in the bounce direction
-                    for i in range(BOUNDARY_PARTICLE_COUNT):
-                        base_angle = player2.bounce_info['direction'].angle_to(
-                            pygame.Vector2(0, 1))
-                        angle_spread = 60
-                        angle = base_angle + \
-                            random.uniform(-angle_spread/2, angle_spread/2)
-                        velocity = pygame.Vector2(0, 1).rotate(
-                            angle) * PARTICLE_SPEED * 0.8
-                        particle_system.emit(player2.bounce_info['position'].x,
-                                             player2.bounce_info['position'].y,
-                                             velocity)
-
-                    player2.bounce_info = None
-
-                # Generate exhaust particles for player 1
-                exhaust_info = player1.get_exhaust_info()
-                if exhaust_info:
-                    base_angle = exhaust_info['direction'].angle_to(
-                        pygame.Vector2(0, 1))
-                    angle = base_angle + \
-                        random.uniform(-EXHAUST_PARTICLE_SPREAD/2,
-                                       EXHAUST_PARTICLE_SPREAD/2)
-                    velocity = pygame.Vector2(0, 1).rotate(
-                        angle) * EXHAUST_PARTICLE_SPEED
-                    particle_system.emit(exhaust_info['position'].x,
-                                         exhaust_info['position'].y,
-                                         velocity)
-
-                # Generate exhaust particles for player 2
-                exhaust_info = player2.get_exhaust_info()
-                if exhaust_info:
-                    base_angle = exhaust_info['direction'].angle_to(
-                        pygame.Vector2(0, 1))
-                    angle = base_angle + \
-                        random.uniform(-EXHAUST_PARTICLE_SPREAD/2,
-                                       EXHAUST_PARTICLE_SPREAD/2)
-                    velocity = pygame.Vector2(0, 1).rotate(
-                        angle) * EXHAUST_PARTICLE_SPEED
-                    particle_system.emit(exhaust_info['position'].x,
-                                         exhaust_info['position'].y,
-                                         velocity)
-
+                # Update shots
                 for shot in shots:
                     shot.update(dt)
 
-                # Apply slow motion effect and difficulty multiplier to dt for asteroids
-                base_dt = dt * asteroid_speed_multiplier
-                asteroid_dt = base_dt * SLOW_MOTION_FACTOR if slow_motion_active else base_dt
-
-                # Update asteroids at potentially slowed speed with difficulty
+                # Update asteroids with slow motion
+                base_dt = dt * state.asteroid_speed_multiplier
+                asteroid_dt = base_dt * SLOW_MOTION_FACTOR if state.slow_motion_active else base_dt
                 for asteroid in asteroids:
                     asteroid.update(asteroid_dt, dt)
 
-                # Update power-ups at normal speed
+                # Update power-ups
                 for powerup in powerups:
                     powerup.update(dt)
 
-                # Build spatial grid with active (non-dying) asteroids for efficient collision detection
+                # Build spatial grid
                 collision_grid.clear()
                 for asteroid in asteroids:
                     if not asteroid.dying:
                         collision_grid.insert(asteroid)
 
-                # Check collisions for both players using spatial grid
+                # Player-asteroid collisions
                 for asteroid in collision_grid.get_nearby(player1):
-                    # Player 1 collision (skip if dead)
-                    if not player1_dead and player1.lives > 0 and player1.check_collision(asteroid):
-                        # If player is boosting, ram through the asteroid
-                        if player1.boost_active:
-                            # Increase combo and check for kill streak
-                            combo_count, last_streak_milestone, active_streak_notification = increment_combo_and_check_streak(
-                                combo_count, last_streak_milestone, active_streak_notification
-                            )
-                            combo_timer = COMBO_TIMEOUT
-
-                            # Calculate points with combo multiplier
-                            base_points = asteroid.get_points()
-                            multiplier = COMBO_MULTIPLIERS.get(
-                                combo_count, COMBO_MULTIPLIERS[5])
-                            points_earned = int(base_points * multiplier)
-
-                            # Award points
-                            player1.score += points_earned
-
-                            # Visual feedback
-                            if combo_count > 1:
-                                debug_print(
-                                    f"Player 1: +{points_earned} points! ({combo_count}x COMBO) [BOOST RAM]")
-                            else:
-                                debug_print(
-                                    f"Player 1: +{points_earned} points [BOOST RAM]")
-
-                            # Destroy the asteroid
-                            effect_info = asteroid.split()
-                            if effect_info:
-                                if screen_shake_cooldown <= 0:
-                                    screen_shake = min(
-                                        screen_shake + effect_info['shake_amount'], SCREEN_SHAKE_MAX)
-                                    screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
-
-                                # Spawn particles
-                                for i in range(effect_info['particle_count']):
-                                    angle = (
-                                        360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
-                                    velocity = pygame.Vector2(0, 1).rotate(
-                                        angle) * PARTICLE_SPEED
-                                    particle_system.emit(
-                                        effect_info['position'].x, effect_info['position'].y, velocity)
-
-                            # Chance to spawn power-up (if enabled)
-                            if POWERUP_SPAWN_ENABLED:
-                                if random.random() < MEGA_POWER_SPAWN_CHANCE:
-                                    PowerUp(
-                                        asteroid.position.x, asteroid.position.y, PowerUp.MEGA_POWER)
-                                elif random.random() < POWERUP_SPAWN_CHANCE:
-                                    powerup_types = [
-                                        PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
-                                    chosen_type = random.choice(powerup_types)
-                                    PowerUp(asteroid.position.x,
-                                            asteroid.position.y, chosen_type)
-                        else:
-                            # Normal collision - take damage
-                            # Use take_damage to check if shield absorbed hit
-                            if player1.take_damage():
-                                if shared_lives_enabled:
-                                    # Shared lives mode - deduct from pool
-                                    player1.lives -= 1
-                                    debug_print(
-                                        f"Player 1 hit! Shared lives remaining: {player1.lives}")
-
-                                    if player1.lives > 0:
-                                        # Respawn player 1
-                                        player1.respawn(p1_spawn_x, p1_spawn_y)
-                                    else:
-                                        # Out of shared lives - mark both as dead
-                                        debug_print(
-                                            "Out of shared lives! Game over!")
-                                        player1_dead = True
-                                        player2_dead = True
-                                        game_over = True
-                                        game_over_retry_delay = 1.5
-                                        taunt_animation = TauntAnimation()
-
-                                        # Save high scores
-                                        p1_is_high = is_high_score(
-                                            player1.score) if player1.score > 0 else False
-                                        p2_is_high = is_high_score(
-                                            player2.score) if player2.score > 0 else False
-
-                                        if player1.score > 0:
-                                            p1_highscore_rank = add_score(
-                                                "Player 1", player1.score)
-                                            if p1_highscore_rank:
-                                                debug_print(
-                                                    f"Player 1 achieved high score rank #{p1_highscore_rank}!")
-                                        else:
-                                            p1_highscore_rank = None
-
-                                        if player2.score > 0:
-                                            p2_highscore_rank = add_score(
-                                                "Player 2", player2.score)
-                                            if p2_highscore_rank:
-                                                debug_print(
-                                                    f"Player 2 achieved high score rank #{p2_highscore_rank}!")
-                                        else:
-                                            p2_highscore_rank = None
-
-                                        show_high_scores = (
-                                            p1_is_high or p2_is_high)
-                                        break
-                                else:
-                                    # Individual lives mode
-                                    debug_print(
-                                        f"Player 1 hit! Lives remaining: {player1.lives}")
-                                    if player1.lives > 0:
-                                        # Respawn player 1
-                                        player1.respawn(p1_spawn_x, p1_spawn_y)
-                                    else:
-                                        debug_print("Player 1 eliminated!")
-                                        player1_dead = True
-
-                                        # Spawn revive power-up
-                                        handle_player_death(
-                                            player1, 1, player1.position.x, player1.position.y, shared_lives_enabled)
-
-                                        # Check if both players are dead
-                                        if player2.lives <= 0:
-                                            debug_print("Game over!")
-                                            debug_print(
-                                                f"Player 1 Final Score: {player1.score}")
-                                            debug_print(
-                                                f"Player 2 Final Score: {player2.score}")
-                                            game_over = True
-                                            game_over_retry_delay = 1.5
-                                            taunt_animation = TauntAnimation()
-
-                                            # Check if scores qualify for high score board BEFORE saving
-                                            p1_is_high = is_high_score(
-                                                player1.score) if player1.score > 0 else False
-                                            p2_is_high = is_high_score(
-                                                player2.score) if player2.score > 0 else False
-
-                                            # Save high scores and store ranks
-                                            if player1.score > 0:
-                                                p1_highscore_rank = add_score(
-                                                    "Player 1", player1.score)
-                                                if p1_highscore_rank:
-                                                    debug_print(
-                                                        f"Player 1 achieved high score rank #{p1_highscore_rank}!")
-                                            else:
-                                                p1_highscore_rank = None
-
-                                            if player2.score > 0:
-                                                p2_highscore_rank = add_score(
-                                                    "Player 2", player2.score)
-                                                if p2_highscore_rank:
-                                                    debug_print(
-                                                        f"Player 2 achieved high score rank #{p2_highscore_rank}!")
-                                            else:
-                                                p2_highscore_rank = None
-
-                                            # Show high scores if either player got one
-                                            show_high_scores = (
-                                                p1_is_high or p2_is_high)
-                                            break
-                            else:
-                                debug_print("Player 1 shield absorbed hit!")
-
-                            # Destroy the asteroid that hit the player
-                            effect_info = asteroid.split()
-                            if effect_info:
-                                if screen_shake_cooldown <= 0:
-                                    screen_shake = min(
-                                        screen_shake + effect_info['shake_amount'] * 0.5, SCREEN_SHAKE_MAX)
-                                    screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
-
-                                # Spawn particles
-                                for i in range(effect_info['particle_count']):
-                                    angle = (
-                                        360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
-                                    velocity = pygame.Vector2(0, 1).rotate(
-                                        angle) * PARTICLE_SPEED
-                                    particle_system.emit(
-                                        effect_info['position'].x, effect_info['position'].y, velocity)
-                        break  # Only handle one collision per frame for player 1
-
-                # Player 2 collisions using spatial grid (separate loop)
-                for asteroid in collision_grid.get_nearby(player2):
-                    # Player 2 collision (skip if dead)
-                    if not player2_dead and player2.lives > 0 and player2.check_collision(asteroid):
-                        # If player is boosting, ram through the asteroid
-                        if player2.boost_active:
-                            # Increase combo and check for kill streak
-                            combo_count, last_streak_milestone, active_streak_notification = increment_combo_and_check_streak(
-                                combo_count, last_streak_milestone, active_streak_notification
-                            )
-                            combo_timer = COMBO_TIMEOUT
-
-                            # Calculate points with combo multiplier
-                            base_points = asteroid.get_points()
-                            multiplier = COMBO_MULTIPLIERS.get(
-                                combo_count, COMBO_MULTIPLIERS[5])
-                            points_earned = int(base_points * multiplier)
-
-                            # Award points
-                            player2.score += points_earned
-
-                            # Visual feedback
-                            if combo_count > 1:
-                                debug_print(
-                                    f"Player 2: +{points_earned} points! ({combo_count}x COMBO) [BOOST RAM]")
-                            else:
-                                debug_print(
-                                    f"Player 2: +{points_earned} points [BOOST RAM]")
-
-                            # Destroy the asteroid
-                            effect_info = asteroid.split()
-                            if effect_info:
-                                if screen_shake_cooldown <= 0:
-                                    screen_shake = min(
-                                        screen_shake + effect_info['shake_amount'], SCREEN_SHAKE_MAX)
-                                    screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
-
-                                # Spawn particles
-                                for i in range(effect_info['particle_count']):
-                                    angle = (
-                                        360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
-                                    velocity = pygame.Vector2(0, 1).rotate(
-                                        angle) * PARTICLE_SPEED
-                                    particle_system.emit(
-                                        effect_info['position'].x, effect_info['position'].y, velocity)
-
-                            # Chance to spawn power-up (if enabled)
-                            if POWERUP_SPAWN_ENABLED:
-                                if random.random() < MEGA_POWER_SPAWN_CHANCE:
-                                    PowerUp(
-                                        asteroid.position.x, asteroid.position.y, PowerUp.MEGA_POWER)
-                                elif random.random() < POWERUP_SPAWN_CHANCE:
-                                    powerup_types = [
-                                        PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
-                                    chosen_type = random.choice(powerup_types)
-                                    PowerUp(asteroid.position.x,
-                                            asteroid.position.y, chosen_type)
-                        else:
-                            # Normal collision - take damage
-                            # Use take_damage to check if shield absorbed hit
-                            if player2.take_damage():
-                                if shared_lives_enabled:
-                                    # Shared lives mode - deduct from pool
-                                    player1.lives -= 1
-                                    debug_print(
-                                        f"Player 2 hit! Shared lives remaining: {player1.lives}")
-
-                                    if player1.lives > 0:
-                                        # Respawn player 2
-                                        player2.respawn(p2_spawn_x, p2_spawn_y)
-                                    else:
-                                        # Out of shared lives - mark both as dead
-                                        debug_print(
-                                            "Out of shared lives! Game over!")
-                                        player1_dead = True
-                                        player2_dead = True
-                                        game_over = True
-                                        game_over_retry_delay = 1.5
-                                        taunt_animation = TauntAnimation()
-
-                                        # Save high scores
-                                        p1_is_high = is_high_score(
-                                            player1.score) if player1.score > 0 else False
-                                        p2_is_high = is_high_score(
-                                            player2.score) if player2.score > 0 else False
-
-                                        if player1.score > 0:
-                                            p1_highscore_rank = add_score(
-                                                "Player 1", player1.score)
-                                            if p1_highscore_rank:
-                                                debug_print(
-                                                    f"Player 1 achieved high score rank #{p1_highscore_rank}!")
-                                        else:
-                                            p1_highscore_rank = None
-
-                                        if player2.score > 0:
-                                            p2_highscore_rank = add_score(
-                                                "Player 2", player2.score)
-                                            if p2_highscore_rank:
-                                                debug_print(
-                                                    f"Player 2 achieved high score rank #{p2_highscore_rank}!")
-                                        else:
-                                            p2_highscore_rank = None
-
-                                        show_high_scores = (
-                                            p1_is_high or p2_is_high)
-                                        break
-                                else:
-                                    # Individual lives mode
-                                    debug_print(
-                                        f"Player 2 hit! Lives remaining: {player2.lives}")
-                                    if player2.lives > 0:
-                                        # Respawn player 2
-                                        player2.respawn(p2_spawn_x, p2_spawn_y)
-                                    else:
-                                        debug_print("Player 2 eliminated!")
-                                        player2_dead = True
-
-                                        # Spawn revive power-up
-                                        handle_player_death(
-                                            player2, 2, player2.position.x, player2.position.y, shared_lives_enabled)
-
-                                        # Check if both players are dead
-                                        if player1.lives <= 0:
-                                            debug_print("Game over!")
-                                            debug_print(
-                                                f"Player 1 Final Score: {player1.score}")
-                                            debug_print(
-                                                f"Player 2 Final Score: {player2.score}")
-                                            game_over = True
-                                            game_over_retry_delay = 1.5
-                                            taunt_animation = TauntAnimation()
-
-                                            # Check if scores qualify for high score board BEFORE saving
-                                            p1_is_high = is_high_score(
-                                                player1.score) if player1.score > 0 else False
-                                            p2_is_high = is_high_score(
-                                                player2.score) if player2.score > 0 else False
-
-                                            # Save high scores and store ranks
-                                            if player1.score > 0:
-                                                p1_highscore_rank = add_score(
-                                                    "Player 1", player1.score)
-                                                if p1_highscore_rank:
-                                                    debug_print(
-                                                        f"Player 1 achieved high score rank #{p1_highscore_rank}!")
-                                            else:
-                                                p1_highscore_rank = None
-
-                                            if player2.score > 0:
-                                                p2_highscore_rank = add_score(
-                                                    "Player 2", player2.score)
-                                                if p2_highscore_rank:
-                                                    debug_print(
-                                                        f"Player 2 achieved high score rank #{p2_highscore_rank}!")
-                                            else:
-                                                p2_highscore_rank = None
-
-                                            # Show high scores if either player got one
-                                            show_high_scores = (
-                                                p1_is_high or p2_is_high)
-                                            break
-                            else:
-                                debug_print("Player 2 shield absorbed hit!")
-
-                            # Destroy the asteroid that hit the player
-                            effect_info = asteroid.split()
-                            if effect_info:
-                                if screen_shake_cooldown <= 0:
-                                    screen_shake = min(
-                                        screen_shake + effect_info['shake_amount'] * 0.5, SCREEN_SHAKE_MAX)
-                                    screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
-
-                                # Spawn particles
-                                for i in range(effect_info['particle_count']):
-                                    angle = (
-                                        360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
-                                    velocity = pygame.Vector2(0, 1).rotate(
-                                        angle) * PARTICLE_SPEED
-                                    particle_system.emit(
-                                        effect_info['position'].x, effect_info['position'].y, velocity)
-                        break  # Only handle one collision per frame for player 2
-
-                # OPTIMIZATION: Update particles in-place using pooled system
-                # (No list reallocation - just iterates and updates active particles)
-                particle_system.update(dt)
-
-                # Shot-asteroid collisions using spatial grid
-                # Use list() since we may kill shots during iteration
-                for shot in list(shots):
-                    for asteroid in collision_grid.get_nearby(shot):
-                        if asteroid.check_collision(shot):
-                            # Increase combo and check for kill streak
-                            combo_count, last_streak_milestone, active_streak_notification = increment_combo_and_check_streak(
-                                combo_count, last_streak_milestone, active_streak_notification
-                            )
-                            combo_timer = COMBO_TIMEOUT
-
-                            # Calculate points with combo multiplier
-                            base_points = asteroid.get_points()
-                            multiplier = COMBO_MULTIPLIERS.get(
-                                combo_count, COMBO_MULTIPLIERS[5])
-                            points_earned = int(base_points * multiplier)
-
-                            # Award points to the player who shot it
-                            if shot.owner:
-                                shot.owner.score += points_earned
-                                player_name = f"Player {shot.owner.player_number}"
-                            else:
-                                player_name = "Unknown"
-
-                            # Visual feedback for point value
-                            if combo_count > 1:
-                                debug_print(
-                                    f"{player_name}: +{points_earned} points! ({combo_count}x COMBO)")
-                            else:
-                                debug_print(
-                                    f"{player_name}: +{points_earned} points")
-
-                            # Split the asteroid and get effect info
-                            effect_info = asteroid.split()
-                            if effect_info:
-                                # Add screen shake only if cooldown expired (capped at max)
-                                if screen_shake_cooldown <= 0:
-                                    screen_shake = min(
-                                        screen_shake + effect_info['shake_amount'], SCREEN_SHAKE_MAX)
-                                    screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
-
-                                # Spawn particles
-                                for i in range(effect_info['particle_count']):
-                                    angle = (
-                                        360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
-                                    velocity = pygame.Vector2(0, 1).rotate(
-                                        angle) * PARTICLE_SPEED
-                                    particle_system.emit(
-                                        effect_info['position'].x, effect_info['position'].y, velocity)
-
-                            shot.kill()
-
-                            # Chance to spawn power-up (if enabled)
-                            if POWERUP_SPAWN_ENABLED:
-                                # First check for rare MEGA POWER
-                                if random.random() < MEGA_POWER_SPAWN_CHANCE:
-                                    PowerUp(
-                                        asteroid.position.x, asteroid.position.y, PowerUp.MEGA_POWER)
-                                elif random.random() < POWERUP_SPAWN_CHANCE:
-                                    # Randomly choose a normal power-up type
-                                    powerup_types = [
-                                        PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
-                                    chosen_type = random.choice(powerup_types)
-                                    PowerUp(asteroid.position.x,
-                                            asteroid.position.y, chosen_type)
-
+                    if not state.player1_dead and player1.lives > 0 and player1.check_collision(asteroid):
+                        if not handle_player_asteroid_collision(
+                            player1, 1, asteroid, state, particle_system,
+                            p1_spawn_x, p1_spawn_y, player2):
                             break
 
-                # Update and check laser beam collisions
-                laser_beams_to_remove = []
-                for laser in laser_beams:
-                    if not laser.update(dt):
-                        laser_beams_to_remove.append(laser)
-                        continue
+                for asteroid in collision_grid.get_nearby(player2):
+                    if not state.player2_dead and player2.lives > 0 and player2.check_collision(asteroid):
+                        if not handle_player_asteroid_collision(
+                            player2, 2, asteroid, state, particle_system,
+                            p2_spawn_x, p2_spawn_y, player1):
+                            break
 
-                    # Check collisions with all asteroids
-                    for asteroid in asteroids:
-                        if asteroid.dying:
-                            continue
+                # Update particles
+                particle_system.update(dt)
 
-                        if laser.check_hit(asteroid):
-                            # Increase combo and check for kill streak
-                            combo_count, last_streak_milestone, active_streak_notification = increment_combo_and_check_streak(
-                                combo_count, last_streak_milestone, active_streak_notification
-                            )
-                            combo_timer = COMBO_TIMEOUT
+                # Shot-asteroid collisions
+                handle_shot_asteroid_collisions(shots, collision_grid, state, particle_system)
 
-                            # Calculate points with combo multiplier
-                            base_points = asteroid.get_points()
-                            multiplier = COMBO_MULTIPLIERS.get(
-                                combo_count, COMBO_MULTIPLIERS[5])
-                            points_earned = int(base_points * multiplier)
-
-                            # Award points to the player who shot the laser
-                            if laser.owner:
-                                laser.owner.score += points_earned
-                                player_name = f"Player {laser.owner.player_number}"
-                            else:
-                                player_name = "Unknown"
-
-                            # Visual feedback
-                            if combo_count > 1:
-                                debug_print(
-                                    f"{player_name}: +{points_earned} points! ({combo_count}x COMBO)")
-                            else:
-                                debug_print(
-                                    f"{player_name}: +{points_earned} points")
-
-                            # Split the asteroid
-                            effect_info = asteroid.split()
-                            if effect_info:
-                                if screen_shake_cooldown <= 0:
-                                    screen_shake = min(
-                                        screen_shake + effect_info['shake_amount'], SCREEN_SHAKE_MAX)
-                                    screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
-
-                                # Spawn particles
-                                for i in range(effect_info['particle_count']):
-                                    angle = (
-                                        360 / effect_info['particle_count']) * i + random.uniform(-15, 15)
-                                    velocity = pygame.Vector2(0, 1).rotate(
-                                        angle) * PARTICLE_SPEED
-                                    particle_system.emit(
-                                        effect_info['position'].x, effect_info['position'].y, velocity)
-
-                            # Chance to spawn power-up (if enabled)
-                            if POWERUP_SPAWN_ENABLED:
-                                if random.random() < MEGA_POWER_SPAWN_CHANCE:
-                                    PowerUp(
-                                        asteroid.position.x, asteroid.position.y, PowerUp.MEGA_POWER)
-                                elif random.random() < POWERUP_SPAWN_CHANCE:
-                                    powerup_types = [
-                                        PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
-                                    chosen_type = random.choice(powerup_types)
-                                    PowerUp(asteroid.position.x,
-                                            asteroid.position.y, chosen_type)
-
-                # Remove expired laser beams
+                # Laser-asteroid collisions
+                laser_beams_to_remove = handle_laser_asteroid_collisions(
+                    laser_beams, asteroids, state, particle_system, dt)
                 for laser in laser_beams_to_remove:
                     laser_beams.remove(laser)
 
-                # === UFO COLLISIONS ===
-                # Check UFO collisions with player shots
-                for ufo in list(ufos):  # Use list() to avoid modification during iteration
+                # UFO collisions
+                for ufo in list(ufos):
                     for shot in shots:
-                        # Skip UFO shots (they shouldn't destroy UFOs)
                         if isinstance(shot.owner, UFO):
                             continue
-
                         if ufo.check_collision(shot):
-                            # Determine points based on UFO type
-                            points = UFO_LARGE_POINTS if ufo.ufo_type == "large" else UFO_SMALL_POINTS
-
-                            # Award points to shooter
-                            if shot.owner:
-                                shot.owner.score += points
-                                player_name = f"Player {shot.owner.player_number}"
-                                debug_print(
-                                    f"{player_name}: UFO destroyed! +{points} points")
-
-                            # Screen shake effect
-                            if screen_shake_cooldown <= 0:
-                                screen_shake = min(
-                                    screen_shake + 6, SCREEN_SHAKE_MAX)
-                                screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
-
-                            # Spawn particles at UFO position
-                            particle_count = 10
-                            for i in range(particle_count):
-                                angle = (360 / particle_count) * \
-                                    i + random.uniform(-15, 15)
-                                velocity = pygame.Vector2(0, 1).rotate(
-                                    angle) * PARTICLE_SPEED
-                                particle_system.emit(
-                                    ufo.position.x, ufo.position.y, velocity)
-
-                            # Always spawn a power-up (guaranteed drop from UFOs)
-                            powerup_types = [
-                                PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
-                            chosen_type = random.choice(powerup_types)
-                            PowerUp(ufo.position.x,
-                                    ufo.position.y, chosen_type)
-
-                            # Destroy UFO and shot
-                            ufo.kill()
-                            shot.kill()
+                            handle_ufo_shot_collision(ufo, shot, state, particle_system)
                             break
 
-                # Check UFO collisions with players
                 for ufo in ufos:
-                    # Player 1 collision
-                    if not player1_dead and player1.lives > 0 and player1.check_collision(ufo):
-                        # If player is boosting, destroy the UFO
-                        if player1.boost_active:
-                            points = UFO_LARGE_POINTS if ufo.ufo_type == "large" else UFO_SMALL_POINTS
-                            player1.score += points
-                            debug_print(
-                                f"Player 1: UFO destroyed by boost! +{points} points")
+                    if not state.player1_dead and player1.lives > 0 and player1.check_collision(ufo):
+                        handle_ufo_player_collision(ufo, player1, 1, state, particle_system,
+                                                    p1_spawn_x, p1_spawn_y, player1, player2)
+                    if not state.player2_dead and player2.lives > 0 and player2.check_collision(ufo):
+                        handle_ufo_player_collision(ufo, player2, 2, state, particle_system,
+                                                    p2_spawn_x, p2_spawn_y, player1, player2)
 
-                            # Effects
-                            if screen_shake_cooldown <= 0:
-                                screen_shake = min(
-                                    screen_shake + 6, SCREEN_SHAKE_MAX)
-                                screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
-
-                            # Particles
-                            for i in range(10):
-                                angle = (360 / 10) * i + \
-                                    random.uniform(-15, 15)
-                                velocity = pygame.Vector2(0, 1).rotate(
-                                    angle) * PARTICLE_SPEED
-                                particle_system.emit(
-                                    ufo.position.x, ufo.position.y, velocity)
-
-                            # Guaranteed power-up
-                            powerup_types = [
-                                PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
-                            chosen_type = random.choice(powerup_types)
-                            PowerUp(ufo.position.x,
-                                    ufo.position.y, chosen_type)
-
-                            ufo.kill()
-                        else:
-                            # Normal collision - take damage
-                            if player1.take_damage():
-                                if shared_lives_enabled:
-                                    player1.lives -= 1
-                                    debug_print(
-                                        f"Player 1 hit by UFO! Shared lives remaining: {player1.lives}")
-                                    if player1.lives > 0:
-                                        player1.respawn(p1_spawn_x, p1_spawn_y)
-                                    else:
-                                        debug_print(
-                                            "Out of shared lives! Game over!")
-                                        player1_dead = True
-                                        player2_dead = True
-                                        game_over = True
-                                        game_over_retry_delay = 1.5
-                                        taunt_animation = TauntAnimation()
-                                else:
-                                    player1.lives -= 1
-                                    debug_print(
-                                        f"Player 1 hit by UFO! Lives remaining: {player1.lives}")
-                                    if player1.lives > 0:
-                                        player1.respawn(p1_spawn_x, p1_spawn_y)
-                                    else:
-                                        player1_dead = True
-                                        # Check if both players dead for game over
-                                        if player1_dead and player2_dead:
-                                            game_over = True
-                                            game_over_retry_delay = 1.5
-                                            taunt_animation = TauntAnimation()
-
-                    # Player 2 collision
-                    if not player2_dead and player2.lives > 0 and player2.check_collision(ufo):
-                        if player2.boost_active:
-                            points = UFO_LARGE_POINTS if ufo.ufo_type == "large" else UFO_SMALL_POINTS
-                            player2.score += points
-                            debug_print(
-                                f"Player 2: UFO destroyed by boost! +{points} points")
-
-                            if screen_shake_cooldown <= 0:
-                                screen_shake = min(
-                                    screen_shake + 6, SCREEN_SHAKE_MAX)
-                                screen_shake_cooldown = SCREEN_SHAKE_COOLDOWN
-
-                            for i in range(10):
-                                angle = (360 / 10) * i + \
-                                    random.uniform(-15, 15)
-                                velocity = pygame.Vector2(0, 1).rotate(
-                                    angle) * PARTICLE_SPEED
-                                particle_system.emit(
-                                    ufo.position.x, ufo.position.y, velocity)
-
-                            powerup_types = [
-                                PowerUp.RAPID_FIRE, PowerUp.SHIELD, PowerUp.MULTI_SHOT, PowerUp.SLOW_MOTION]
-                            chosen_type = random.choice(powerup_types)
-                            PowerUp(ufo.position.x,
-                                    ufo.position.y, chosen_type)
-
-                            ufo.kill()
-                        else:
-                            if player2.take_damage():
-                                if shared_lives_enabled:
-                                    player1.lives -= 1  # Shared lives use player1.lives
-                                    debug_print(
-                                        f"Player 2 hit by UFO! Shared lives remaining: {player1.lives}")
-                                    if player1.lives > 0:
-                                        player2.respawn(p2_spawn_x, p2_spawn_y)
-                                    else:
-                                        debug_print(
-                                            "Out of shared lives! Game over!")
-                                        player1_dead = True
-                                        player2_dead = True
-                                        game_over = True
-                                        game_over_retry_delay = 1.5
-                                        taunt_animation = TauntAnimation()
-                                else:
-                                    player2.lives -= 1
-                                    debug_print(
-                                        f"Player 2 hit by UFO! Lives remaining: {player2.lives}")
-                                    if player2.lives > 0:
-                                        player2.respawn(p2_spawn_x, p2_spawn_y)
-                                    else:
-                                        player2_dead = True
-                                        if player1_dead and player2_dead:
-                                            game_over = True
-                                            game_over_retry_delay = 1.5
-                                            taunt_animation = TauntAnimation()
-
-                # Check UFO shots hitting players
+                # UFO shots hitting players
                 for shot in list(shots):
-                    # Only check UFO shots (owner is a UFO)
                     if not isinstance(shot.owner, UFO):
                         continue
+                    if not state.player1_dead and player1.lives > 0 and player1.check_collision(shot):
+                        handle_ufo_shot_hitting_player(shot, player1, 1, state, p1_spawn_x, p1_spawn_y, player1, player2)
+                    if not state.player2_dead and player2.lives > 0 and player2.check_collision(shot):
+                        handle_ufo_shot_hitting_player(shot, player2, 2, state, p2_spawn_x, p2_spawn_y, player1, player2)
 
-                    # Check Player 1
-                    if not player1_dead and player1.lives > 0 and player1.check_collision(shot):
-                        if player1.take_damage():
-                            if shared_lives_enabled:
-                                player1.lives -= 1
-                                debug_print(
-                                    f"Player 1 hit by UFO shot! Shared lives remaining: {player1.lives}")
-                                if player1.lives > 0:
-                                    player1.respawn(p1_spawn_x, p1_spawn_y)
-                                else:
-                                    debug_print(
-                                        "Out of shared lives! Game over!")
-                                    player1_dead = True
-                                    player2_dead = True
-                                    game_over = True
-                                    game_over_retry_delay = 1.5
-                                    taunt_animation = TauntAnimation()
-                            else:
-                                player1.lives -= 1
-                                debug_print(
-                                    f"Player 1 hit by UFO shot! Lives remaining: {player1.lives}")
-                                if player1.lives > 0:
-                                    player1.respawn(p1_spawn_x, p1_spawn_y)
-                                else:
-                                    player1_dead = True
-                                    if player1_dead and player2_dead:
-                                        game_over = True
-                                        game_over_retry_delay = 1.5
-                                        taunt_animation = TauntAnimation()
-                        shot.kill()
-
-                    # Check Player 2
-                    if not player2_dead and player2.lives > 0 and player2.check_collision(shot):
-                        if player2.take_damage():
-                            if shared_lives_enabled:
-                                player1.lives -= 1
-                                debug_print(
-                                    f"Player 2 hit by UFO shot! Shared lives remaining: {player1.lives}")
-                                if player1.lives > 0:
-                                    player2.respawn(p2_spawn_x, p2_spawn_y)
-                                else:
-                                    debug_print(
-                                        "Out of shared lives! Game over!")
-                                    player1_dead = True
-                                    player2_dead = True
-                                    game_over = True
-                                    game_over_retry_delay = 1.5
-                                    taunt_animation = TauntAnimation()
-                            else:
-                                player2.lives -= 1
-                                debug_print(
-                                    f"Player 2 hit by UFO shot! Lives remaining: {player2.lives}")
-                                if player2.lives > 0:
-                                    player2.respawn(p2_spawn_x, p2_spawn_y)
-                                else:
-                                    player2_dead = True
-                                    if player1_dead and player2_dead:
-                                        game_over = True
-                                        game_over_retry_delay = 1.5
-                                        taunt_animation = TauntAnimation()
-                        shot.kill()
-
-                # Check for power-up collection for both players
+                # Power-up collection
                 for powerup in powerups:
                     collected = False
-
-                    # Player 1 collection (only if alive)
-                    if not player1_dead and player1.lives > 0 and player1.check_collision(powerup):
-                        if powerup.powerup_type == PowerUp.MEGA_POWER:
-                            player1.activate_mega_power()
-                            slow_motion_active = True
-                            slow_motion_timer = MEGA_POWER_DURATION
-                            debug_print("Player 1: MEGA POWER ACTIVATED!")
-                        elif powerup.powerup_type == PowerUp.RAPID_FIRE:
-                            player1.activate_rapid_fire()
-                            debug_print("Player 1: Rapid Fire!")
-                        elif powerup.powerup_type == PowerUp.SHIELD:
-                            player1.activate_shield()
-                            debug_print("Player 1: Shield!")
-                        elif powerup.powerup_type == PowerUp.MULTI_SHOT:
-                            player1.activate_multi_shot()
-                            debug_print("Player 1: Multi-Shot!")
-                        elif powerup.powerup_type == PowerUp.SLOW_MOTION:
-                            slow_motion_active = True
-                            slow_motion_timer = SLOW_MOTION_DURATION
-                            debug_print("Player 1: Slow Motion!")
-                        elif powerup.powerup_type == PowerUp.REVIVE:
-                            # Revive dead player
-                            if player2_dead and player2.lives == 0:
-                                player2.lives = 3  # Revive with 3 lives
-                                player2.respawn(p2_spawn_x, p2_spawn_y)
-                                player2_dead = False
-                                debug_print("Player 1 revived Player 2!")
-                            elif player1_dead:
-                                debug_print(
-                                    "Player 1 can't revive themselves!")
-                            else:
-                                debug_print("Player 1: No one to revive!")
+                    if not state.player1_dead and player1.lives > 0 and player1.check_collision(powerup):
+                        handle_powerup_collection(player1, 1, powerup, state, player2,
+                                                   p1_spawn_x, p1_spawn_y, p2_spawn_x, p2_spawn_y)
                         collected = True
+                    if not collected and not state.player2_dead and player2.lives > 0 and player2.check_collision(powerup):
+                        handle_powerup_collection(player2, 2, powerup, state, player1,
+                                                   p1_spawn_x, p1_spawn_y, p2_spawn_x, p2_spawn_y)
 
-                    # Player 2 collection (only if alive)
-                    if not collected and not player2_dead and player2.lives > 0 and player2.check_collision(powerup):
-                        if powerup.powerup_type == PowerUp.MEGA_POWER:
-                            player2.activate_mega_power()
-                            slow_motion_active = True
-                            slow_motion_timer = MEGA_POWER_DURATION
-                            debug_print("Player 2: MEGA POWER ACTIVATED!")
-                        elif powerup.powerup_type == PowerUp.RAPID_FIRE:
-                            player2.activate_rapid_fire()
-                            debug_print("Player 2: Rapid Fire!")
-                        elif powerup.powerup_type == PowerUp.SHIELD:
-                            player2.activate_shield()
-                            debug_print("Player 2: Shield!")
-                        elif powerup.powerup_type == PowerUp.MULTI_SHOT:
-                            player2.activate_multi_shot()
-                            debug_print("Player 2: Multi-Shot!")
-                        elif powerup.powerup_type == PowerUp.SLOW_MOTION:
-                            slow_motion_active = True
-                            slow_motion_timer = SLOW_MOTION_DURATION
-                            debug_print("Player 2: Slow Motion!")
-                        elif powerup.powerup_type == PowerUp.REVIVE:
-                            # Revive dead player
-                            if player1_dead and player1.lives == 0:
-                                player1.lives = 3  # Revive with 3 lives
-                                player1.respawn(p1_spawn_x, p1_spawn_y)
-                                player1_dead = False
-                                debug_print("Player 2 revived Player 1!")
-                            elif player2_dead:
-                                debug_print(
-                                    "Player 2 can't revive themselves!")
-                            else:
-                                debug_print("Player 2: No one to revive!")
-                        collected = True
-
-                    if collected:
-                        powerup.kill()
-
-                # Friendly fire - check if shots hit players
-                if friendly_fire_enabled:
-                    # OPTIMIZATION: Use list() instead of .copy() - creates tuple iterator, faster than set copy
+                # Friendly fire
+                if state.friendly_fire_enabled:
                     for shot in list(shots):
-                        # Check if shot hits Player 1 (skip if dead)
-                        if shot.owner != player1 and not player1_dead and player1.lives > 0 and player1.check_collision(shot):
-                            # Use take_damage to check if shield absorbed hit
-                            if player1.take_damage():
-                                debug_print(
-                                    f"Player 1 hit by Player {shot.owner.player_number}'s shot! Lives remaining: {player1.lives}")
-                                if player1.lives > 0:
-                                    # Respawn player 1
-                                    player1.respawn(p1_spawn_x, p1_spawn_y)
-                                else:
-                                    debug_print(
-                                        "Player 1 eliminated by friendly fire!")
-                                    # Check if both players are dead
-                                    if player2.lives <= 0:
-                                        debug_print("Game over!")
-                                        debug_print(
-                                            f"Player 1 Final Score: {player1.score}")
-                                        debug_print(
-                                            f"Player 2 Final Score: {player2.score}")
-                                        game_over = True
-                                        game_over_retry_delay = 1.5
-                                        taunt_animation = TauntAnimation()
-
-                                        # Check if scores qualify for high score board BEFORE saving
-                                        p1_is_high = is_high_score(
-                                            player1.score) if player1.score > 0 else False
-                                        p2_is_high = is_high_score(
-                                            player2.score) if player2.score > 0 else False
-
-                                        # Save high scores and store ranks
-                                        if player1.score > 0:
-                                            p1_highscore_rank = add_score(
-                                                "Player 1", player1.score)
-                                            if p1_highscore_rank:
-                                                debug_print(
-                                                    f"Player 1 achieved high score rank #{p1_highscore_rank}!")
-                                        else:
-                                            p1_highscore_rank = None
-
-                                        if player2.score > 0:
-                                            p2_highscore_rank = add_score(
-                                                "Player 2", player2.score)
-                                            if p2_highscore_rank:
-                                                debug_print(
-                                                    f"Player 2 achieved high score rank #{p2_highscore_rank}!")
-                                        else:
-                                            p2_highscore_rank = None
-
-                                        # Show high scores if either player got one
-                                        show_high_scores = (
-                                            p1_is_high or p2_is_high)
-                            else:
-                                debug_print(
-                                    "Player 1 shield absorbed friendly fire!")
-                            shot.kill()
+                        if shot.owner != player1 and not state.player1_dead and player1.lives > 0 and player1.check_collision(shot):
+                            handle_friendly_fire_shot(shot, player1, 1, state, p1_spawn_x, p1_spawn_y, player1, player2)
+                            continue
+                        if shot.owner != player2 and not state.player2_dead and player2.lives > 0 and player2.check_collision(shot):
+                            handle_friendly_fire_shot(shot, player2, 2, state, p2_spawn_x, p2_spawn_y, player1, player2)
                             continue
 
-                        # Check if shot hits Player 2 (skip if dead)
-                        if shot.owner != player2 and not player2_dead and player2.lives > 0 and player2.check_collision(shot):
-                            # Use take_damage to check if shield absorbed hit
-                            if player2.take_damage():
-                                debug_print(
-                                    f"Player 2 hit by Player {shot.owner.player_number}'s shot! Lives remaining: {player2.lives}")
-                                if player2.lives > 0:
-                                    # Respawn player 2
-                                    player2.respawn(p2_spawn_x, p2_spawn_y)
-                                else:
-                                    debug_print(
-                                        "Player 2 eliminated by friendly fire!")
-                                    # Check if both players are dead
-                                    if player1.lives <= 0:
-                                        debug_print("Game over!")
-                                        debug_print(
-                                            f"Player 1 Final Score: {player1.score}")
-                                        debug_print(
-                                            f"Player 2 Final Score: {player2.score}")
-                                        game_over = True
-                                        game_over_retry_delay = 1.5
-                                        taunt_animation = TauntAnimation()
-
-                                        # Check if scores qualify for high score board BEFORE saving
-                                        p1_is_high = is_high_score(
-                                            player1.score) if player1.score > 0 else False
-                                        p2_is_high = is_high_score(
-                                            player2.score) if player2.score > 0 else False
-
-                                        # Save high scores and store ranks
-                                        if player1.score > 0:
-                                            p1_highscore_rank = add_score(
-                                                "Player 1", player1.score)
-                                            if p1_highscore_rank:
-                                                debug_print(
-                                                    f"Player 1 achieved high score rank #{p1_highscore_rank}!")
-                                        else:
-                                            p1_highscore_rank = None
-
-                                        if player2.score > 0:
-                                            p2_highscore_rank = add_score(
-                                                "Player 2", player2.score)
-                                            if p2_highscore_rank:
-                                                debug_print(
-                                                    f"Player 2 achieved high score rank #{p2_highscore_rank}!")
-                                        else:
-                                            p2_highscore_rank = None
-
-                                        # Show high scores if either player got one
-                                        show_high_scores = (
-                                            p1_is_high or p2_is_high)
-                            else:
-                                debug_print(
-                                    "Player 2 shield absorbed friendly fire!")
-                            shot.kill()
-                            continue
-
-                # Friendly fire - check if laser beams hit players
-                if friendly_fire_enabled:
-                    # OPTIMIZATION: No need for .copy() - lasers aren't removed during iteration
                     for laser in laser_beams:
-                        # Check if laser hits Player 1 (skip if dead)
-                        if laser.owner != player1 and not player1_dead and player1.lives > 0 and laser.check_hit(player1):
-                            # Use take_damage to check if shield absorbed hit
-                            if player1.take_damage():
-                                debug_print(
-                                    f"Player 1 hit by Player {laser.owner.player_number}'s laser! Lives remaining: {player1.lives}")
-                                if player1.lives > 0:
-                                    # Respawn player 1
-                                    player1.respawn(p1_spawn_x, p1_spawn_y)
-                                else:
-                                    debug_print(
-                                        "Player 1 eliminated by laser!")
-                                    # Check if both players are dead
-                                    if player2.lives <= 0:
-                                        debug_print("Game over!")
-                                        debug_print(
-                                            f"Player 1 Final Score: {player1.score}")
-                                        debug_print(
-                                            f"Player 2 Final Score: {player2.score}")
-                                        game_over = True
-                                        game_over_retry_delay = 1.5
-                                        taunt_animation = TauntAnimation()
-
-                                        # Check if scores qualify for high score board BEFORE saving
-                                        p1_is_high = is_high_score(
-                                            player1.score) if player1.score > 0 else False
-                                        p2_is_high = is_high_score(
-                                            player2.score) if player2.score > 0 else False
-
-                                        # Save high scores and store ranks
-                                        if player1.score > 0:
-                                            p1_highscore_rank = add_score(
-                                                "Player 1", player1.score)
-                                            if p1_highscore_rank:
-                                                debug_print(
-                                                    f"Player 1 achieved high score rank #{p1_highscore_rank}!")
-                                        else:
-                                            p1_highscore_rank = None
-
-                                        if player2.score > 0:
-                                            p2_highscore_rank = add_score(
-                                                "Player 2", player2.score)
-                                            if p2_highscore_rank:
-                                                debug_print(
-                                                    f"Player 2 achieved high score rank #{p2_highscore_rank}!")
-                                        else:
-                                            p2_highscore_rank = None
-
-                                        # Show high scores if either player got one
-                                        show_high_scores = (
-                                            p1_is_high or p2_is_high)
-                            else:
-                                debug_print("Player 1 shield absorbed laser!")
-                            # Don't remove laser, it continues through
+                        if laser.owner != player1 and not state.player1_dead and player1.lives > 0 and laser.check_hit(player1):
+                            handle_friendly_fire_laser(laser, player1, 1, state, p1_spawn_x, p1_spawn_y, player1, player2)
+                            continue
+                        if laser.owner != player2 and not state.player2_dead and player2.lives > 0 and laser.check_hit(player2):
+                            handle_friendly_fire_laser(laser, player2, 2, state, p2_spawn_x, p2_spawn_y, player1, player2)
                             continue
 
-                        # Check if laser hits Player 2 (skip if dead)
-                        if laser.owner != player2 and not player2_dead and player2.lives > 0 and laser.check_hit(player2):
-                            # Use take_damage to check if shield absorbed hit
-                            if player2.take_damage():
-                                debug_print(
-                                    f"Player 2 hit by Player {laser.owner.player_number}'s laser! Lives remaining: {player2.lives}")
-                                if player2.lives > 0:
-                                    # Respawn player 2
-                                    player2.respawn(p2_spawn_x, p2_spawn_y)
-                                else:
-                                    debug_print(
-                                        "Player 2 eliminated by laser!")
-                                    # Check if both players are dead
-                                    if player1.lives <= 0:
-                                        debug_print("Game over!")
-                                        debug_print(
-                                            f"Player 1 Final Score: {player1.score}")
-                                        debug_print(
-                                            f"Player 2 Final Score: {player2.score}")
-                                        game_over = True
-                                        game_over_retry_delay = 1.5
-                                        taunt_animation = TauntAnimation()
-
-                                        # Check if scores qualify for high score board BEFORE saving
-                                        p1_is_high = is_high_score(
-                                            player1.score) if player1.score > 0 else False
-                                        p2_is_high = is_high_score(
-                                            player2.score) if player2.score > 0 else False
-
-                                        # Save high scores and store ranks
-                                        if player1.score > 0:
-                                            p1_highscore_rank = add_score(
-                                                "Player 1", player1.score)
-                                            if p1_highscore_rank:
-                                                debug_print(
-                                                    f"Player 1 achieved high score rank #{p1_highscore_rank}!")
-                                        else:
-                                            p1_highscore_rank = None
-
-                                        if player2.score > 0:
-                                            p2_highscore_rank = add_score(
-                                                "Player 2", player2.score)
-                                            if p2_highscore_rank:
-                                                debug_print(
-                                                    f"Player 2 achieved high score rank #{p2_highscore_rank}!")
-                                        else:
-                                            p2_highscore_rank = None
-
-                                        # Show high scores if either player got one
-                                        show_high_scores = (
-                                            p1_is_high or p2_is_high)
-                            else:
-                                debug_print("Player 2 shield absorbed laser!")
-                            # Don't remove laser, it continues through
-                            continue
-
-            # Calculate screen shake offset (regardless of pause state for drawing)
+            # Rendering
             shake_offset = (0, 0)
-            if screen_shake > 0:
+            if state.screen_shake > 0:
                 shake_offset = (
-                    random.uniform(-screen_shake, screen_shake),
-                    random.uniform(-screen_shake, screen_shake)
+                    random.uniform(-state.screen_shake, state.screen_shake),
+                    random.uniform(-state.screen_shake, state.screen_shake)
                 )
 
-            # Draw starfield first (background layer)
             if starfield:
                 starfield.draw(screen)
 
-            # Draw all sprites with shake offset
             for sprite in drawable:
                 sprite.draw(screen, shake_offset)
 
-            # OPTIMIZATION: Draw all particles with single batched blit
-            # (Draws to internal surface, then blits once instead of N draw calls)
             particle_system.draw(screen, shake_offset)
 
-            # Draw laser beams with shake offset
             for laser in laser_beams:
                 laser.draw(screen, shake_offset)
 
-            # Draw scores and lives for players
-            draw_scores(screen, player1, player2,
-                        shared_lives_enabled, current_player_count)
-            # Draw combo
-            draw_combo(screen, combo_count, combo_timer)
-            # Draw wave info if wave system is enabled, otherwise draw game timer
+            # HUD
+            hud.draw_scores(screen, player1, player2, state.shared_lives_enabled, state.current_player_count)
+            hud.draw_combo(screen, state.combo_count, state.combo_timer)
+
             if WAVE_SYSTEM_ENABLED:
-                draw_wave_info(screen, current_wave, wave_break_active, wave_break_timer,
-                               wave_duration_timer, WAVE_MAX_DURATION)
+                hud.draw_wave_info(screen, state.current_wave, state.wave_break_active,
+                                   state.wave_break_timer, state.wave_duration_timer, WAVE_MAX_DURATION)
             else:
-                draw_timer(screen, game_time)
-            # Draw kill streak notification if active
-            if active_streak_notification:
-                active_streak_notification.draw(screen)
-            # Draw power-up indicators for player 1 (left side)
-            draw_powerup_indicator(
-                screen, player1, slow_motion_active, slow_motion_timer)
+                hud.draw_timer(screen, state.game_time)
 
-            # Draw pause overlay if paused
-            if paused:
-                draw_pause_screen(screen, music_muted)
+            if state.active_streak_notification:
+                state.active_streak_notification.draw(screen)
+
+            hud.draw_powerup_indicator(screen, player1, state.slow_motion_active, state.slow_motion_timer)
+
+            if state.paused:
+                hud.draw_pause_screen(screen, state.music_muted)
+
+        # Game over
         else:
-            # Update game over retry delay timer
-            if game_over_retry_delay > 0:
-                game_over_retry_delay -= dt
-                if game_over_retry_delay < 0:
-                    game_over_retry_delay = 0
+            if state.game_over_retry_delay > 0:
+                state.game_over_retry_delay -= dt
+                if state.game_over_retry_delay < 0:
+                    state.game_over_retry_delay = 0
 
-            # Draw frozen game state (no shake on game over)
             shake_offset = (0, 0)
 
-            # Draw starfield
             if starfield:
                 starfield.draw(screen)
 
             for sprite in drawable:
                 sprite.draw(screen, shake_offset)
 
-            # Draw particles even when game is over (using optimized pooled system)
             particle_system.update(dt)
             particle_system.draw(screen, shake_offset)
 
-            # Draw scores on frozen game
-            draw_scores(screen, player1, player2,
-                        shared_lives_enabled, current_player_count)
-            # Draw power-up indicators on frozen game
-            draw_powerup_indicator(
-                screen, player1, slow_motion_active, slow_motion_timer)
+            hud.draw_scores(screen, player1, player2, state.shared_lives_enabled, state.current_player_count)
+            hud.draw_powerup_indicator(screen, player1, state.slow_motion_active, state.slow_motion_timer)
 
-            # Draw game over screen (pass retry delay and high scores flag)
-            button_rect = draw_game_over_screen(
-                screen, player1, player2, game_over_retry_delay, show_high_scores, p1_highscore_rank, p2_highscore_rank)
+            state.button_rect = hud.draw_game_over_screen(
+                screen, player1, player2, state.game_over_retry_delay,
+                state.show_high_scores, state.p1_highscore_rank, state.p2_highscore_rank)
 
-            # Update and draw taunt animation LAST (so it's on top)
-            if taunt_animation:
-                if not taunt_animation.update(dt):
-                    taunt_animation = None
+            if state.taunt_animation:
+                if not state.taunt_animation.update(dt):
+                    state.taunt_animation = None
                 else:
-                    taunt_animation.draw(screen)
+                    state.taunt_animation.draw(screen)
 
-        pygame.display.flip()  # Update the display
-        dt = clock.tick(60) / 1000  # Limit the frame rate to 60 FPS
-        await asyncio.sleep(0)  # Allow browser to process events
+        pygame.display.flip()
+        dt = clock.tick(60) / 1000
+        await asyncio.sleep(0)
 
 
 if __name__ == "__main__":

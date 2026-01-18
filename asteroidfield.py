@@ -16,6 +16,7 @@ def debug_print(*args, **kwargs):
 
 
 class AsteroidField(pygame.sprite.Sprite):
+    containers: tuple = ()
     edges = [
         [
             pygame.Vector2(1, 0),

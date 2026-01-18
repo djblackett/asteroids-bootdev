@@ -4,7 +4,7 @@ import pygame
 
 
 class CircleShape(pygame.sprite.Sprite):
-    containers = ()
+    containers: tuple = ()
 
     def __init__(self, x, y, radius):
         # we will be using this later

@@ -26,15 +26,36 @@ class LaserBeam:
         # Direction vector
         direction_vec = pygame.Vector2(0, 1).rotate(self.direction)
 
-        # Start from player position and extend to screen edge
-        # We need to find the intersection with screen boundaries
-        # Use a large multiplier to ensure we reach the edge
-        max_distance = max(SCREEN_WIDTH, SCREEN_HEIGHT) * 2
-        end = self.start_pos + direction_vec * max_distance
+        # Find intersection with screen boundaries
+        # We need to find the smallest positive t such that start + t*dir hits an edge
+        t_values = []
 
-        # Clamp to screen boundaries
-        end.x = max(0, min(SCREEN_WIDTH, end.x))
-        end.y = max(0, min(SCREEN_HEIGHT, end.y))
+        # Check each boundary
+        if direction_vec.x > 0:  # Moving right
+            t = (SCREEN_WIDTH - self.start_pos.x) / direction_vec.x
+            if t > 0:
+                t_values.append(t)
+        elif direction_vec.x < 0:  # Moving left
+            t = -self.start_pos.x / direction_vec.x
+            if t > 0:
+                t_values.append(t)
+
+        if direction_vec.y > 0:  # Moving down
+            t = (SCREEN_HEIGHT - self.start_pos.y) / direction_vec.y
+            if t > 0:
+                t_values.append(t)
+        elif direction_vec.y < 0:  # Moving up
+            t = -self.start_pos.y / direction_vec.y
+            if t > 0:
+                t_values.append(t)
+
+        # Use the smallest t to find the first edge intersection
+        if t_values:
+            t_min = min(t_values)
+            end = self.start_pos + direction_vec * t_min
+        else:
+            # Fallback: no intersection found (shouldn't happen)
+            end = self.start_pos + direction_vec * max(SCREEN_WIDTH, SCREEN_HEIGHT)
 
         return end
 

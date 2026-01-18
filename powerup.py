@@ -12,7 +12,7 @@ class PowerUp(CircleShape):
     SLOW_MOTION = "slow_motion"
     MEGA_POWER = "mega_power"
     REVIVE = "revive"
-    containers = None
+    containers: tuple = ()
 
     def __init__(self, x, y, powerup_type, custom_lifetime=None):
         super().__init__(x, y, 15)  # Power-ups have radius of 15

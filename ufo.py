@@ -15,7 +15,7 @@ class UFO(CircleShape):
     """Enemy UFO that flies across the screen and shoots at players"""
 
     # Will be set in main.py
-    containers = None
+    containers: tuple = ()
 
     # OPTIMIZATION: Cache unit vector for rotation calculations
     _UNIT_VECTOR = pygame.Vector2(0, 1)
