@@ -27,6 +27,7 @@ _next_shoot_channel = 0  # Round-robin index for shoot channels
 _music_start_time = 0
 _music_offset = 0  # Offset in seconds from when music started
 
+
 def add_reverb(sound, delay_ms=50, decay=0.3, num_echoes=3):
     """
     Add a simple reverb effect to a sound by creating delayed echoes.
@@ -46,7 +47,8 @@ def add_reverb(sound, delay_ms=50, decay=0.3, num_echoes=3):
 
     # Create output array with extra space for echoes
     total_length = len(sound_array) + (delay_samples * num_echoes)
-    output = np.zeros((total_length, sound_array.shape[1] if len(sound_array.shape) > 1 else 1), dtype=sound_array.dtype)
+    output = np.zeros((total_length, sound_array.shape[1] if len(
+        sound_array.shape) > 1 else 1), dtype=sound_array.dtype)
 
     # Handle mono/stereo
     if len(sound_array.shape) == 1:
@@ -62,7 +64,8 @@ def add_reverb(sound, delay_ms=50, decay=0.3, num_echoes=3):
         echo_end = min(echo_start + len(sound_array), total_length)
         echo_length = echo_end - echo_start
 
-        output[echo_start:echo_end] += (sound_array[:echo_length] * echo_volume).astype(sound_array.dtype)
+        output[echo_start:echo_end] += (sound_array[:echo_length]
+                                        * echo_volume).astype(sound_array.dtype)
 
     # Normalize to prevent clipping
     max_val = np.abs(output).max()
@@ -71,6 +74,7 @@ def add_reverb(sound, delay_ms=50, decay=0.3, num_echoes=3):
 
     # Convert back to sound
     return pygame.sndarray.make_sound(output)
+
 
 def change_pitch(sound, pitch_factor):
     """
@@ -91,15 +95,18 @@ def change_pitch(sound, pitch_factor):
     new_length = int(original_length / pitch_factor)
 
     if is_stereo:
-        new_array = np.zeros((new_length, sound_array.shape[1]), dtype=sound_array.dtype)
+        new_array = np.zeros(
+            (new_length, sound_array.shape[1]), dtype=sound_array.dtype)
         for channel in range(sound_array.shape[1]):
             indices = np.linspace(0, original_length - 1, new_length)
-            new_array[:, channel] = np.interp(indices, np.arange(original_length), sound_array[:, channel])
+            new_array[:, channel] = np.interp(indices, np.arange(
+                original_length), sound_array[:, channel])
     else:
         indices = np.linspace(0, original_length - 1, new_length)
         new_array = np.interp(indices, np.arange(original_length), sound_array)
 
     return pygame.sndarray.make_sound(new_array.astype(sound_array.dtype))
+
 
 def debug_print(*args, **kwargs):
     """Print only on desktop, not on web."""
@@ -129,17 +136,22 @@ def init_sounds():
             ]
 
             # Load pre-processed explosion sounds
-            _explosion_sounds['large'] = pygame.mixer.Sound("./sound-effects/processed/explosion_large.wav")
-            _explosion_sounds['medium'] = pygame.mixer.Sound("./sound-effects/processed/explosion_medium.wav")
-            _explosion_sounds['small'] = pygame.mixer.Sound("./sound-effects/processed/explosion_small.wav")
+            _explosion_sounds['large'] = pygame.mixer.Sound(
+                "./sound-effects/processed/explosion_large.wav")
+            _explosion_sounds['medium'] = pygame.mixer.Sound(
+                "./sound-effects/processed/explosion_medium.wav")
+            _explosion_sounds['small'] = pygame.mixer.Sound(
+                "./sound-effects/processed/explosion_small.wav")
             debug_print("Loaded pre-processed sounds successfully!")
         except Exception as e:
             # Fallback to original sounds if processed files not found
-            debug_print(f"Could not load processed sounds ({e}), using originals...")
+            debug_print(
+                f"Could not load processed sounds ({e}), using originals...")
             original_shoot = pygame.mixer.Sound("./sound-effects/shoot_01.wav")
             _shoot_sounds = [original_shoot]
 
-            original_explosion = pygame.mixer.Sound("./sound-effects/big-explosion.wav")
+            original_explosion = pygame.mixer.Sound(
+                "./sound-effects/big-explosion.wav")
             _explosion_sounds['large'] = original_explosion
             _explosion_sounds['medium'] = original_explosion
             _explosion_sounds['small'] = original_explosion
@@ -150,21 +162,32 @@ def init_sounds():
 
         # Load and process shooting sounds
         original_shoot = pygame.mixer.Sound("./sound-effects/shoot_01.wav")
-        shoot_reverb = add_reverb(original_shoot, delay_ms=40, decay=0.25, num_echoes=4)
+        shoot_reverb = add_reverb(
+            original_shoot, delay_ms=40, decay=0.25, num_echoes=4)
 
-        # Pre-generate 3 pitch variations
+        # Pre-generate pitch variations
         _shoot_sounds = [
             change_pitch(shoot_reverb, 0.96),
             change_pitch(shoot_reverb, 1.0),
             change_pitch(shoot_reverb, 1.04),
+            change_pitch(shoot_reverb, 0.98),
+            change_pitch(shoot_reverb, 1.06),
+            change_pitch(shoot_reverb, 1.02),
         ]
 
-        # Load and process explosion sounds
-        original_explosion = pygame.mixer.Sound("./sound-effects/big-explosion.wav")
+        for sound in _shoot_sounds:
+            sound.set_volume(0.4)  # Experimenting with volume.
 
-        _explosion_sounds['large'] = change_pitch(original_explosion, 0.4)   # Very deep boom
-        _explosion_sounds['medium'] = change_pitch(original_explosion, 1.0)  # Original
-        _explosion_sounds['small'] = change_pitch(original_explosion, 2.2)   # Very high crack
+        # Load and process explosion sounds
+        original_explosion = pygame.mixer.Sound(
+            "./sound-effects/big-explosion.wav")
+
+        _explosion_sounds['large'] = change_pitch(
+            original_explosion, 0.4)   # Very deep boom
+        _explosion_sounds['medium'] = change_pitch(
+            original_explosion, 1.0)  # Original
+        _explosion_sounds['small'] = change_pitch(
+            original_explosion, 2.2)   # Very high crack
 
     # Load laser beam sound (no processing needed)
     _laser_sound = pygame.mixer.Sound("./sound-effects/laser.ogg")
@@ -187,10 +210,12 @@ def init_sounds():
     _sounds_loaded = True
     debug_print("Sounds loaded!")
 
+
 def _ensure_sounds_loaded():
     """Check if sounds are loaded, and load them if not."""
     if not _sounds_loaded:
         init_sounds()
+
 
 def play_shoot_sound():
     """
@@ -215,6 +240,7 @@ def play_shoot_sound():
         # Fallback to default behavior if channels not initialized
         sound.play()
 
+
 def play_laser_sound():
     """Play the laser beam sound effect."""
     _ensure_sounds_loaded()
@@ -222,12 +248,14 @@ def play_laser_sound():
     if _laser_sound:
         _laser_sound.play()
 
+
 def play_boost_sound():
     """Play the boost sound effect."""
     _ensure_sounds_loaded()
 
     if _boost_sound:
         _boost_sound.play()
+
 
 def play_explosion_sound(asteroid_radius):
     """
@@ -270,6 +298,7 @@ def play_explosion_sound(asteroid_radius):
 
     sound.play()
 
+
 def start_background_music():
     """
     Start playing the background music on loop.
@@ -277,26 +306,32 @@ def start_background_music():
     """
     global _music_start_time, _music_offset
     pygame.mixer.music.load("./music/retro-bgmusic.ogg")
-    pygame.mixer.music.set_volume(0.5)  # Set volume to 50% so it doesn't overpower sound effects
+    # Set volume to 50% so it doesn't overpower sound effects
+    pygame.mixer.music.set_volume(0.5)
     pygame.mixer.music.play(-1)  # -1 means loop indefinitely
     _music_start_time = time.time()
     _music_offset = 0
+
 
 def stop_background_music():
     """Stop the background music."""
     pygame.mixer.music.stop()
 
+
 def is_music_playing():
     """Check if music is currently playing."""
     return pygame.mixer.music.get_busy()
+
 
 def pause_music():
     """Pause the background music."""
     pygame.mixer.music.pause()
 
+
 def unpause_music():
     """Unpause the background music."""
     pygame.mixer.music.unpause()
+
 
 def set_music_speed(speed_multiplier):
     """
@@ -336,7 +371,8 @@ def set_music_speed(speed_multiplier):
 
         # Reinitialize mixer with new frequency (this also pitch shifts)
         pygame.mixer.quit()
-        pygame.mixer.init(frequency=new_freq, size=current_size, channels=current_channels, buffer=512)
+        pygame.mixer.init(frequency=new_freq, size=current_size,
+                          channels=current_channels, buffer=512)
         pygame.mixer.set_num_channels(32)  # Restore channel count after reinit
 
         # Reload music and start from calculated position
@@ -355,6 +391,7 @@ def set_music_speed(speed_multiplier):
         # Reload sound effects since we changed the mixer
         _sounds_loaded = False
         init_sounds()
+
 
 def reset_music_speed():
     """Reset music to normal playback speed and pitch."""
