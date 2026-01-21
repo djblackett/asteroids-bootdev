@@ -189,6 +189,10 @@ def update_entities(state, dt, updatable, shots, asteroids, powerups, asteroid_f
     for powerup in powerups:
         powerup.update(dt)
 
+    # Update UFOs
+    for ufo in ufos:
+        ufo.update(dt)
+
 
 def process_collisions(state, player1, player2, shots, asteroids, powerups, ufos,
                        laser_beams, collision_grid, particle_system, dt):

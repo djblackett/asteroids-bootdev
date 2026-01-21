@@ -16,6 +16,7 @@ _shoot_sounds = []
 _explosion_sounds = {}
 _laser_sound = None
 _boost_sound = None
+_player_death_sound = None
 
 # AUDIO OPTIMIZATION: Dedicated channels for high-priority sounds
 # This prevents important sounds (like shooting) from being cut off
@@ -116,7 +117,7 @@ def debug_print(*args, **kwargs):
 
 def init_sounds():
     """Load and process sounds after pygame is initialized. Call this explicitly from main."""
-    global _sounds_loaded, _shoot_sounds, _explosion_sounds, _laser_sound, _boost_sound
+    global _sounds_loaded, _shoot_sounds, _explosion_sounds, _laser_sound, _boost_sound, _player_death_sound
 
     if _sounds_loaded:
         return
@@ -130,28 +131,28 @@ def init_sounds():
         try:
             # Try to load pre-processed shooting sound variations
             _shoot_sounds = [
-                pygame.mixer.Sound("./sound-effects/processed/shoot_low.wav"),
-                pygame.mixer.Sound("./sound-effects/processed/shoot_mid.wav"),
-                pygame.mixer.Sound("./sound-effects/processed/shoot_high.wav"),
+                pygame.mixer.Sound("./sound-effects/processed/shoot_low.ogg"),
+                pygame.mixer.Sound("./sound-effects/processed/shoot_mid.ogg"),
+                pygame.mixer.Sound("./sound-effects/processed/shoot_high.ogg"),
             ]
 
             # Load pre-processed explosion sounds
             _explosion_sounds['large'] = pygame.mixer.Sound(
-                "./sound-effects/processed/explosion_large.wav")
+                "./sound-effects/processed/explosion_large.ogg")
             _explosion_sounds['medium'] = pygame.mixer.Sound(
-                "./sound-effects/processed/explosion_medium.wav")
+                "./sound-effects/processed/explosion_medium.ogg")
             _explosion_sounds['small'] = pygame.mixer.Sound(
-                "./sound-effects/processed/explosion_small.wav")
+                "./sound-effects/processed/explosion_small.ogg")
             debug_print("Loaded pre-processed sounds successfully!")
         except Exception as e:
             # Fallback to original sounds if processed files not found
             debug_print(
                 f"Could not load processed sounds ({e}), using originals...")
-            original_shoot = pygame.mixer.Sound("./sound-effects/shoot_01.wav")
+            original_shoot = pygame.mixer.Sound("./sound-effects/shoot_01.ogg")
             _shoot_sounds = [original_shoot]
 
             original_explosion = pygame.mixer.Sound(
-                "./sound-effects/big-explosion.wav")
+                "./sound-effects/big-explosion.ogg")
             _explosion_sounds['large'] = original_explosion
             _explosion_sounds['medium'] = original_explosion
             _explosion_sounds['small'] = original_explosion
@@ -161,7 +162,7 @@ def init_sounds():
         debug_print("Desktop mode: loading sounds with processing...")
 
         # Load and process shooting sounds
-        original_shoot = pygame.mixer.Sound("./sound-effects/shoot_01.wav")
+        original_shoot = pygame.mixer.Sound("./sound-effects/shoot_01.ogg")
         shoot_reverb = add_reverb(
             original_shoot, delay_ms=40, decay=0.25, num_echoes=4)
 
@@ -180,7 +181,7 @@ def init_sounds():
 
         # Load and process explosion sounds
         original_explosion = pygame.mixer.Sound(
-            "./sound-effects/big-explosion.wav")
+            "./sound-effects/big-explosion.ogg")
 
         _explosion_sounds['large'] = change_pitch(
             original_explosion, 0.4)   # Very deep boom
@@ -195,7 +196,13 @@ def init_sounds():
 
     # Load boost sound (no processing needed)
     _boost_sound = pygame.mixer.Sound("./sound-effects/boost-woosh.ogg")
-    _boost_sound.set_volume(0.6)  # Set volume to 60%
+    _boost_sound.set_volume(2)  # Set volume to 60%
+
+    # Load player death sound
+    _player_death_sound = pygame.mixer.Sound(
+        "./sound-effects/player-death.ogg")
+
+    _player_death_sound.set_volume(2)
 
     # AUDIO OPTIMIZATION: Reserve dedicated channels for shoot sounds (desktop only)
     # Channels 0-5 are reserved for shooting (most frequent sound)
@@ -255,6 +262,14 @@ def play_boost_sound():
 
     if _boost_sound:
         _boost_sound.play()
+
+
+def play_player_death_sound():
+    """Play the player death sound effect."""
+    _ensure_sounds_loaded()
+
+    if _player_death_sound:
+        _player_death_sound.play()
 
 
 def play_explosion_sound(asteroid_radius):

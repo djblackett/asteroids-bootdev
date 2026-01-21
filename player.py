@@ -9,7 +9,7 @@ from constants import (PLAYER_RADIUS, PLAYER_SHOOT_COOLDOWN, PLAYER_SHOOT_SPEED,
                        LASER_BEAM_MAX_SHOTS, LASER_BEAM_COOLDOWN,
                        BOOST_DURATION, BOOST_SPEED_MULTIPLIER, BOOST_COOLDOWN)
 from shot import Shot
-from soundeffects import play_shoot_sound, play_laser_sound, play_boost_sound
+from soundeffects import play_player_death_sound, play_shoot_sound, play_laser_sound, play_boost_sound
 import frametime  # OPTIMIZATION: Use cached get_ticks() per frame
 import colorutils  # OPTIMIZATION: Pre-computed rainbow colors
 
@@ -453,6 +453,7 @@ class Player(CircleShape):
 
         # Lose a life
         self.lives -= 1
+        play_player_death_sound()
         return True  # Player took damage
 
     def respawn(self, x, y):

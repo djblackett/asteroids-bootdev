@@ -208,9 +208,13 @@ UFO_SMALL_WAVE_START = 5  # Small UFOs start appearing from wave 5 onwards
 UFO_SHOT_SPEED = 350  # pixels per second
 UFO_SHOT_RADIUS = 6  # slightly larger than player shots
 
-# UFO Spawn Timing
+# UFO Spawn Timing (Wave Mode)
 UFO_SPAWN_MIN_DELAY = 8.0  # minimum seconds into wave before UFO can spawn
 UFO_SPAWN_MAX_DELAY = 15.0  # maximum seconds into wave before UFO spawns
+
+# UFO Spawn Timing (Continuous Mode)
+UFO_CONTINUOUS_SPAWN_TIME = 5.0  # seconds into gameplay before first UFO spawns
+UFO_CONTINUOUS_RESPAWN_TIME = 15.0  # seconds between UFO spawns after the first
 
 # Debug Mode - Skip config/start screens for instant gameplay testing
 # Set to True to immediately start the game with default settings

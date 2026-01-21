@@ -54,6 +54,9 @@ class AsteroidField(pygame.sprite.Sprite):
         self.ufo_spawn_scheduled = False
         self.ufo_spawn_delay = 0.0
         self.players = []  # Will be set by main.py
+        # Continuous mode UFO spawning
+        self.gameplay_timer = 0.0  # Total gameplay time for continuous mode
+        self.next_ufo_spawn_time = UFO_CONTINUOUS_SPAWN_TIME  # First UFO spawn time
 
     def spawn(self, radius, position, velocity):
         asteroid = Asteroid(position.x, position.y, radius)
@@ -95,10 +98,19 @@ class AsteroidField(pygame.sprite.Sprite):
         debug_print(f"UFO spawned! Type: {ufo_type}")
 
     def update(self, dt, spawn_rate=None):
-        # Update UFO spawn timer if scheduled
+        # Update UFO spawn timer if scheduled (wave mode)
         if self.ufo_spawn_scheduled:
             self.ufo_spawn_timer += dt
             # Timer is checked in main.py, flag is cleared there after spawning
+
+        # Continuous mode UFO spawning - track gameplay time and schedule spawns
+        if not self.wave_mode and UFO_ENABLED:
+            self.gameplay_timer += dt
+            if not self.ufo_spawn_scheduled and self.gameplay_timer >= self.next_ufo_spawn_time:
+                self.ufo_spawn_scheduled = True
+                self.ufo_spawn_timer = self.ufo_spawn_delay  # Ready to spawn immediately
+                self.next_ufo_spawn_time = self.gameplay_timer + UFO_CONTINUOUS_RESPAWN_TIME
+                debug_print(f"[UFO] Scheduling spawn at {self.gameplay_timer:.1f}s! Next at {self.next_ufo_spawn_time:.1f}s")
 
         # Use provided spawn_rate or fall back to constant
         current_spawn_rate = spawn_rate if spawn_rate is not None else ASTEROID_SPAWN_RATE

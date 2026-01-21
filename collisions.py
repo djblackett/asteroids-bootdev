@@ -185,17 +185,20 @@ def handle_player_asteroid_collision(player, player_num, asteroid, state, partic
                             effect_info['position'].y, effect_info['particle_count'])
         return True
 
-    # Player took damage
+    # Player took damage (take_damage() already decremented player.lives)
     if state.shared_lives_enabled:
-        # Shared lives mode - deduct from pool (always player1.lives)
-        # We need to access player1's lives for shared mode
-        lives_holder = player if player_num == 1 else other_player
+        # Shared lives mode - both players share player1's life pool
+        # take_damage() decremented the hitting player's lives, but for shared mode
+        # we need to track from player1's pool. Since take_damage already decremented
+        # the hitting player, we need to sync: restore hitting player's lives and
+        # decrement player1's lives instead (if player2 was hit)
         if player_num == 2:
-            # Player 2 uses player 1's lives in shared mode
-            other_player.lives -= 1
+            # Undo the decrement to player2, decrement player1 instead
+            player.lives += 1  # Restore player2's lives
+            other_player.lives -= 1  # Decrement shared pool (player1)
             lives_remaining = other_player.lives
         else:
-            player.lives -= 1
+            # Player1 was hit, take_damage already decremented correctly
             lives_remaining = player.lives
 
         debug_print(f"Player {player_num} hit! Shared lives remaining: {lives_remaining}")
@@ -211,7 +214,7 @@ def handle_player_asteroid_collision(player, player_num, asteroid, state, partic
                             other_player if player_num == 1 else player)
             return False
     else:
-        # Individual lives mode
+        # Individual lives mode (take_damage() already decremented)
         debug_print(f"Player {player_num} hit! Lives remaining: {player.lives}")
         if player.lives > 0:
             player.respawn(spawn_x, spawn_y)
@@ -240,13 +243,17 @@ def handle_shot_asteroid_collisions(shots, collision_grid, state, particle_syste
     for shot in list(shots):
         for asteroid in collision_grid.get_nearby(shot):
             if asteroid.check_collision(shot):
-                # Get the owner for points
-                if shot.owner:
+                # Get the owner for points - skip UFO shots (they don't score points)
+                if shot.owner and hasattr(shot.owner, 'player_number'):
                     player_name = f"Player {shot.owner.player_number}"
+                    points = handle_asteroid_destruction(asteroid, state, particle_system, shot.owner)
+                elif shot.owner:
+                    # UFO shot hit asteroid - no points, just destroy
+                    player_name = "UFO"
+                    points = handle_asteroid_destruction(asteroid, state, particle_system, None)
                 else:
                     player_name = "Unknown"
-
-                points = handle_asteroid_destruction(asteroid, state, particle_system, shot.owner)
+                    points = handle_asteroid_destruction(asteroid, state, particle_system, None)
 
                 if state.combo_count > 1:
                     debug_print(f"{player_name}: +{points} points! ({state.combo_count}x COMBO)")
@@ -341,7 +348,10 @@ def handle_ufo_player_collision(ufo, player, player_num, state, particle_system,
         return True  # Shield absorbed
 
     if state.shared_lives_enabled:
-        player1.lives -= 1
+        # Shared lives mode - sync to player1's pool
+        if player_num == 2:
+            player.lives += 1  # Restore player2's lives
+            player1.lives -= 1  # Decrement shared pool
         debug_print(f"Player {player_num} hit by UFO! Shared lives remaining: {player1.lives}")
         if player1.lives > 0:
             player.respawn(spawn_x, spawn_y)
@@ -352,7 +362,6 @@ def handle_ufo_player_collision(ufo, player, player_num, state, particle_system,
             handle_game_over(state, player1, player2)
             return False
     else:
-        player.lives -= 1
         debug_print(f"Player {player_num} hit by UFO! Lives remaining: {player.lives}")
         if player.lives > 0:
             player.respawn(spawn_x, spawn_y)
@@ -372,7 +381,10 @@ def handle_ufo_shot_hitting_player(shot, player, player_num, state, spawn_x, spa
         return True  # Shield absorbed
 
     if state.shared_lives_enabled:
-        player1.lives -= 1
+        # Shared lives mode - sync to player1's pool
+        if player_num == 2:
+            player.lives += 1  # Restore player2's lives
+            player1.lives -= 1  # Decrement shared pool
         debug_print(f"Player {player_num} hit by UFO shot! Shared lives remaining: {player1.lives}")
         if player1.lives > 0:
             player.respawn(spawn_x, spawn_y)
@@ -384,7 +396,6 @@ def handle_ufo_shot_hitting_player(shot, player, player_num, state, spawn_x, spa
             shot.kill()
             return False
     else:
-        player.lives -= 1
         debug_print(f"Player {player_num} hit by UFO shot! Lives remaining: {player.lives}")
         if player.lives > 0:
             player.respawn(spawn_x, spawn_y)
