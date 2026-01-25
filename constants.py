@@ -121,10 +121,10 @@ DEATH_TAUNTS = [
     "rekt",
     "yikes...",
     "even the asteroids are laughing",
-    "controllers are on sale",
+    # "controllers are on sale",
     "Have you tried the tutorial?",
     "Try again when you're sober",
-    "Suck my fat one"
+    # "Suck my fat one"
 ]
 
 # Death taunt animation
