@@ -218,4 +218,4 @@ UFO_CONTINUOUS_RESPAWN_TIME = 15.0  # seconds between UFO spawns after the first
 
 # Debug Mode - Skip config/start screens for instant gameplay testing
 # Set to True to immediately start the game with default settings
-GAMEPLAY_DEBUG = True
+GAMEPLAY_DEBUG = False
