@@ -47,3 +47,28 @@ def test_get_top_scores_returns_requested_count(highscores_file):
     top = get_top_scores(3)
     assert len(top) == 3
     assert top[0]["score"] >= top[1]["score"] >= top[2]["score"]
+
+
+def test_load_highscores_returns_empty_for_missing_file(highscores_file):
+    assert load_highscores() == []
+
+
+def test_load_highscores_returns_empty_for_corrupt_file(highscores_file):
+    highscores_file.write_text("{ this is : bad }")
+    assert load_highscores() == []
+
+
+def test_save_highscores_handles_io_error(highscores_file, monkeypatch):
+    captured = {}
+
+    def fake_open(*args, **kwargs):
+        raise IOError("boom")
+
+    def fake_debug_print(*args, **kwargs):
+        captured["called"] = True
+
+    monkeypatch.setattr("builtins.open", fake_open)
+    monkeypatch.setattr(highscores, "debug_print", fake_debug_print)
+
+    highscores.save_highscores([{"player": "P1", "score": 10}])
+    assert captured.get("called") is True

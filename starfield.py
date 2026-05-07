@@ -16,7 +16,7 @@ from constants import SCREEN_WIDTH, SCREEN_HEIGHT, STARFIELD_PARALLAX_STRENGTH
 class Star:
     """A single star in the starfield"""
     # OPTIMIZATION: Use __slots__ to reduce memory overhead per star instance
-    __slots__ = ['x', 'y', 'size', 'color', 'parallax']
+    __slots__ = ['x', 'y', 'size', 'color', 'parallax', 'layer']
 
     # Pre-computed parallax factors by layer
     PARALLAX_FACTORS = (0.1, 0.3, 0.5)  # Background, mid, foreground
@@ -25,6 +25,7 @@ class Star:
         self.x = x
         self.y = y
         self.size = size
+        self.layer = layer  # Exposed for ordering tests/debugging
         # OPTIMIZATION: Pre-compute color tuple instead of creating each frame
         self.color = (brightness, brightness, brightness)
         # OPTIMIZATION: Pre-compute parallax factor instead of list lookup each frame

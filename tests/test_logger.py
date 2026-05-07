@@ -49,3 +49,33 @@ def test_log_state_records_sprite_snapshot(tmp_path, monkeypatch):
     entry = json.loads((tmp_path / "game_state.jsonl").read_text().strip())
     assert entry["screen_size"] == [30, 20]
     assert entry["asteroids"]["count"] == 1
+
+
+def test_log_event_swallows_io_errors(monkeypatch):
+    def fake_open(*args, **kwargs):
+        raise OSError("boom")
+
+    monkeypatch.setattr("builtins.open", fake_open)
+    logger.log_event("test-error")
+
+
+def test_log_state_swallows_io_errors(monkeypatch):
+    def fake_open(*args, **kwargs):
+        raise OSError("boom")
+
+    monkeypatch.setattr("builtins.open", fake_open)
+    logger._frame_count = logger._FPS - 1
+
+    def call_log_state():
+        screen = pygame.Surface((10, 10))
+        sprites = pygame.sprite.Group()
+
+        class Dummy(pygame.sprite.Sprite):
+            def __init__(self):
+                super().__init__(sprites)
+                self.position = pygame.Vector2()
+
+        Dummy()
+        logger.log_state()
+
+    call_log_state()

@@ -1,0 +1,27 @@
+[
+  {
+    "player": "Player4",
+    "score": 200,
+    "date": "2026-01-25 19:57:45"
+  },
+  {
+    "player": "Player3",
+    "score": 150,
+    "date": "2026-01-25 19:57:45"
+  },
+  {
+    "player": "Player2",
+    "score": 100,
+    "date": "2026-01-25 19:57:45"
+  },
+  {
+    "player": "Player1",
+    "score": 50,
+    "date": "2026-01-25 19:57:45"
+  },
+  {
+    "player": "Player0",
+    "score": 0,
+    "date": "2026-01-25 19:57:45"
+  }
+]
