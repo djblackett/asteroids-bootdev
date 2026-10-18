@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import collisions
 from constants import (
+    ASTEROID_ARCHETYPE_ARMORED,
     COMBO_TIMEOUT,
     KILL_STREAK_MILESTONES,
     SCREEN_SHAKE_COOLDOWN,
@@ -85,6 +86,95 @@ def test_handle_asteroid_destruction_awards_points_and_triggers_effects(monkeypa
     assert state.combo_timer == COMBO_TIMEOUT
     assert state.screen_shake == effect_info["shake_amount"]
     assert state.screen_shake_cooldown == SCREEN_SHAKE_COOLDOWN
+    assert particle_calls == [(particle_system, 50, 60, effect_info["particle_count"])]
+    assert maybe_calls == [(asteroid.position.x, asteroid.position.y)]
+
+
+def test_handle_asteroid_hit_nonlethal_does_not_award_points_combo_or_powerup(monkeypatch):
+    state = SimpleNamespace(
+        combo_count=0,
+        combo_timer=0.0,
+        last_streak_milestone=0,
+        active_streak_notification=None,
+        screen_shake=0.0,
+        screen_shake_cooldown=0.0,
+    )
+    player = SimpleNamespace(score=0)
+    particle_system = object()
+    effect_info = {
+        "position": pygame.Vector2(15, 25),
+        "particle_count": 4,
+        "shake_amount": 1,
+    }
+
+    class FakeAsteroid:
+        def __init__(self):
+            self.position = pygame.Vector2(10, 20)
+
+        def take_hit(self):
+            return {"destroyed": False, "effect_info": effect_info}
+
+    asteroid = FakeAsteroid()
+    particle_calls = []
+    maybe_calls = []
+
+    monkeypatch.setattr(collisions, "spawn_particles", lambda ps, x, y, count: particle_calls.append((ps, x, y, count)))
+    monkeypatch.setattr(collisions, "maybe_spawn_powerup", lambda x, y: maybe_calls.append((x, y)))
+
+    result = collisions.handle_asteroid_hit(asteroid, state, particle_system, player)
+
+    assert result == {"destroyed": False, "points": 0}
+    assert player.score == 0
+    assert state.combo_count == 0
+    assert state.combo_timer == 0.0
+    assert state.screen_shake == effect_info["shake_amount"]
+    assert state.screen_shake_cooldown == SCREEN_SHAKE_COOLDOWN
+    assert particle_calls == [(particle_system, 15, 25, effect_info["particle_count"])]
+    assert maybe_calls == []
+
+
+def test_handle_asteroid_hit_destroyed_awards_points(monkeypatch):
+    state = SimpleNamespace(
+        combo_count=0,
+        combo_timer=0.0,
+        last_streak_milestone=0,
+        active_streak_notification=None,
+        screen_shake=0.0,
+        screen_shake_cooldown=0.0,
+    )
+    player = SimpleNamespace(score=0)
+    particle_system = object()
+    effect_info = {
+        "position": pygame.Vector2(50, 60),
+        "particle_count": 3,
+        "shake_amount": 4,
+    }
+
+    class FakeAsteroid:
+        def __init__(self):
+            self.position = pygame.Vector2(10, 20)
+
+        def take_hit(self):
+            return {"destroyed": True, "effect_info": None}
+
+        def get_points(self):
+            return 40
+
+        def split(self):
+            return effect_info
+
+    asteroid = FakeAsteroid()
+    particle_calls = []
+    maybe_calls = []
+
+    monkeypatch.setattr(collisions, "spawn_particles", lambda ps, x, y, count: particle_calls.append((ps, x, y, count)))
+    monkeypatch.setattr(collisions, "maybe_spawn_powerup", lambda x, y: maybe_calls.append((x, y)))
+
+    result = collisions.handle_asteroid_hit(asteroid, state, particle_system, player)
+
+    assert result == {"destroyed": True, "points": 40}
+    assert player.score == 40
+    assert state.combo_count == 1
     assert particle_calls == [(particle_system, 50, 60, effect_info["particle_count"])]
     assert maybe_calls == [(asteroid.position.x, asteroid.position.y)]
 

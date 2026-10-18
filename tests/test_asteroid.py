@@ -4,6 +4,8 @@ import pytest
 import asteroid as asteroid_module
 from asteroid import Asteroid
 from constants import (
+    ASTEROID_ARCHETYPE_ARMORED,
+    ASTEROID_ARCHETYPE_STANDARD,
     ASTEROID_MIN_RADIUS,
     ASTEROID_DEATH_DURATION,
     POINTS_LARGE_ASTEROID,
@@ -22,6 +24,7 @@ def test_asteroid_size_categories_and_points():
     large = Asteroid(0, 0, 60)
     medium = Asteroid(0, 0, 35)
     small = Asteroid(0, 0, 15)
+    armored = Asteroid(0, 0, 60, archetype=ASTEROID_ARCHETYPE_ARMORED)
 
     assert large.get_size_category() == "large"
     assert medium.get_size_category() == "medium"
@@ -30,6 +33,20 @@ def test_asteroid_size_categories_and_points():
     assert large.get_points() == POINTS_LARGE_ASTEROID
     assert medium.get_points() == POINTS_MEDIUM_ASTEROID
     assert small.get_points() == POINTS_SMALL_ASTEROID
+    assert armored.get_points() > POINTS_LARGE_ASTEROID
+
+
+def test_armored_asteroid_survives_first_hit_and_dies_on_second():
+    asteroid = Asteroid(0, 0, 60, archetype=ASTEROID_ARCHETYPE_ARMORED)
+
+    first_hit = asteroid.take_hit()
+    assert first_hit["destroyed"] is False
+    assert asteroid.hit_points == 1
+    assert asteroid.dying is False
+
+    second_hit = asteroid.take_hit()
+    assert second_hit["destroyed"] is True
+    assert asteroid.hit_points == 0
 
 
 def test_split_starts_death_animation_and_returns_effect_info():
@@ -85,9 +102,10 @@ def test_spawn_children_creates_smaller_asteroids(monkeypatch):
     created_children = []
 
     class ChildStub:
-        def __init__(self, x, y, radius):
+        def __init__(self, x, y, radius, archetype=ASTEROID_ARCHETYPE_STANDARD):
             self.position = pygame.Vector2(x, y)
             self.radius = radius
+            self.archetype = archetype
             self.velocity = pygame.Vector2()
             created_children.append(self)
 
@@ -99,3 +117,26 @@ def test_spawn_children_creates_smaller_asteroids(monkeypatch):
     assert len(created_children) == 2
     assert all(child.radius == parent.radius - ASTEROID_MIN_RADIUS for child in created_children)
     assert all(child.velocity.length() > 0 for child in created_children)
+
+
+def test_armored_asteroid_children_downgrade_to_standard(monkeypatch):
+    parent = Asteroid(100, 100, ASTEROID_MIN_RADIUS * 3, archetype=ASTEROID_ARCHETYPE_ARMORED)
+    parent.velocity = pygame.Vector2(100, 0)
+
+    created_children = []
+
+    class ChildStub:
+        def __init__(self, x, y, radius, archetype=ASTEROID_ARCHETYPE_STANDARD):
+            self.position = pygame.Vector2(x, y)
+            self.radius = radius
+            self.archetype = archetype
+            self.velocity = pygame.Vector2()
+            created_children.append(self)
+
+    monkeypatch.setattr(asteroid_module.random, "uniform", lambda a, b: (a + b) / 2)
+    monkeypatch.setattr(asteroid_module, "Asteroid", ChildStub)
+
+    parent.spawn_children()
+
+    assert len(created_children) == 2
+    assert all(child.archetype == ASTEROID_ARCHETYPE_STANDARD for child in created_children)

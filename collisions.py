@@ -94,7 +94,7 @@ def maybe_spawn_powerup(x, y):
         PowerUp(x, y, chosen_type)
 
 
-def handle_asteroid_destruction(asteroid, state, particle_system, points_recipient=None):
+def handle_asteroid_destruction(asteroid, state, particle_system, points_recipient=None, effect_info=None):
     """
     Handle the destruction of an asteroid (particles, shake, points, powerup).
     Returns the points earned.
@@ -112,7 +112,8 @@ def handle_asteroid_destruction(asteroid, state, particle_system, points_recipie
         points_recipient.score += points_earned
 
     # Split the asteroid and get effect info
-    effect_info = asteroid.split()
+    if effect_info is None:
+        effect_info = asteroid.split()
     if effect_info:
         add_screen_shake(state, effect_info['shake_amount'])
         spawn_particles(particle_system, effect_info['position'].x,
@@ -122,6 +123,32 @@ def handle_asteroid_destruction(asteroid, state, particle_system, points_recipie
     maybe_spawn_powerup(asteroid.position.x, asteroid.position.y)
 
     return points_earned
+
+
+def handle_asteroid_hit(asteroid, state, particle_system, points_recipient=None):
+    """Handle an asteroid being hit, including non-lethal armored impacts."""
+    hit_result = asteroid.take_hit()
+    effect_info = hit_result.get("effect_info")
+
+    if not hit_result["destroyed"]:
+        if effect_info:
+            add_screen_shake(state, effect_info["shake_amount"])
+            spawn_particles(
+                particle_system,
+                effect_info["position"].x,
+                effect_info["position"].y,
+                effect_info["particle_count"],
+            )
+        return {"destroyed": False, "points": 0}
+
+    points_earned = handle_asteroid_destruction(
+        asteroid,
+        state,
+        particle_system,
+        points_recipient,
+        effect_info=asteroid.split(),
+    )
+    return {"destroyed": True, "points": points_earned}
 
 
 def handle_game_over(state, player1, player2):
@@ -167,11 +194,15 @@ def handle_player_asteroid_collision(player, player_num, asteroid, state, partic
 
     # If player is boosting, ram through the asteroid
     if player.boost_active:
-        points = handle_asteroid_destruction(asteroid, state, particle_system, player)
-        if state.combo_count > 1:
-            debug_print(f"Player {player_num}: +{points} points! ({state.combo_count}x COMBO) [BOOST RAM]")
+        hit_result = handle_asteroid_hit(asteroid, state, particle_system, player)
+        if hit_result["destroyed"]:
+            points = hit_result["points"]
+            if state.combo_count > 1:
+                debug_print(f"Player {player_num}: +{points} points! ({state.combo_count}x COMBO) [BOOST RAM]")
+            else:
+                debug_print(f"Player {player_num}: +{points} points [BOOST RAM]")
         else:
-            debug_print(f"Player {player_num}: +{points} points [BOOST RAM]")
+            debug_print(f"Player {player_num}: armored asteroid absorbed boost hit")
         return True
 
     # Normal collision - take damage
@@ -246,19 +277,21 @@ def handle_shot_asteroid_collisions(shots, collision_grid, state, particle_syste
                 # Get the owner for points - skip UFO shots (they don't score points)
                 if shot.owner and hasattr(shot.owner, 'player_number'):
                     player_name = f"Player {shot.owner.player_number}"
-                    points = handle_asteroid_destruction(asteroid, state, particle_system, shot.owner)
+                    hit_result = handle_asteroid_hit(asteroid, state, particle_system, shot.owner)
                 elif shot.owner:
                     # UFO shot hit asteroid - no points, just destroy
                     player_name = "UFO"
-                    points = handle_asteroid_destruction(asteroid, state, particle_system, None)
+                    hit_result = handle_asteroid_hit(asteroid, state, particle_system, None)
                 else:
                     player_name = "Unknown"
-                    points = handle_asteroid_destruction(asteroid, state, particle_system, None)
+                    hit_result = handle_asteroid_hit(asteroid, state, particle_system, None)
 
-                if state.combo_count > 1:
-                    debug_print(f"{player_name}: +{points} points! ({state.combo_count}x COMBO)")
+                if hit_result["destroyed"] and state.combo_count > 1:
+                    debug_print(f"{player_name}: +{hit_result['points']} points! ({state.combo_count}x COMBO)")
+                elif hit_result["destroyed"]:
+                    debug_print(f"{player_name}: +{hit_result['points']} points")
                 else:
-                    debug_print(f"{player_name}: +{points} points")
+                    debug_print(f"{player_name}: armored asteroid absorbed hit")
 
                 shot.kill()
                 break
@@ -284,12 +317,14 @@ def handle_laser_asteroid_collisions(laser_beams, asteroids, state, particle_sys
                 else:
                     player_name = "Unknown"
 
-                points = handle_asteroid_destruction(asteroid, state, particle_system, laser.owner)
+                hit_result = handle_asteroid_hit(asteroid, state, particle_system, laser.owner)
 
-                if state.combo_count > 1:
-                    debug_print(f"{player_name}: +{points} points! ({state.combo_count}x COMBO)")
+                if hit_result["destroyed"] and state.combo_count > 1:
+                    debug_print(f"{player_name}: +{hit_result['points']} points! ({state.combo_count}x COMBO)")
+                elif hit_result["destroyed"]:
+                    debug_print(f"{player_name}: +{hit_result['points']} points")
                 else:
-                    debug_print(f"{player_name}: +{points} points")
+                    debug_print(f"{player_name}: armored asteroid absorbed laser hit")
 
     return laser_beams_to_remove
 

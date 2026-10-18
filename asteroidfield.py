@@ -59,8 +59,40 @@ class AsteroidField(pygame.sprite.Sprite):
         self.next_ufo_spawn_time = UFO_CONTINUOUS_SPAWN_TIME  # First UFO spawn time
 
     def spawn(self, radius, position, velocity):
-        asteroid = Asteroid(position.x, position.y, radius)
+        asteroid = Asteroid(position.x, position.y, radius, archetype=self.choose_asteroid_archetype())
         asteroid.velocity = velocity
+
+    def get_available_archetypes(self):
+        """Return archetypes unlocked for the current mode and progression."""
+        available = []
+        for archetype, weight in ASTEROID_ARCHETYPE_SPAWN_WEIGHTS.items():
+            if weight <= 0:
+                continue
+
+            wave_unlocked = self.current_wave >= ASTEROID_ARCHETYPE_WAVE_UNLOCKS[archetype]
+            time_unlocked = self.gameplay_timer >= ASTEROID_ARCHETYPE_TIME_UNLOCKS[archetype]
+
+            if self.wave_mode:
+                if wave_unlocked:
+                    available.append(archetype)
+            elif time_unlocked:
+                available.append(archetype)
+
+        return available or [ASTEROID_ARCHETYPE_STANDARD]
+
+    def choose_asteroid_archetype(self):
+        """Choose an archetype using the configured spawn weights."""
+        available = self.get_available_archetypes()
+        total_weight = sum(ASTEROID_ARCHETYPE_SPAWN_WEIGHTS[archetype] for archetype in available)
+        roll = random.uniform(0, total_weight)
+        running_total = 0.0
+
+        for archetype in available:
+            running_total += ASTEROID_ARCHETYPE_SPAWN_WEIGHTS[archetype]
+            if roll <= running_total:
+                return archetype
+
+        return available[-1]
 
     def start_wave(self, wave_number):
         """Initialize a new wave"""

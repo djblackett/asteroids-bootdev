@@ -4,6 +4,8 @@ import pytest
 import asteroidfield as field_module
 from asteroidfield import AsteroidField
 from constants import (
+    ASTEROID_ARCHETYPE_ARMORED,
+    ASTEROID_ARCHETYPE_STANDARD,
     ASTEROID_MIN_RADIUS,
     ASTEROID_SPAWN_RATE,
     WAVE_BASE_ASTEROIDS,
@@ -103,3 +105,34 @@ def test_update_increments_ufo_spawn_timer_when_scheduled():
 
     field.update(0.5)
     assert field.ufo_spawn_timer == pytest.approx(0.5)
+
+
+def test_get_available_archetypes_unlocks_armored_by_wave():
+    field = AsteroidField()
+    field.wave_mode = True
+    field.current_wave = 1
+
+    assert field.get_available_archetypes() == [ASTEROID_ARCHETYPE_STANDARD]
+
+    field.current_wave = 2
+    assert field.get_available_archetypes() == [
+        ASTEROID_ARCHETYPE_STANDARD,
+        ASTEROID_ARCHETYPE_ARMORED,
+    ]
+
+
+def test_spawn_assigns_chosen_archetype(monkeypatch):
+    field = AsteroidField()
+    created = []
+
+    class DummyAsteroid:
+        def __init__(self, x, y, radius, archetype):
+            created.append((x, y, radius, archetype))
+            self.velocity = None
+
+    monkeypatch.setattr(field_module, "Asteroid", DummyAsteroid)
+    monkeypatch.setattr(AsteroidField, "choose_asteroid_archetype", lambda self: ASTEROID_ARCHETYPE_ARMORED)
+
+    field.spawn(ASTEROID_MIN_RADIUS, pygame.Vector2(10, 20), pygame.Vector2(30, 40))
+
+    assert created == [(10, 20, ASTEROID_MIN_RADIUS, ASTEROID_ARCHETYPE_ARMORED)]

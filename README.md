@@ -48,6 +48,16 @@ Everything else listed below was added beyond those requirements.
 - **Sound effects** with pre-processed audio for web compatibility
 - **Async game loop** (`asyncio`) for pygbag compatibility
 
+## Web version limitations
+
+The web build (pygbag/emscripten) is missing a few features that work on desktop:
+
+- **Music pitch-shift** during Mega Power is disabled — mixer re-initialization causes issues in the browser
+- **Runtime audio processing** is skipped — shoot and explosion sounds use pre-baked `.ogg` files instead of the desktop's runtime reverb and randomised pitch variations
+- **Dedicated mixer channels** are not used — pygbag has limited `pygame.mixer.Channel` support, so simultaneous sound layering is reduced
+- **Gamepad support** is disabled — joystick initialisation is skipped on the web platform
+- **Quit from pause** (Q key) is not available
+
 ## Requirements
 
 - Python 3.10+

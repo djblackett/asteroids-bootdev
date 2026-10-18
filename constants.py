@@ -6,6 +6,57 @@ ASTEROID_KINDS = 3
 ASTEROID_SPAWN_RATE = 0.5  # seconds - faster initial spawn rate
 ASTEROID_MAX_RADIUS = ASTEROID_MIN_RADIUS * ASTEROID_KINDS
 
+# Asteroid archetypes
+ASTEROID_ARCHETYPE_STANDARD = "standard"
+ASTEROID_ARCHETYPE_ARMORED = "armored"
+ASTEROID_ARCHETYPE_VOLATILE = "volatile"
+
+ASTEROID_ARCHETYPE_CONFIG = {
+    ASTEROID_ARCHETYPE_STANDARD: {
+        "hit_points": 1,
+        "points_multiplier": 1.0,
+        "points_bonus": 0,
+        "color": (255, 255, 255),
+        "outline_width": 2,
+    },
+    ASTEROID_ARCHETYPE_ARMORED: {
+        "hit_points": 2,
+        "points_multiplier": 1.5,
+        "points_bonus": 10,
+        "color": (170, 220, 255),
+        "outline_width": 3,
+    },
+    ASTEROID_ARCHETYPE_VOLATILE: {
+        "hit_points": 1,
+        "points_multiplier": 1.75,
+        "points_bonus": 20,
+        "color": (255, 180, 90),
+        "outline_width": 2,
+    },
+}
+
+ASTEROID_ARCHETYPE_WAVE_UNLOCKS = {
+    ASTEROID_ARCHETYPE_STANDARD: 1,
+    ASTEROID_ARCHETYPE_ARMORED: 2,
+    ASTEROID_ARCHETYPE_VOLATILE: 4,
+}
+
+ASTEROID_ARCHETYPE_TIME_UNLOCKS = {
+    ASTEROID_ARCHETYPE_STANDARD: 0.0,
+    ASTEROID_ARCHETYPE_ARMORED: 45.0,
+    ASTEROID_ARCHETYPE_VOLATILE: 120.0,
+}
+
+ASTEROID_ARCHETYPE_SPAWN_WEIGHTS = {
+    ASTEROID_ARCHETYPE_STANDARD: 1.0,
+    ASTEROID_ARCHETYPE_ARMORED: 0.35,
+    ASTEROID_ARCHETYPE_VOLATILE: 0.0,
+}
+
+ASTEROID_ARMORED_HIT_FLASH_DURATION = 0.12
+ASTEROID_ARMORED_HIT_PARTICLES = 4
+ASTEROID_ARMORED_HIT_SHAKE = 1
+
 PLAYER_RADIUS = 20
 
 PLAYER_TURN_SPEED = 300
