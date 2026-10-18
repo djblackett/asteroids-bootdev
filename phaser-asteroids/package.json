@@ -8,12 +8,15 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:browser": "npm run build && node scripts/smoke.mjs",
+    "test:input": "npm run build && node scripts/keyboard.mjs"
   },
   "dependencies": {
     "phaser": "4.2.1"
   },
   "devDependencies": {
+    "playwright-core": "1.64.1",
     "typescript": "7.0.2",
     "vite": "8.3.4",
     "vitest": "5.0.5"

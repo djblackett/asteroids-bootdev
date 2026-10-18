@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
-import { SFX_ASSETS } from '../audio/sfx';
+import { AUDIO_ASSETS } from '../audio/audioConfig';
+import { AUDIO_REGISTRY_KEY, AudioDirector } from '../audio/phaserAudio';
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
+import { installHeldKeys } from '../input/gameKeys';
 import { addText, COLORS } from '../ui/text';
 import { SCENE_BOOT, SCENE_START } from './keys';
 
@@ -23,10 +25,14 @@ export class BootScene extends Phaser.Scene {
     this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
       console.warn(`[asteroids] failed to load ${file.key}; continuing without it`);
     });
-    for (const [key, file] of SFX_ASSETS) this.load.audio(key, file);
+    for (const [key, file] of AUDIO_ASSETS) this.load.audio(key, file);
   }
 
   create(): void {
+    // One audio director for the whole game: music survives scene changes and restarts.
+    this.registry.set(AUDIO_REGISTRY_KEY, new AudioDirector(this.game));
+    // One held-key tracker for the whole game: held keys survive pause, retry and scene changes.
+    installHeldKeys(this.game);
     this.scene.start(SCENE_START);
   }
 }

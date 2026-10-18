@@ -1,14 +1,16 @@
 import type Phaser from 'phaser';
-import { SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
+import { LASER_BEAM_MAX_SHOTS, SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
 import type { GameSim } from '../core/game';
+import { rainbowColor, toCss } from '../render/colors';
 import { addText, COLORS, formatClock } from './text';
 
 /**
  * Changing a Text object's string, colour or size re-rasterises it, so everything here only
  * touches a Text when its value actually changes.
  */
-class CachedText {
+export class CachedText {
   private content = '';
+  private visible = true;
   private color: string;
   private size: number;
 
@@ -29,6 +31,17 @@ class CachedText {
     if (size !== this.size) {
       this.size = size;
       this.text.setFontSize(size);
+    }
+  }
+
+  setY(y: number): void {
+    if (this.text.y !== y) this.text.setY(y);
+  }
+
+  setVisible(visible: boolean): void {
+    if (visible !== this.visible) {
+      this.visible = visible;
+      this.text.setVisible(visible);
     }
   }
 }
@@ -52,6 +65,73 @@ export class Hud {
     this.score.set(`P1: ${sim.player.score}`, color);
     this.lives.set(`Lives: ${Math.max(sim.player.lives, 0)}`, color);
     this.clock.set(formatClock(sim.time));
+  }
+}
+
+const HUD_BLUE = '#64c8ff';
+const HUD_GREY = '#646464';
+const HUD_COOLDOWN = '#969696';
+const HUD_GREEN = '#64ff64';
+const HUD_BOOST = '#ff64ff';
+const HUD_RAPID = '#ffff00';
+const HUD_MULTI = '#ffa500';
+const HUD_SHIELD = '#00ffff';
+const HUD_SLOW = '#ff00ff';
+
+/** Seconds shown on a countdown: Python's `int(timer) + 1`. */
+const secondsLeft = (timer: number): number => Math.trunc(Math.max(timer, 0)) + 1;
+
+interface Line {
+  text: string;
+  color: string;
+  size: number;
+  gap: number;
+}
+
+/**
+ * Laser charges, boost state and active power-ups, stacked under the lives counter (Python
+ * `draw_powerup_indicator`). While MEGA POWER is on it replaces the individual power-up lines.
+ */
+export class AbilityHud {
+  private readonly lines: CachedText[];
+
+  constructor(scene: Phaser.Scene) {
+    this.lines = Array.from({ length: 6 }, () => {
+      const text = addText(scene, 10, 80, '', { size: 20 }).setDepth(10);
+      return new CachedText(text, COLORS.white, 20);
+    });
+  }
+
+  update(sim: GameSim, timeMs: number): void {
+    const p = sim.player;
+    const rows: Line[] = [];
+    const row = (text: string, color: string, size = 20, gap = 30): number => rows.push({ text, color, size, gap });
+
+    row(`LASER: ${p.laser.shotsRemaining}/${LASER_BEAM_MAX_SHOTS}`, p.laser.shotsRemaining > 0 ? HUD_BLUE : HUD_GREY);
+
+    if (p.boost.active) row(`BOOST: ${secondsLeft(p.boost.timer)}s`, HUD_BOOST);
+    else if (p.boost.cooldown > 0) row(`BOOST: ${secondsLeft(p.boost.cooldown)}s CD`, HUD_COOLDOWN);
+    else row('BOOST: READY', HUD_GREEN);
+
+    if (p.megaPower.active) {
+      // Rainbow text; the hue only moves 10 degrees per second so this re-renders ~10x a second.
+      row(`*** MEGA POWER: ${secondsLeft(p.megaPower.timer)}s ***`, toCss(rainbowColor(timeMs)), 29, 45);
+    } else {
+      if (p.rapidFire.active) row(`RAPID FIRE: ${secondsLeft(p.rapidFire.timer)}s`, HUD_RAPID);
+      if (p.multiShot.active) row(`MULTI-SHOT: ${secondsLeft(p.multiShot.timer)}s`, HUD_MULTI);
+      if (p.shieldActive) row('SHIELD: ACTIVE', HUD_SHIELD);
+      if (sim.slowMotion.active) row(`SLOW MOTION: ${secondsLeft(sim.slowMotion.timer)}s`, HUD_SLOW);
+    }
+
+    let y = 80;
+    this.lines.forEach((line, i) => {
+      const r = rows[i];
+      line.setVisible(r !== undefined);
+      if (!r) return;
+      line.set(r.text, r.color, r.size);
+      line.setY(y);
+      y += r.gap;
+    });
   }
 }
 

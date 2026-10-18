@@ -1,28 +1,50 @@
 import {
+  BOOST_COOLDOWN,
+  BOOST_DURATION,
+  BOOST_SPEED_MULTIPLIER,
   BOUNCE_DAMPING_PER_FRAME,
   BOUNCE_STOP_SPEED,
   BOUNDARY_BOUNCE_FORCE,
   EXHAUST_PARTICLE_SPAWN_RATE,
+  LASER_BEAM_COOLDOWN,
+  LASER_BEAM_MAX_SHOTS,
+  MEGA_POWER_DURATION,
+  MULTI_SHOT_ANGLE_SPREAD,
+  MULTI_SHOT_DURATION,
   PLAYER_LIVES,
   PLAYER_RADIUS,
   PLAYER_RESPAWN_INVULNERABILITY,
   PLAYER_SHOOT_COOLDOWN,
   PLAYER_SPEED,
   PLAYER_TURN_SPEED,
+  RAPID_FIRE_COOLDOWN,
+  RAPID_FIRE_DURATION,
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
 } from './constants';
+import { createLaser, type LaserBeam } from './laser';
 import { getForwardVector, lengthOf, normalize, timeNormalizedDamping, wrap, type Vec2 } from './math';
 import { createShot, type Shot } from './shot';
 
-/** Per-frame control state. `rotate`/`move` are in [-1, 1]; +1 = D / W. */
+/**
+ * Per-frame control state. `rotate`/`move` are in [-1, 1]; +1 = D / W. `laser` and `boost` are
+ * "key is held" flags; the player turns them into one activation per key press.
+ */
 export interface PlayerInput {
   rotate: number;
   move: number;
   shoot: boolean;
+  laser?: boolean;
+  boost?: boolean;
 }
 
-export const NO_INPUT: Readonly<PlayerInput> = { rotate: 0, move: 0, shoot: false };
+export const NO_INPUT: Readonly<PlayerInput> = { rotate: 0, move: 0, shoot: false, laser: false, boost: false };
+
+/** A power-up effect with a countdown. */
+export interface TimedEffect {
+  active: boolean;
+  timer: number;
+}
 
 export interface PlayerState {
   playerNumber: number;
@@ -46,6 +68,16 @@ export interface PlayerState {
   isMoving: boolean;
   exhaustTimer: number;
 
+  rapidFire: TimedEffect;
+  multiShot: TimedEffect;
+  /** While active, Rapid Fire and Multi-Shot are held on by it and their own timers are paused. */
+  megaPower: TimedEffect;
+  /** Absorbs exactly one hit; has no duration. */
+  shieldActive: boolean;
+
+  boost: TimedEffect & { cooldown: number; keyHeld: boolean };
+  laser: { shotsRemaining: number; cooldown: number; keyHeld: boolean };
+
   /** Distance the ship actually travelled during the last update, per second (drives parallax). */
   motion: Vec2;
 }
@@ -67,6 +99,8 @@ export interface PlayerUpdateResult {
   shots: Shot[];
   bounce: BounceInfo | null;
   exhaust: ExhaustInfo | null;
+  laser: LaserBeam | null;
+  boostStarted: boolean;
 }
 
 export function createPlayer(x: number, y: number, playerNumber = 1, speedMultiplier = 1): PlayerState {
@@ -86,6 +120,12 @@ export function createPlayer(x: number, y: number, playerNumber = 1, speedMultip
     respawnTimer: 0,
     isMoving: false,
     exhaustTimer: 0,
+    rapidFire: { active: false, timer: 0 },
+    multiShot: { active: false, timer: 0 },
+    megaPower: { active: false, timer: 0 },
+    shieldActive: false,
+    boost: { active: false, timer: 0, cooldown: 0, keyHeld: false },
+    laser: { shotsRemaining: LASER_BEAM_MAX_SHOTS, cooldown: 0, keyHeld: false },
     motion: { x: 0, y: 0 },
   };
 }
@@ -144,19 +184,67 @@ export function applyBoundaryCollision(p: PlayerState): BounceInfo | null {
   return { position: { x: p.position.x, y: p.position.y }, direction: n };
 }
 
+/** Shot headings for one trigger pull: a single shot, or a -15 / 0 / +15 degree fan with Multi-Shot. */
+export function shotAngleOffsets(multiShot: boolean): readonly number[] {
+  return multiShot ? [-MULTI_SHOT_ANGLE_SPREAD, 0, MULTI_SHOT_ANGLE_SPREAD] : [0];
+}
+
 function tryShoot(p: PlayerState): Shot[] {
   if (p.shootTimer > 0 || !p.canShoot) return [];
-  p.shootTimer = p.shootCooldown;
+  if (p.boost.active) return []; // no shooting while boosting
   // Python spawns shots at the ship's centre, not its nose.
-  return [createShot(p.position, p.rotation, p.playerNumber)];
+  const shots = shotAngleOffsets(p.multiShot.active).map((offset) =>
+    createShot(p.position, p.rotation + offset, p.playerNumber),
+  );
+  p.shootTimer = p.rapidFire.active ? RAPID_FIRE_COOLDOWN : p.shootCooldown;
+  return shots;
+}
+
+export function activateRapidFire(p: PlayerState): void {
+  p.rapidFire = { active: true, timer: RAPID_FIRE_DURATION };
+}
+
+export function activateMultiShot(p: PlayerState): void {
+  p.multiShot = { active: true, timer: MULTI_SHOT_DURATION };
+}
+
+export function activateShield(p: PlayerState): void {
+  p.shieldActive = true;
+}
+
+/** MEGA POWER: Rapid Fire + Multi-Shot + Shield, all for the mega duration. (The caller adds Slow Motion.) */
+export function activateMegaPower(p: PlayerState): void {
+  p.megaPower = { active: true, timer: MEGA_POWER_DURATION };
+  p.rapidFire = { active: true, timer: MEGA_POWER_DURATION };
+  p.multiShot = { active: true, timer: MEGA_POWER_DURATION };
+  p.shieldActive = true;
+}
+
+/** Starts a boost if one is not already running or cooling down. The cooldown starts immediately. */
+export function activateBoost(p: PlayerState): boolean {
+  if (p.boost.cooldown > 0 || p.boost.active) return false;
+  p.boost.active = true;
+  p.boost.timer = BOOST_DURATION;
+  p.boost.cooldown = BOOST_COOLDOWN;
+  return true;
+}
+
+/** Fires the laser from the ship's nose if it has charges and is off cooldown. */
+export function fireLaser(p: PlayerState): LaserBeam | null {
+  if (p.laser.cooldown > 0 || p.laser.shotsRemaining <= 0) return null;
+  const forward = getForwardVector(p.rotation);
+  const tip = { x: p.position.x + forward.x * p.radius, y: p.position.y + forward.y * p.radius };
+  p.laser.cooldown = LASER_BEAM_COOLDOWN;
+  p.laser.shotsRemaining -= 1;
+  return createLaser(tip, p.rotation, p.playerNumber);
 }
 
 /**
  * Advances the player by `dt` seconds. Order matches Python's `Player.update`:
- * timers -> residual bounce -> rotate -> translate (+ wall check) -> shoot.
+ * timers -> residual bounce -> power-up timers -> rotate -> translate (+ wall check) -> shoot -> laser -> boost.
  */
 export function updatePlayer(p: PlayerState, input: PlayerInput, dt: number): PlayerUpdateResult {
-  const result: PlayerUpdateResult = { shots: [], bounce: null, exhaust: null };
+  const result: PlayerUpdateResult = { shots: [], bounce: null, exhaust: null, laser: null, boostStarted: false };
   if (p.lives <= 0) return result;
 
   const startX = p.position.x;
@@ -164,6 +252,13 @@ export function updatePlayer(p: PlayerState, input: PlayerInput, dt: number): Pl
 
   p.shootTimer -= dt;
   p.exhaustTimer -= dt;
+  if (p.laser.cooldown > 0) p.laser.cooldown -= dt;
+
+  if (p.boost.active) {
+    p.boost.timer -= dt;
+    if (p.boost.timer <= 0) p.boost.active = false;
+  }
+  if (p.boost.cooldown > 0) p.boost.cooldown -= dt;
 
   if (p.isRespawning) {
     p.respawnTimer -= dt;
@@ -180,6 +275,24 @@ export function updatePlayer(p: PlayerState, input: PlayerInput, dt: number): Pl
     if (lengthOf(p.velocity) < BOUNCE_STOP_SPEED) p.velocity = { x: 0, y: 0 };
   }
 
+  // MEGA POWER ending switches Rapid Fire and Multi-Shot off whatever else was going on; the shield stays.
+  if (p.megaPower.active) {
+    p.megaPower.timer -= dt;
+    if (p.megaPower.timer <= 0) {
+      p.megaPower.active = false;
+      p.rapidFire.active = false;
+      p.multiShot.active = false;
+    }
+  }
+  if (p.rapidFire.active && !p.megaPower.active) {
+    p.rapidFire.timer -= dt;
+    if (p.rapidFire.timer <= 0) p.rapidFire.active = false;
+  }
+  if (p.multiShot.active && !p.megaPower.active) {
+    p.multiShot.timer -= dt;
+    if (p.multiShot.timer <= 0) p.multiShot.active = false;
+  }
+
   p.isMoving = false;
 
   if (input.rotate !== 0) {
@@ -189,7 +302,7 @@ export function updatePlayer(p: PlayerState, input: PlayerInput, dt: number): Pl
   if (input.move !== 0) {
     // Non-inertial: displacement only exists while the key is held.
     const forward = getForwardVector(p.rotation);
-    const step = PLAYER_SPEED * p.speedMultiplier * input.move * dt;
+    const step = PLAYER_SPEED * p.speedMultiplier * (p.boost.active ? BOOST_SPEED_MULTIPLIER : 1) * input.move * dt;
     p.position.x += forward.x * step;
     p.position.y += forward.y * step;
     p.isMoving = true;
@@ -198,6 +311,22 @@ export function updatePlayer(p: PlayerState, input: PlayerInput, dt: number): Pl
   }
 
   if (input.shoot) result.shots = tryShoot(p);
+
+  // Laser and boost fire once per key press; a press that is refused (cooldown, no charges) is still
+  // "used up", so the key has to be released and pressed again.
+  if (input.laser && !p.laser.keyHeld) {
+    result.laser = fireLaser(p);
+    p.laser.keyHeld = true;
+  } else if (!input.laser) {
+    p.laser.keyHeld = false;
+  }
+
+  if (input.boost && !p.boost.keyHeld) {
+    result.boostStarted = activateBoost(p);
+    p.boost.keyHeld = true;
+  } else if (!input.boost) {
+    p.boost.keyHeld = false;
+  }
 
   if (p.isMoving && p.exhaustTimer <= 0) {
     p.exhaustTimer = EXHAUST_PARTICLE_SPAWN_RATE;
@@ -213,15 +342,21 @@ export function updatePlayer(p: PlayerState, input: PlayerInput, dt: number): Pl
   return result;
 }
 
-export type DamageResult = 'invulnerable' | 'life_lost';
+/** `invulnerable`: respawn protection (shield untouched). `shield`: shield consumed. `life_lost`: a life is gone. */
+export type DamageResult = 'invulnerable' | 'shield' | 'life_lost';
 
-/** Python `take_damage`: respawn invulnerability absorbs the hit, otherwise a life is lost. */
+/** Python `take_damage`, in the same order: respawn invulnerability first, then the shield, then a life. */
 export function takeDamage(p: PlayerState): DamageResult {
   if (p.isRespawning) return 'invulnerable';
+  if (p.shieldActive) {
+    p.shieldActive = false;
+    return 'shield';
+  }
   p.lives -= 1;
   return 'life_lost';
 }
 
+/** Moves the ship to the spawn point with 2 s of invulnerability and clears every power-up and any boost. */
 export function respawnPlayer(p: PlayerState, x: number, y: number): void {
   if (p.lives <= 0) return;
   p.position = { x, y };
@@ -230,4 +365,12 @@ export function respawnPlayer(p: PlayerState, x: number, y: number): void {
   p.motion = { x: 0, y: 0 };
   p.isRespawning = true;
   p.respawnTimer = PLAYER_RESPAWN_INVULNERABILITY;
+
+  p.rapidFire = { active: false, timer: 0 };
+  p.multiShot = { active: false, timer: 0 };
+  p.megaPower = { active: false, timer: 0 };
+  p.shieldActive = false;
+  // Boost stops but its cooldown keeps running; laser charges are not refilled.
+  p.boost.active = false;
+  p.boost.timer = 0;
 }

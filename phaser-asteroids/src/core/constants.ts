@@ -78,6 +78,37 @@ export const PLAYER_SHOOT_COOLDOWN = 0.3; // seconds
 /** Shots further than this outside the playfield are despawned (the Python original never culls). */
 export const SHOT_CULL_MARGIN = 50;
 
+// --- Power-ups -------------------------------------------------------------
+export const POWERUP_RADIUS = 15;
+export const POWERUP_LIFETIME = 12.0; // seconds before an uncollected pickup disappears
+export const REVIVE_LIFETIME = 15.0;
+export const POWERUP_SPEED = 30; // px/s drift
+/** Chance that a destroyed asteroid drops one of the four ordinary power-ups. */
+export const POWERUP_SPAWN_CHANCE = 0.08;
+/** Checked first; a successful roll drops MEGA POWER instead. */
+export const MEGA_POWER_SPAWN_CHANCE = 0.015;
+
+export const RAPID_FIRE_DURATION = 5.0;
+export const RAPID_FIRE_COOLDOWN = 0.1; // shot cooldown while active (normally 0.3)
+export const MULTI_SHOT_DURATION = 8.0;
+export const MULTI_SHOT_ANGLE_SPREAD = 15; // degrees either side of the heading
+export const SLOW_MOTION_DURATION = 6.0;
+export const SLOW_MOTION_FACTOR = 0.4; // asteroids only
+export const MEGA_POWER_DURATION = 6.0;
+
+// --- Laser beam ------------------------------------------------------------
+export const LASER_BEAM_MAX_SHOTS = 15;
+export const LASER_BEAM_COOLDOWN = 1.0;
+export const LASER_BEAM_LIFETIME = 0.3;
+export const LASER_BEAM_WIDTH = 3;
+
+// --- Boost -----------------------------------------------------------------
+export const BOOST_DURATION = 3.0;
+export const BOOST_SPEED_MULTIPLIER = 2.5;
+/** Starts counting when the boost starts, so it is already 3 s in when the boost ends. */
+export const BOOST_COOLDOWN = 8.0;
+export const BOOST_WARNING_TIME = 1.0; // seconds before expiry that the warning ring pulses
+
 // --- Boundary bounce -------------------------------------------------------
 export const BOUNDARY_BOUNCE_FORCE = 150; // px/s
 /** Python: `velocity *= 0.85` every frame at 60 FPS. */

@@ -1,10 +1,20 @@
 import Phaser from 'phaser';
-import { Sfx } from '../audio/sfx';
+import { getAudio, type AudioDirector } from '../audio/phaserAudio';
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
 import { GameSim } from '../core/game';
-import { KeyboardControls } from '../input/keyboardControls';
+import { NO_INPUT } from '../core/player';
+import { getHeldKeys } from '../input/gameKeys';
+import type { HeldKeys } from '../input/heldKeys';
+import {
+  keyDiagnosticsEnabled,
+  mountKeyDiagnostics,
+  PHASER_KEY_NAMES,
+  type MountedDiagnostics,
+} from '../input/keyDiagnostics';
+import { createKeyPressDispatcher } from '../input/keyPress';
+import { readPlayerInput, SOLO_KEYS } from '../input/keyboardControls';
 import { drawStarfield, drawWorld } from '../render/worldRenderer';
-import { Hud, Overlay } from '../ui/hud';
+import { AbilityHud, Hud, Overlay } from '../ui/hud';
 import { addText, COLORS } from '../ui/text';
 import { SCENE_GAME, SCENE_START } from './keys';
 
@@ -26,14 +36,19 @@ export class GameScene extends Phaser.Scene {
   private starGfx!: Phaser.GameObjects.Graphics;
   private worldGfx!: Phaser.GameObjects.Graphics;
   private hud!: Hud;
+  private abilityHud!: AbilityHud;
   private pauseOverlay!: Overlay;
   private gameOverOverlay!: Overlay;
   private retryButton!: Phaser.GameObjects.Rectangle;
   private retryLabel!: Phaser.GameObjects.Text;
   /** Last RETRY-button state drawn, so its Text is only restyled when it changes. */
   private retryReady: boolean | null = null;
-  private controls!: KeyboardControls;
-  private sfx!: Sfx;
+  /** Game-wide held keys (see heldKeys.ts); survives pause, retry and scene changes. */
+  private held!: HeldKeys;
+  /** Only present with `?keydebug`. */
+  private keyDiag: MountedDiagnostics | null = null;
+  private phaserDiagKeys: Array<[string, Phaser.Input.Keyboard.Key]> = [];
+  private audio!: AudioDirector;
 
   constructor() {
     super(SCENE_GAME);
@@ -51,12 +66,15 @@ export class GameScene extends Phaser.Scene {
     this.starGfx = this.add.graphics().setDepth(0);
     this.worldGfx = this.add.graphics().setDepth(1);
     this.hud = new Hud(this);
-    this.sfx = new Sfx(this.sound);
+    this.abilityHud = new AbilityHud(this);
+    this.audio = getAudio(this);
+    this.audio.startMusicWhenUnlocked();
 
     this.pauseOverlay = new Overlay(this, 0.59, 72, CENTER_Y - 80, 3);
     this.pauseOverlay.setTitle('PAUSED');
     this.pauseOverlay.setLine(0, 'Press P to Resume', CENTER_Y + 10, COLORS.hint, 28);
-    this.pauseOverlay.setLine(1, 'Press ESC for Main Menu', CENTER_Y + 60, COLORS.dim, 22);
+    // Line 1 (music toggle) is refreshed every frame in updateOverlays.
+    this.pauseOverlay.setLine(2, 'Press ESC for Main Menu', CENTER_Y + 100, COLORS.dim, 22);
 
     this.gameOverOverlay = new Overlay(this, 0.7, 54, CENTER_Y - 250, 4);
     this.gameOverOverlay.setTitle('GAME OVER');
@@ -82,36 +100,77 @@ export class GameScene extends Phaser.Scene {
     const dt = this.lastFrameTime === null ? 0 : Math.max(0, (time - this.lastFrameTime) / 1000);
     this.lastFrameTime = time;
 
+    const input = sim.isGameOver ? NO_INPUT : readPlayerInput(this.held, SOLO_KEYS);
     if (!this.paused) {
-      const wasOver = sim.isGameOver;
-      const events = sim.step(dt, wasOver ? undefined : this.controls.read());
-      this.sfx.handle(events);
+      const events = sim.step(dt, input);
+      this.audio.sfx.handle(events);
       this.applyShake();
     }
+    this.keyDiag?.update({
+      phaserHeld: this.phaserDiagKeys.filter(([, key]) => key.isDown).map(([name]) => name),
+      trackerHeld: this.held.snapshot(),
+      input,
+      sim: {
+        rotation: sim.player.rotation,
+        boostActive: sim.player.boost.active,
+        canShoot: sim.player.canShoot,
+        shootTimer: sim.player.shootTimer,
+        shots: sim.shots.length,
+      },
+    });
 
     drawStarfield(this.starGfx, sim.starfield);
     drawWorld(this.worldGfx, sim, time);
     this.hud.update(sim);
+    this.abilityHud.update(sim, time);
+    this.audio.music.setGamePaused(this.paused);
+    this.audio.music.setMegaPowerActive(sim.player.megaPower.active);
     this.updateOverlays();
   }
 
   // --- input ----------------------------------------------------------------
 
   private setupInput(): void {
+    this.held = getHeldKeys(this);
+    this.ignoreHeldAbilityKeys();
     const keyboard = this.input.keyboard;
     if (!keyboard) return;
-    this.controls = new KeyboardControls(keyboard);
-    keyboard.on('keydown-P', () => this.togglePause());
-    keyboard.on('keydown-ESC', () => this.toMenu());
-    keyboard.on('keydown-R', () => this.retry());
-    keyboard.on('keydown-ENTER', () => this.retry());
+    // Gameplay reads `this.held`; Phaser is only asked to stop these keys scrolling / moving focus in the browser.
+    keyboard.addCapture('SPACE,UP,DOWN,LEFT,RIGHT');
+    // One-shot keys go through a dispatcher that ignores replayed events and auto-repeat (see keyPress.ts).
+    keyboard.on(
+      Phaser.Input.Keyboard.Events.ANY_KEY_DOWN,
+      createKeyPressDispatcher({
+        KeyP: () => this.togglePause(),
+        KeyM: () => this.audio.music.toggleMuted(),
+        Escape: () => this.toMenu(),
+        KeyR: () => this.retry(),
+        Enter: () => this.retry(),
+      }),
+    );
     this.retryButton.setInteractive({ useHandCursor: true });
+
+    if (keyDiagnosticsEnabled(window.location.search)) {
+      this.keyDiag = mountKeyDiagnostics(window, SOLO_KEYS);
+      this.phaserDiagKeys = [...new Set(Object.values(PHASER_KEY_NAMES))].map((name) => [name, keyboard.addKey(name, false)]);
+    }
+  }
+
+  /**
+   * Laser and boost fire once per key *press*. A key that is already down when a run starts or play resumes (held
+   * through a retry, or pressed while paused) must not count as a fresh press, so mark it as already used.
+   */
+  private ignoreHeldAbilityKeys(): void {
+    const input = readPlayerInput(this.held, SOLO_KEYS);
+    this.sim.player.laser.keyHeld = !!input.laser;
+    this.sim.player.boost.keyHeld = !!input.boost;
   }
 
   private togglePause(): void {
     if (this.sim.isGameOver) return;
     this.paused = !this.paused;
-    if (this.paused) this.input.keyboard?.resetKeys();
+    // Held movement keys are deliberately NOT reset: the keyboard has not released them, so play resumes with them held.
+    if (!this.paused) this.ignoreHeldAbilityKeys();
   }
 
   private toMenu(): void {
@@ -128,16 +187,22 @@ export class GameScene extends Phaser.Scene {
   private setupLifecycle(): void {
     const autoPause = (): void => {
       if (this.sim.isGameOver) return;
+      // Keys released while the window was unfocused never send a keyup; HeldKeys forgets them itself on blur / hide.
       this.paused = true;
-      // Keys released while the window was unfocused never send a keyup; forget them.
-      this.input.keyboard?.resetKeys();
     };
     const events = this.game.events;
     events.on(Phaser.Core.Events.BLUR, autoPause);
     events.on(Phaser.Core.Events.HIDDEN, autoPause);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.keyDiag?.destroy();
+      this.keyDiag = null;
+      this.phaserDiagKeys = [];
       events.off(Phaser.Core.Events.BLUR, autoPause);
       events.off(Phaser.Core.Events.HIDDEN, autoPause);
+      // Leave the shared audio in a neutral state: effects stop, music resumes normal speed and is not held paused.
+      this.audio.sfx.stopAll();
+      this.audio.music.setGamePaused(false);
+      this.audio.music.setMegaPowerActive(false);
     });
   }
 
@@ -151,7 +216,12 @@ export class GameScene extends Phaser.Scene {
 
   private updateOverlays(): void {
     const over = this.sim.isGameOver;
-    this.pauseOverlay.setVisible(this.paused && !over);
+    const showPause = this.paused && !over;
+    this.pauseOverlay.setVisible(showPause);
+    if (showPause) {
+      const music = this.audio.music.isMuted ? 'Off' : 'On';
+      this.pauseOverlay.setLine(1, `Press M to Toggle Music (${music})`, CENTER_Y + 60, COLORS.dim, 22);
+    }
     this.gameOverOverlay.setVisible(over);
     this.retryButton.setVisible(over);
     this.retryLabel.setVisible(over);

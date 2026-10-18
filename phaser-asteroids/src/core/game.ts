@@ -13,6 +13,7 @@ import {
   GAME_START_COOLDOWN,
   MAX_FRAME_DT,
   MAX_SUBSTEP_DT,
+  MEGA_POWER_DURATION,
   PARTICLE_SPEED,
   PLAYER_RESPAWN_X,
   PLAYER_RESPAWN_Y,
@@ -21,6 +22,8 @@ import {
   SCREEN_SHAKE_COOLDOWN,
   SCREEN_SHAKE_DECAY,
   SCREEN_SHAKE_MAX,
+  SLOW_MOTION_DURATION,
+  SLOW_MOTION_FACTOR,
 } from './constants';
 import {
   beginDeath,
@@ -30,9 +33,14 @@ import {
   type Asteroid,
   type DeathEffect,
 } from './asteroid';
+import { laserHits, updateLaser, type LaserBeam } from './laser';
 import { circlesOverlap, rotateVec, type Vec2 } from './math';
 import { emitBurst, ParticleSystem } from './particles';
 import {
+  activateMegaPower,
+  activateMultiShot,
+  activateRapidFire,
+  activateShield,
   createPlayer,
   respawnPlayer,
   takeDamage,
@@ -41,6 +49,7 @@ import {
   type PlayerInput,
   type PlayerState,
 } from './player';
+import { maybeSpawnPowerUp, updatePowerUp, type PowerUp, type PowerUpType } from './powerup';
 import { defaultRng, uniform, type Rng } from './rng';
 import { updateShot, type Shot } from './shot';
 import { createSpawner, updateSpawner, type SpawnerState } from './spawner';
@@ -48,14 +57,26 @@ import { Starfield } from './starfield';
 
 /** Things that happened during a step that the presentation layer may want to react to (audio, ...). */
 export type SimEvent =
-  | { type: 'shot_fired' }
+  | { type: 'shot_fired' } // one per trigger pull, however many projectiles it produced
+  | { type: 'laser_fired' }
+  | { type: 'boost_started' }
   | { type: 'asteroid_destroyed'; radius: number; points: number }
   | { type: 'asteroid_hit'; position: Vec2 }
+  | { type: 'powerup_dropped'; powerType: PowerUpType }
+  | { type: 'powerup_collected'; powerType: PowerUpType }
   | { type: 'player_hit'; livesLeft: number }
   | { type: 'wall_bounce' }
   | { type: 'game_over'; score: number };
 
 export type GamePhase = 'playing' | 'gameOver';
+
+/** Brief expanding ring shown where a power-up was picked up. */
+export interface PickupFlash {
+  position: Vec2;
+  type: PowerUpType;
+  age: number;
+}
+export const PICKUP_FLASH_DURATION = 0.4;
 
 export interface GameSimOptions {
   rng?: Rng;
@@ -75,6 +96,9 @@ export class GameSim {
   readonly player: PlayerState;
   shots: Shot[] = [];
   asteroids: Asteroid[] = [];
+  powerups: PowerUp[] = [];
+  lasers: LaserBeam[] = [];
+  pickupFlashes: PickupFlash[] = [];
   readonly particles = new ParticleSystem();
   readonly starfield: Starfield;
   readonly spawner: SpawnerState = createSpawner();
@@ -85,6 +109,12 @@ export class GameSim {
   asteroidSpeedMultiplier = 1;
   asteroidSpawnRate = ASTEROID_SPAWN_RATE;
   startCooldown: number;
+
+  /**
+   * Slow Motion is a property of the world, not the player, and only slows asteroids: the spawner,
+   * shots, pickups, ship, cooldowns and every timer keep running on real time.
+   */
+  slowMotion = { active: false, timer: 0 };
 
   /** Current screen-shake magnitude in pixels; decays linearly. */
   screenShake = 0;
@@ -139,19 +169,29 @@ export class GameSim {
     this.updatePlayer(dt, input);
     this.updateEntities(dt);
     this.starfield.scroll({ x: this.player.motion.x * dt, y: this.player.motion.y * dt });
-    this.processCollisions();
+    this.processCollisions(dt);
     this.particles.update(dt);
     this.shots = this.shots.filter((s) => s.alive);
     this.asteroids = this.asteroids.filter((a) => a.alive);
+    this.powerups = this.powerups.filter((p) => p.alive);
   }
 
   private updateTimers(dt: number): void {
     if (this.startCooldown > 0) this.startCooldown -= dt;
     this.time += dt;
     this.difficultyTimer += dt;
+
+    if (this.slowMotion.active) {
+      this.slowMotion.timer -= dt;
+      if (this.slowMotion.timer <= 0) this.slowMotion.active = false;
+    }
+
     if (this.screenShake > 0) this.screenShake = Math.max(0, this.screenShake - SCREEN_SHAKE_DECAY * dt);
     if (this.screenShakeCooldown > 0) this.screenShakeCooldown -= dt;
     if (this.sparkTimer > 0) this.sparkTimer -= dt;
+
+    for (const flash of this.pickupFlashes) flash.age += dt;
+    this.pickupFlashes = this.pickupFlashes.filter((f) => f.age < PICKUP_FLASH_DURATION);
   }
 
   /** Every 30 s asteroids get 15% faster and spawn a little more often. */
@@ -171,10 +211,15 @@ export class GameSim {
     player.canShoot = this.startCooldown <= 0;
     const result = updatePlayer(player, input, dt);
 
-    for (const shot of result.shots) {
-      this.shots.push(shot);
+    if (result.shots.length > 0) {
+      this.shots.push(...result.shots);
       this.events.push({ type: 'shot_fired' });
     }
+    if (result.laser) {
+      this.lasers.push(result.laser);
+      this.events.push({ type: 'laser_fired' });
+    }
+    if (result.boostStarted) this.events.push({ type: 'boost_started' });
 
     if (result.bounce) {
       this.addScreenShake(BOUNDARY_SHAKE_AMOUNT);
@@ -213,20 +258,26 @@ export class GameSim {
 
     for (const shot of this.shots) updateShot(shot, dt);
 
-    const asteroidDt = dt * this.asteroidSpeedMultiplier;
+    // Slow Motion scales asteroid movement only. The death animation still ends after 0.15 real seconds.
+    const baseDt = dt * this.asteroidSpeedMultiplier;
+    const asteroidDt = this.slowMotion.active ? baseDt * SLOW_MOTION_FACTOR : baseDt;
     const children: Asteroid[] = [];
     for (const asteroid of this.asteroids) {
       children.push(...updateAsteroid(asteroid, asteroidDt, dt, this.rng));
     }
     this.asteroids.push(...children);
+
+    for (const powerup of this.powerups) updatePowerUp(powerup, dt);
   }
 
   // --- collisions -----------------------------------------------------------
 
-  private processCollisions(): void {
-    // Player first, then shots: same priority as the Python loop.
+  private processCollisions(dt: number): void {
+    // Same priority as the Python loop: player, shots, lasers, pickups.
     if (!this.collidePlayerWithAsteroids()) return;
     this.collideShotsWithAsteroids();
+    this.collideLasersWithAsteroids(dt);
+    this.collectPowerUps();
   }
 
   /** @returns false if the game ended during this check. */
@@ -235,6 +286,13 @@ export class GameSim {
     for (const asteroid of this.asteroids) {
       if (!asteroid.alive || asteroid.dying || player.lives <= 0) continue;
       if (!circlesOverlap(player, asteroid)) continue;
+
+      // Boosting rams through: it is checked before any damage logic, so neither a shield nor
+      // respawn protection is used up and the ship can never be hurt while a boost is running.
+      if (player.boost.active) {
+        this.hitAsteroid(asteroid, player);
+        continue;
+      }
 
       const damage = takeDamage(player);
       if (damage === 'life_lost') {
@@ -246,7 +304,8 @@ export class GameSim {
           return false;
         }
       }
-      // Whatever hit the ship is destroyed too (no score), even when invulnerability absorbed it.
+      // Whatever hit the ship is destroyed too (no score, no drops), even when a shield or
+      // invulnerability absorbed it.
       this.destroyWithoutScore(asteroid, 0.5);
     }
     return true;
@@ -258,20 +317,89 @@ export class GameSim {
       for (const asteroid of this.asteroids) {
         if (!asteroid.alive || asteroid.dying) continue;
         if (!circlesOverlap(shot, asteroid)) continue;
-
-        const result = takeHit(asteroid);
-        if (result.destroyed) {
-          const points = getPoints(asteroid);
-          this.player.score += points;
-          this.applyEffect(beginDeath(asteroid), 1);
-          this.events.push({ type: 'asteroid_destroyed', radius: asteroid.radius, points });
-        } else {
-          this.applyEffect(result.effect, 1);
-          this.events.push({ type: 'asteroid_hit', position: { ...asteroid.position } });
-        }
+        this.hitAsteroid(asteroid, this.player);
         shot.alive = false;
         break;
       }
+    }
+  }
+
+  /**
+   * Each beam hits every asteroid it touches exactly once while it lasts. Children spawned into the
+   * beam's path before it fades are new objects, so they can be hit too (as in the Python game).
+   */
+  private collideLasersWithAsteroids(dt: number): void {
+    const remaining: LaserBeam[] = [];
+    for (const laser of this.lasers) {
+      if (!updateLaser(laser, dt)) continue;
+      remaining.push(laser);
+      for (const asteroid of this.asteroids) {
+        if (!asteroid.alive || asteroid.dying) continue;
+        if (laserHits(laser, asteroid)) this.hitAsteroid(asteroid, this.player);
+      }
+    }
+    this.lasers = remaining;
+  }
+
+  private collectPowerUps(): void {
+    const player = this.player;
+    if (player.lives <= 0) return;
+    for (const powerup of this.powerups) {
+      if (!powerup.alive || !circlesOverlap(player, powerup)) continue;
+      this.applyPowerUp(powerup.type);
+      this.pickupFlashes.push({ position: { ...powerup.position }, type: powerup.type, age: 0 });
+      this.events.push({ type: 'powerup_collected', powerType: powerup.type });
+      powerup.alive = false;
+    }
+  }
+
+  private applyPowerUp(type: PowerUpType): void {
+    const player = this.player;
+    switch (type) {
+      case 'mega_power':
+        activateMegaPower(player);
+        // Python sets (not extends) Slow Motion to the mega duration.
+        this.slowMotion = { active: true, timer: MEGA_POWER_DURATION };
+        break;
+      case 'rapid_fire':
+        activateRapidFire(player);
+        break;
+      case 'multi_shot':
+        activateMultiShot(player);
+        break;
+      case 'shield':
+        activateShield(player);
+        break;
+      case 'slow_motion':
+        this.slowMotion = { active: true, timer: SLOW_MOTION_DURATION };
+        break;
+      case 'revive':
+        // Revive only does something in two-player games; with nobody to revive it is simply consumed.
+        break;
+    }
+  }
+
+  /**
+   * One hit on an asteroid from a shot, laser or boost ram. Armored asteroids absorb the first hit
+   * (flash + sparks, no points); a kill scores, starts the death animation and may drop a power-up.
+   */
+  private hitAsteroid(asteroid: Asteroid, scorer: PlayerState): void {
+    const result = takeHit(asteroid);
+    if (!result.destroyed) {
+      this.applyEffect(result.effect, 1);
+      if (result.effect) this.events.push({ type: 'asteroid_hit', position: { ...asteroid.position } });
+      return;
+    }
+
+    const points = getPoints(asteroid);
+    scorer.score += points;
+    const drop = maybeSpawnPowerUp(asteroid.position.x, asteroid.position.y, this.rng);
+    this.applyEffect(beginDeath(asteroid), 1);
+    this.events.push({ type: 'asteroid_destroyed', radius: asteroid.radius, points });
+
+    if (drop) {
+      this.powerups.push(drop);
+      this.events.push({ type: 'powerup_dropped', powerType: drop.type });
     }
   }
 
@@ -296,6 +424,7 @@ export class GameSim {
   private triggerGameOver(): void {
     this.phase = 'gameOver';
     this.retryDelay = GAME_OVER_RETRY_DELAY;
+    this.lasers = [];
     this.events.push({ type: 'game_over', score: this.player.score });
   }
 }
