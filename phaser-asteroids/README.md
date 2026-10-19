@@ -51,6 +51,7 @@ and resumes. Nothing is cleared by releasing keys or blurring the window.
 | E | Laser beam (15 charges, 1 s cooldown) |
 | Shift | Boost (3 s, 8 s cooldown; rams asteroids, no shooting) |
 | M | Mute / unmute music |
+| ↑ / ↓, ← / → (while paused, or on the title screen) | Select Music or SFX, lower / raise it in 10 % steps. Saved in the browser. |
 | P | Pause / resume (also happens automatically when the tab or window loses focus) |
 | R, Enter, or click RETRY | Restart after game over (after a 1.5 s delay) |
 | Esc | Back to the title screen (while paused or on the game-over screen) |
@@ -68,8 +69,8 @@ src/
   scenes/    Boot (load audio) -> Start (title) -> Game (glue: input, sim.step, draw, overlays)
   render/    Procedural drawing into two reusable Graphics objects (stars, playfield)
   input/     Held keys (by KeyboardEvent.code) -> PlayerInput; one-shot key dispatcher; ?keydebug diagnostics
-  audio/     Pure logic (event -> sound, music state machine, config) + one Phaser adapter (`AudioDirector`)
-  ui/        HUD and pause / game-over overlays
+  audio/     Pure logic (event -> sound, music state machine, volume settings, mix config) + one Phaser adapter (`AudioDirector`)
+  ui/        HUD, pause / game-over overlays, the Music / SFX volume panel
 tests/       Vitest suites for src/core and src/audio (no browser, no audio device)
 scripts/     smoke.mjs: browser smoke test; keyboard.mjs: real-browser keyboard tests
 docs/        implementation-progress.md

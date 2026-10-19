@@ -14,12 +14,13 @@ browser smoke test). Last updated 2026-10-18.
 
 ### Audio (`src/audio/`)
 
-- **Music**: `retro-bgmusic.ogg`, looped, volume 0.5, started on the first key press / click (the browser keeps audio
+- **Music**: `retro-bgmusic.ogg`, looped, started on the first key press / click (the browser keeps audio
   locked until then) and shared by every scene, so it is never restarted or duplicated. Paused with the game
   (P, blur, hidden tab, menu overlays) and by the new M mute toggle (remembered in `localStorage`).
-- **Effects**: shot (random of 3 variants, vol 0.4), explosions by asteroid size (small / medium / large), player
-  death, laser (0.7), boost. At most 3 copies of the same explosion play at once, as in Python. One shot sound
-  per trigger pull (Multi-Shot's three bullets share one). Sound objects are created per cue and destroyed on completion.
+- **Effects**: shot (random of 3 variants), explosions by asteroid size (small / medium / large), player
+  death, laser, boost. At most 3 copies of the same explosion play at once, as in Python (plus a limit of 4 explosions
+  of any size, see "Mix and volume controls"). One shot sound per trigger pull (Multi-Shot's three bullets share
+  one). Sound objects are created per cue and destroyed on completion.
 - The decision logic is pure and unit tested (`cueForEvent`, `SfxPlayer`, `MusicController`); only
   `phaserAudio.ts` touches Phaser. Phaser's own pause-on-blur is switched off and replaced by the controller.
 - **Python facts**: the only files used are the music file, shoot_low/mid/high, explosion_small/medium/large,
@@ -30,6 +31,27 @@ browser smoke test). Last updated 2026-10-18.
   pitch together) but ships it **disabled** (`MEGA_POWER_MUSIC_SPEEDUP_ENABLED = False`) and skips it on the web.
   The port implements it with the track's playback rate (same speed + pitch change, same track, no restart) and
   keeps it **off by default**; set `MEGA_POWER_MUSIC_SPEEDUP_ENABLED` in `src/audio/audioConfig.ts` to turn it on.
+
+### Mix and volume controls (`audioConfig.ts`, `audioSettings.ts`, `audioSetup.ts`, `ui/volumePanel.ts`)
+
+Level of every sound = **user setting (0..1) x mix gain**. The settings are the Music and SFX volumes, adjusted in 10 %
+steps with the arrow keys on the pause screen (and the title screen), saved in `localStorage`
+(`asteroids.musicVolume`, `asteroids.sfxVolume`, next to the existing `asteroids.musicMuted`). The gains are the mix,
+in `audioConfig.ts`.
+
+- **Why the old mix was wrong** (measured with ffmpeg on the shipped files): the music is hot (-12 dB RMS, peaks 0 dBFS),
+  and the shots are the densest sounds (-9 dB RMS, peaks -0.3 dBFS), so the Python desktop values (music 0.5, shots 0.4)
+  put gunfire at about the same loudness as the music, 6 dB above it in Rapid Fire, and explosions at 1.0 clipped.
+- **Defaults**: Music 80 % x `MUSIC_MAX_GAIN` 0.7 = gain 0.56; SFX 80 %; per-effect gains `SFX_GAIN` (shots 0.28, explosions
+  0.48 / 0.56 / 0.64 by size, laser 0.5, boost 0.6, death 0.7, all at an SFX setting of 100 %). Both settings default to
+  80 % so either can be raised.
+- **Overlap rules** (no ducking, no compressor): each sound is quieter by `OVERLAP_FALLOFF` for every sound of its group that
+  is still playing, capped at 3 steps. Shots only count the ones started in the last 0.25 s (`OVERLAP_WINDOW_SECONDS`), so
+  normal fire (every 0.3 s) is always at full level while Rapid Fire settles near 1.3x one shot instead of 3x. Explosions are
+  limited to 3 of one size (Python's rule) and 4 in total.
+- Music volume goes to the playing track's gain node at once, also while paused or muted; mute and volume are independent
+  (muting never changes the saved volume, M still only mutes the music). SFX changes apply to the next effects and play
+  a sample shot (always at the nominal level) so the setting can be judged by ear; at 0 no effect is started at all.
 
 ### Power-ups (`src/core/powerup.ts`, `player.ts`, `game.ts`)
 
@@ -186,11 +208,13 @@ retry with keys held; alt-tab away and back (keys must not stick).
 
 Playback succeeds in tests, but whether it *sounds right* is unverified:
 
-1. Overall balance of shots (0.4) / explosions (1.0) / laser (0.7) / boost (1.0) / death (1.0) against the music (0.5). These are the
-   Python desktop values; the Python web build leaves shots at 1.0, so shots may want adjusting.
+1. Overall balance: music 0.56 against shots 0.22 / explosions 0.38-0.51 / laser 0.4 / boost 0.48 / death 0.56 (effective gains at the
+   default 80 % settings). These come from measuring the files and an offline render of busy scenes, not from listening;
+   the values to try first are in "Mix and volume controls" and in `src/audio/audioConfig.ts`.
 2. Whether the three shot variants and three explosion sizes sound as varied as the desktop version's pitch-shifted
    samples (the port uses the pre-processed web files).
-3. Overlap behaviour with the 3-explosion limit during laser sweeps, and that music pause / resume has no audible click.
+3. Overlap behaviour with the explosion limits during laser sweeps, whether the loudest moments (a crash: death sound
+   plus an explosion, or a laser sweep) crackle, and that music pause / resume and volume steps have no audible click.
 4. The Mega Power speed-up (1.26×), only if you enable it.
 5. Audio unlock on browsers other than Chrome (Safari in particular).
 
@@ -209,7 +233,8 @@ Other deviations:
 5. Single player only: start at the screen centre, respawn at (320, 360); arrow keys work as well as WASD.
 6. HUD simplified (`P1`, `Lives`, clock, ability lines); no high-score list; browser monospace font.
 7. Screen shake offsets the playfield layer (stars and HUD stay put) rather than using the camera.
-8. M toggles music mute at any time (Python only while paused); a mute preference is remembered.
+8. M toggles music mute at any time (Python only while paused); a mute preference is remembered. Music and SFX volumes
+   are adjustable and remembered too (Python has fixed levels).
 9. Added a brief pick-up flash ring; Python has no pick-up feedback or sound beyond the HUD and ship colour.
 10. Shield-absorbed collisions play the explosion but not the death sound (Python plays death only when a life is lost).
 11. Armored asteroids rammed by a boost break after 2 *frames* of contact, as in Python; that is faintly frame-rate dependent.
@@ -246,7 +271,7 @@ particles, high-score screen, gamepad, touch, online leaderboards.
 
 1. **Decide on the spawn quirk** (only large asteroids): keep the original difficulty, or spawn at `-radius` so all sizes
    appear (≈3× more asteroids at the same rate). It also determines how often power-ups drop.
-2. Listen to the audio and adjust `SFX_VOLUME` / `MUSIC_VOLUME` in `src/audio/audioConfig.ts`; decide on the Mega speed-up.
+2. Listen to the audio and adjust `MUSIC_MAX_GAIN`, `SFX_GAIN` and the overlap values in `src/audio/audioConfig.ts`; decide on the Mega speed-up.
 3. Scoring module with combo multiplier and kill streaks (replace the inline score updates in `GameSim.hitAsteroid`).
 4. UFOs: enemy shots and collisions slot into `GameSim` next to asteroids; boost ramming and the laser already have
    the hooks (Python also lets both kill UFOs).

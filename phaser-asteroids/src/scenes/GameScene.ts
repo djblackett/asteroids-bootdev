@@ -16,6 +16,7 @@ import { readPlayerInput, SOLO_KEYS } from '../input/keyboardControls';
 import { drawStarfield, drawWorld } from '../render/worldRenderer';
 import { AbilityHud, Hud, Overlay } from '../ui/hud';
 import { addText, COLORS } from '../ui/text';
+import { VolumePanel } from '../ui/volumePanel';
 import { SCENE_GAME, SCENE_START } from './keys';
 
 const CENTER_X = SCREEN_WIDTH / 2;
@@ -49,6 +50,7 @@ export class GameScene extends Phaser.Scene {
   private keyDiag: MountedDiagnostics | null = null;
   private phaserDiagKeys: Array<[string, Phaser.Input.Keyboard.Key]> = [];
   private audio!: AudioDirector;
+  private volumePanel!: VolumePanel;
 
   constructor() {
     super(SCENE_GAME);
@@ -74,7 +76,9 @@ export class GameScene extends Phaser.Scene {
     this.pauseOverlay.setTitle('PAUSED');
     this.pauseOverlay.setLine(0, 'Press P to Resume', CENTER_Y + 10, COLORS.hint, 28);
     // Line 1 (music toggle) is refreshed every frame in updateOverlays.
-    this.pauseOverlay.setLine(2, 'Press ESC for Main Menu', CENTER_Y + 100, COLORS.dim, 22);
+    this.pauseOverlay.setLine(2, 'Press ESC for Main Menu', CENTER_Y + 240, COLORS.dim, 22);
+    this.volumePanel = new VolumePanel(this, this.audio, CENTER_X, CENTER_Y + 105, 24, 34, 21);
+    this.volumePanel.setVisible(false);
 
     this.gameOverOverlay = new Overlay(this, 0.7, 54, CENTER_Y - 250, 4);
     this.gameOverOverlay.setTitle('GAME OVER');
@@ -143,6 +147,10 @@ export class GameScene extends Phaser.Scene {
       createKeyPressDispatcher({
         KeyP: () => this.togglePause(),
         KeyM: () => this.audio.music.toggleMuted(),
+        ArrowUp: () => this.adjustVolumes('ArrowUp'),
+        ArrowDown: () => this.adjustVolumes('ArrowDown'),
+        ArrowLeft: () => this.adjustVolumes('ArrowLeft'),
+        ArrowRight: () => this.adjustVolumes('ArrowRight'),
         Escape: () => this.toMenu(),
         KeyR: () => this.retry(),
         Enter: () => this.retry(),
@@ -171,6 +179,11 @@ export class GameScene extends Phaser.Scene {
     this.paused = !this.paused;
     // Held movement keys are deliberately NOT reset: the keyboard has not released them, so play resumes with them held.
     if (!this.paused) this.ignoreHeldAbilityKeys();
+  }
+
+  /** The arrow keys also steer the ship, so they only work the volume controls on the pause screen. */
+  private adjustVolumes(code: string): void {
+    if (this.paused && !this.sim.isGameOver) this.volumePanel.handleKey(code);
   }
 
   private toMenu(): void {
@@ -218,9 +231,11 @@ export class GameScene extends Phaser.Scene {
     const over = this.sim.isGameOver;
     const showPause = this.paused && !over;
     this.pauseOverlay.setVisible(showPause);
+    this.volumePanel.setVisible(showPause);
     if (showPause) {
       const music = this.audio.music.isMuted ? 'Off' : 'On';
-      this.pauseOverlay.setLine(1, `Press M to Toggle Music (${music})`, CENTER_Y + 60, COLORS.dim, 22);
+      this.pauseOverlay.setLine(1, `Press M to Toggle Music (${music})`, CENTER_Y + 55, COLORS.dim, 22);
+      this.volumePanel.update();
     }
     this.gameOverOverlay.setVisible(over);
     this.retryButton.setVisible(over);

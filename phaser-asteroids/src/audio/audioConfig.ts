@@ -33,24 +33,89 @@ export const AUDIO_ASSETS: ReadonlyArray<readonly [key: string, file: string]> =
   ['player_death', 'audio/sfx/player-death.ogg'],
 ];
 
-/** Python: `pygame.mixer.music.set_volume(0.5)`. */
-export const MUSIC_VOLUME = 0.5;
+// --- Mix ---------------------------------------------------------------------------------------------
+//
+// The final level of every sound is:   user volume (0..1, the Music / SFX settings)  x  the gain below.
+// The gains are the "mix": tune these when listening tests say the balance is off. The user settings are for
+// taste and listening environment. Measured source levels (ffmpeg, whole file): the music is hot (about -12 dB
+// RMS, peaks at 0 dBFS); the shots are the densest sounds (about -9 dB RMS for 0.3 s, peaks -0.3 dBFS);
+// the explosions are quieter on average (-19 dB RMS) but peak at full scale or above.
 
 /**
- * Python sets volumes per sound on desktop: shots 0.4, laser 0.7, boost and death 2 (pygame clamps to 1.0),
- * explosions untouched (1.0). The web build leaves the processed shot sounds at 1.0; the desktop tuning is
- * used here so shots do not drown out the music.
+ * Music gain at a Music setting of 100 %. At the default setting this is 0.56 (Python used 0.5), which keeps the
+ * hot music file around -17 dB RMS with its peaks at -5 dBFS, leaving about 5 dB of headroom for effects.
  */
-export const SFX_VOLUME = {
-  shoot: 0.4,
-  explosion: 1.0,
+export const MUSIC_MAX_GAIN = 0.7;
+
+/** Default Music and SFX settings. Below 100 % so either can be raised from the pause screen. */
+export const DEFAULT_MUSIC_VOLUME = 0.8;
+export const DEFAULT_SFX_VOLUME = 0.8;
+
+/** The pause-screen controls move a setting in steps of this size. */
+export const VOLUME_STEP = 0.1;
+
+export type SfxGroup = 'shoot' | 'explosion' | 'laser' | 'boost' | 'death';
+
+export const SFX_GROUP: Readonly<Record<SfxKey, SfxGroup>> = {
+  shoot_low: 'shoot',
+  shoot_mid: 'shoot',
+  shoot_high: 'shoot',
+  explosion_small: 'explosion',
+  explosion_medium: 'explosion',
+  explosion_large: 'explosion',
+  laser: 'laser',
+  boost: 'boost',
+  player_death: 'death',
+};
+
+/**
+ * Gain of each effect at an SFX setting of 100 % (multiply by the setting for the real level; 80 % by default).
+ * Python (desktop) used shots 0.4, laser 0.7, boost and death 2 (clamped to 1) and explosions 1.0, which puts
+ * the gunfire at roughly the same loudness as the music and everything else clipping. Here gunfire sits well
+ * under the music; explosions (bigger ones louder), the laser and the death sound are the strongest effects but
+ * still sit under the music's average level.
+ */
+export const SFX_GAIN: Readonly<Record<SfxKey, number>> = {
+  shoot_low: 0.28,
+  shoot_mid: 0.28,
+  shoot_high: 0.28,
+  explosion_small: 0.48,
+  explosion_medium: 0.56,
+  explosion_large: 0.64,
+  laser: 0.5,
+  boost: 0.6,
+  player_death: 0.7,
+};
+
+/**
+ * Overlapping sounds of one group add up, so each new sound is quieter by this factor for every sound of its
+ * group that is still playing (at most `OVERLAP_FALLOFF_MAX_STEPS` of them count). Rapid Fire starts a shot every
+ * 0.1 s while each lasts 0.3 s: after the first two shots the stream settles at about 1.3 x the loudness of one
+ * shot, instead of 3 x.
+ */
+export const OVERLAP_FALLOFF: Readonly<Record<SfxGroup, number>> = {
+  shoot: 0.65,
+  explosion: 0.65,
   laser: 0.7,
-  boost: 1.0,
-  player_death: 1.0,
-} as const;
+  boost: 1,
+  death: 1,
+};
+export const OVERLAP_FALLOFF_MAX_STEPS = 3;
+
+/**
+ * For groups listed here only sounds that started less than this many seconds ago count as overlapping. Shots
+ * decay fast and normal fire is one every 0.3 s (as long as the sound), so without this the ringing tail of the
+ * previous shot would randomly quieten the next one. Rapid Fire (every 0.1 s) still counts the last two shots.
+ */
+export const OVERLAP_WINDOW_SECONDS: Readonly<Partial<Record<SfxGroup, number>>> = {
+  shoot: 0.25,
+};
 
 /** Python skips an explosion when 3 copies of that exact sound are already playing (stops "mudding"). */
 export const EXPLOSION_MAX_CONCURRENT = 3;
+
+/** On top of the Python rule: at most this many explosions of any size at once (it allowed 9, up to 12 s long). */
+export const EXPLOSION_MAX_TOTAL = 4;
 
 /**
  * Python `MEGA_POWER_MUSIC_SPEED = 1.26`: during MEGA POWER the music is sped up and pitched up 4 semitones
@@ -62,3 +127,5 @@ export const MEGA_POWER_MUSIC_SPEED = 1.26;
 export const MEGA_POWER_MUSIC_SPEEDUP_ENABLED = false;
 
 export const MUSIC_MUTE_STORAGE_KEY = 'asteroids.musicMuted';
+export const MUSIC_VOLUME_STORAGE_KEY = 'asteroids.musicVolume';
+export const SFX_VOLUME_STORAGE_KEY = 'asteroids.sfxVolume';

@@ -10,6 +10,7 @@ import { createKeyPressDispatcher } from '../input/keyPress';
 import { drawStarfield } from '../render/worldRenderer';
 import { CachedText } from '../ui/hud';
 import { addText, COLORS } from '../ui/text';
+import { VolumePanel } from '../ui/volumePanel';
 import { SCENE_GAME, SCENE_START } from './keys';
 
 const CENTER_X = SCREEN_WIDTH / 2;
@@ -38,6 +39,7 @@ export class StartScene extends Phaser.Scene {
   private iconGfx!: Phaser.GameObjects.Graphics;
   private musicHint!: CachedText;
   private audio!: AudioDirector;
+  private volumePanel!: VolumePanel;
   private starting = false;
 
   constructor() {
@@ -76,12 +78,22 @@ export class StartScene extends Phaser.Scene {
       18,
     );
 
+    this.volumePanel = new VolumePanel(this, this.audio, CENTER_X, 664, 18, 22, 2);
+
     const keyboard = this.input.keyboard;
     if (keyboard) {
-      keyboard.addCapture('SPACE');
+      keyboard.addCapture('SPACE,UP,DOWN,LEFT,RIGHT');
+      const panelKey = (code: string) => (): void => void this.volumePanel.handleKey(code);
       keyboard.on(
         Phaser.Input.Keyboard.Events.ANY_KEY_DOWN,
-        createKeyPressDispatcher({ Space: () => this.start(), KeyM: () => this.audio.music.toggleMuted() }),
+        createKeyPressDispatcher({
+          Space: () => this.start(),
+          KeyM: () => this.audio.music.toggleMuted(),
+          ArrowUp: panelKey('ArrowUp'),
+          ArrowDown: panelKey('ArrowDown'),
+          ArrowLeft: panelKey('ArrowLeft'),
+          ArrowRight: panelKey('ArrowRight'),
+        }),
       );
     }
     this.input.once('pointerdown', () => this.start());
@@ -91,6 +103,7 @@ export class StartScene extends Phaser.Scene {
     this.iconGfx.clear();
     POWERUPS.forEach(([type], i) => drawPowerUpIcon(this.iconGfx, type, ICON_X, POWERUP_ROW_Y(i), POWERUP_RADIUS, time));
     this.musicHint.set(`M: music ${this.audio.music.isMuted ? 'off' : 'on'}`);
+    this.volumePanel.update();
   }
 
   private start(): void {

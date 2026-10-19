@@ -102,9 +102,13 @@ async function run(browser) {
   const audio = () =>
     page.evaluate(`(() => { const g = window.__game, a = g.registry.get('audio'), m = a.musicSound;
       return { locked: g.sound.locked, ctx: g.sound.context ? g.sound.context.state : 'n/a',
-        music: m ? { playing: m.isPlaying, paused: m.isPaused, rate: m.rate, key: m.key } : null,
+        music: m ? { playing: m.isPlaying, paused: m.isPaused, rate: m.rate, key: m.key, gain: m.volume, requested: m.currentConfig.volume } : null,
         musicInstances: g.sound.sounds.filter((s) => s.key === 'music').length, totalSounds: g.sound.sounds.length,
-        sfxPlaying: a.sfx.playingCount(), muted: a.music.isMuted, musicState: a.music.currentState }; })()`);
+        sfxPlaying: a.sfx.playingCount(), muted: a.music.isMuted, musicState: a.music.currentState,
+        vm: a.volume('music'), vs: a.volume('sfx'),
+        sfxVolumes: g.sound.sounds.filter((s) => s.key !== 'music' && s.volumeNode).map((s) => s.currentConfig.volume) }; })()`);
+  const stored = (key) => page.evaluate((k) => localStorage.getItem(k), key);
+  const near = (x, y, eps = 0.005) => typeof x === 'number' && Math.abs(x - y) < eps;
   const keyTap = async (key, ms = 60) => (await page.keyboard.down(key), await sleep(ms), await page.keyboard.up(key));
   const quiet = () =>
     page.evaluate(`(() => { const s = ${scene()}.sim; s.spawner.spawnTimer = -1e9; s.asteroids.length = 0; s.shots.length = 0; s.startCooldown = 0; })()`);
@@ -280,12 +284,77 @@ async function run(browser) {
   await keyTap('KeyM');
   await sleep(150);
   a = await audio();
-  const stored = await page.evaluate(() => localStorage.getItem('asteroids.musicMuted'));
-  check('M mutes the music and remembers it', a.muted && a.music?.paused === true && stored === '1', `stored=${stored}`);
+  const mutedStored = await stored('asteroids.musicMuted');
+  check('M mutes the music and remembers it', a.muted && a.music?.paused === true && mutedStored === '1', `stored=${mutedStored}`);
   await keyTap('KeyM');
   await sleep(150);
   a = await audio();
   check('M again unmutes', !a.muted && a.music?.playing === true && (await page.evaluate(() => localStorage.getItem('asteroids.musicMuted'))) === '0');
+
+  // --- audio: Music / SFX volume controls (pause screen), persistence, mute, restarts ----------------------------------------------
+  a = await audio();
+  check('defaults: Music 80 % (real gain 0.56), SFX 80 %, nothing saved yet', near(a.vm, 0.8, 1e-9) && near(a.vs, 0.8, 1e-9) && near(a.music?.gain, 0.56) && (await stored('asteroids.musicVolume')) === null, JSON.stringify({ vm: a.vm, vs: a.vs, gain: a.music?.gain }));
+  await page.keyboard.press('ArrowLeft'); // not paused: the arrows steer the ship and must not touch the volume
+  await sleep(100);
+  check('arrow keys do not change the volume while playing', near((await audio()).vm, 0.8, 1e-9) && (await stored('asteroids.musicVolume')) === null);
+
+  await page.keyboard.press('KeyP');
+  await sleep(200);
+  const pausedTexts = await hudText();
+  check('pause screen shows Music and SFX rows with the keys to use', pausedTexts.some((t) => t.startsWith('> Music') && t.includes('80%')) && pausedTexts.some((t) => t.startsWith('  SFX') && t.includes('80%')) && pausedTexts.some((t) => t.includes('Left/Right')), JSON.stringify(pausedTexts.filter((t) => /Music|SFX|Left/.test(t))));
+  await shot('11-pause-volume');
+  await page.keyboard.press('ArrowLeft');
+  await sleep(80);
+  await page.keyboard.press('ArrowLeft');
+  await sleep(150);
+  a = await audio();
+  check('Left x2 lowers Music to 60 %: applied to the playing track, one instance, still paused', near(a.vm, 0.6, 1e-9) && near(a.music?.requested, 0.42) && a.musicInstances === 1 && a.music?.paused === true, JSON.stringify({ vm: a.vm, requested: a.music?.requested, inst: a.musicInstances }));
+  check('...saved, SFX untouched', (await stored('asteroids.musicVolume')) === '0.6' && near(a.vs, 0.8, 1e-9) && (await stored('asteroids.sfxVolume')) === null);
+
+  await page.keyboard.press('ArrowDown'); // select SFX
+  await sleep(80);
+  await page.keyboard.press('ArrowRight');
+  await sleep(80);
+  await page.keyboard.press('ArrowRight');
+  a = await audio();
+  check('Down + Right x2 raises SFX to 100 % and plays a sample shot at that level', near(a.vs, 1, 1e-9) && a.sfxVolumes.some((v) => near(v, 0.28)), JSON.stringify({ vs: a.vs, sfx: a.sfxVolumes }));
+  check('...saved, Music untouched', (await stored('asteroids.sfxVolume')) === '1' && near(a.vm, 0.6, 1e-9));
+  await sleep(500);
+  const pausedRows = (await hudText()).filter((t) => /^[> ] (Music|SFX)/.test(t));
+  check('rows redraw with the new values and selection', pausedRows.some((t) => t.startsWith('  Music') && t.includes('60%')) && pausedRows.some((t) => t.startsWith('> SFX') && t.includes('100%')), JSON.stringify(pausedRows));
+
+  await page.keyboard.press('KeyM'); // mute while paused, then adjust Music
+  await sleep(100);
+  await page.keyboard.press('ArrowUp');
+  await sleep(80);
+  await page.keyboard.press('ArrowLeft');
+  await sleep(150);
+  a = await audio();
+  check('Music can be adjusted while muted: stays muted and paused, level saved', a.muted && a.music?.paused === true && near(a.vm, 0.5, 1e-9) && (await stored('asteroids.musicVolume')) === '0.5' && (await stored('asteroids.musicMuted')) === '1', JSON.stringify({ vm: a.vm, muted: a.muted }));
+  await page.keyboard.press('KeyM');
+  await sleep(100);
+  await page.keyboard.press('ArrowRight'); // back to 60 %
+  await sleep(100);
+  await page.keyboard.press('KeyP');
+  await sleep(250);
+  a = await audio();
+  check('unmuting + resuming plays the same single track at the chosen level', !a.muted && a.music?.playing === true && a.musicInstances === 1 && near(a.music?.gain, 0.42) && near(a.vm, 0.6, 1e-9), JSON.stringify({ gain: a.music?.gain, inst: a.musicInstances, vm: a.vm }));
+  await page.evaluate(() => { const a = window.__game.registry.get('audio'); for (let i = 0; i < 7; i++) a.adjustVolume('sfx', -1); });
+  await sleep(100);
+  a = await audio();
+  check('SFX can be lowered to 30 %; the music is not affected by it', near(a.vs, 0.3, 1e-9) && near(a.music?.gain, 0.42) && a.music?.playing === true, JSON.stringify({ vs: a.vs, gain: a.music?.gain }));
+  await page.evaluate(() => { const a = window.__game.registry.get('audio'); for (let i = 0; i < 4; i++) a.adjustVolume('sfx', 1); });
+  await sleep(400);
+  a = await audio();
+  check('settled at Music 60 %, SFX 70 %', near(a.vm, 0.6, 1e-9) && near(a.vs, 0.7, 1e-9), JSON.stringify({ vm: a.vm, vs: a.vs }));
+  await page.evaluate(() => window.__game.registry.get('audio').adjustVolume('music', -1));
+  await sleep(150);
+  a = await audio();
+  check('a change while the music is playing reaches the live audio node (50 % -> gain 0.35), no restart', a.music?.playing === true && near(a.music?.gain, 0.35) && a.musicInstances === 1, JSON.stringify({ gain: a.music?.gain, playing: a.music?.playing }));
+  await page.evaluate(() => window.__game.registry.get('audio').adjustVolume('music', 1));
+  await sleep(150);
+  a = await audio();
+  check('...and back to 60 % (gain 0.42)', a.music?.playing === true && near(a.music?.gain, 0.42) && near(a.vm, 0.6, 1e-9));
 
   // --- chaos: effects + many sounds, sound objects must not pile up --------------------------------------------------------
   await quiet();
@@ -294,17 +363,21 @@ async function run(browser) {
   await page.keyboard.down('Space');
   await page.keyboard.down('KeyD');
   await page.keyboard.down('KeyW');
-  const frameTimes = await page.evaluate(
+  const { times: frameTimes, maxShoot } = await page.evaluate(
     () =>
       new Promise((resolve) => {
         const times = [];
+        let maxShoot = 0;
         let last = performance.now();
         const t0 = last;
         const tick = (now) => {
           times.push(now - last);
           last = now;
+          let shoot = 0;
+          for (const s of window.__game.sound.sounds) if (s.key.startsWith('shoot') && s.volumeNode) shoot += s.currentConfig.volume;
+          maxShoot = Math.max(maxShoot, shoot);
           if (now - t0 < 6000) requestAnimationFrame(tick);
-          else resolve(times);
+          else resolve({ times, maxShoot });
         };
         requestAnimationFrame(tick);
       }),
@@ -321,6 +394,9 @@ async function run(browser) {
   a = await audio();
   await shot('08-chaos');
   check('sound objects stay bounded under heavy fire', a.totalSounds < 30 && a.sfxPlaying < 20, `total=${a.totalSounds} sfx=${a.sfxPlaying}`);
+  const oneShot = 0.28 * a.vs;
+  console.log(`INFO  Mega Power fire: loudest moment adds up to ${(maxShoot / oneShot).toFixed(2)} x one shot (${maxShoot.toFixed(3)} vs ${oneShot.toFixed(3)})`);
+  check('Rapid Fire + Multi-Shot shots add up to at most ~2.1 x a single shot (3 x if unattenuated)', maxShoot > 0 && maxShoot <= oneShot * 2.1 + 1e-6, `max=${maxShoot.toFixed(3)} single=${oneShot.toFixed(3)}`);
   check('entity counts stay bounded', chaos.shots < 60 && chaos.asteroids < 100 && chaos.powerups < 20, JSON.stringify({ shots: chaos.shots, ast: chaos.asteroids, pu: chaos.powerups }));
 
   // --- game over with effects active, then restarts: no stacked music, listeners or effects --------------------------------------
@@ -338,6 +414,7 @@ async function run(browser) {
     const fresh = await sim();
     a = await audio();
     check(`restart #${round + 1}: clean state, one music instance still playing`, fresh.phase === 'playing' && fresh.lives === 3 && fresh.score === 0 && !fresh.rapid && !fresh.slow && fresh.laser === 15 && fresh.powerups === 0 && a.musicInstances === 1 && a.music?.playing === true, JSON.stringify({ fresh: [fresh.phase, fresh.lives, fresh.rapid, fresh.slow, fresh.laser], music: a.musicInstances }));
+    check(`restart #${round + 1}: Music and SFX levels kept, music still at its level`, near(a.vm, 0.6, 1e-9) && near(a.vs, 0.7, 1e-9) && near(a.music?.gain, 0.42), JSON.stringify({ vm: a.vm, vs: a.vs, gain: a.music?.gain }));
   }
   const listeners = await page.evaluate(`({ blur: window.__game.events.listenerCount('blur'), hidden: window.__game.events.listenerCount('hidden'), focus: window.__game.events.listenerCount('focus') })`);
   check('no listener build-up after restarts', JSON.stringify(listeners) === JSON.stringify(listenerBaseline), JSON.stringify({ listeners, listenerBaseline }));
@@ -368,11 +445,30 @@ async function run(browser) {
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => window.__game.scene.isActive('StartScene'), null, { timeout: 3000 });
   a = await audio();
-  check('music keeps playing on the title screen', a.music?.playing === true && a.musicInstances === 1);
+  check('music keeps playing on the title screen, at the same level', a.music?.playing === true && a.musicInstances === 1 && near(a.music?.gain, 0.42) && near(a.vm, 0.6, 1e-9));
   await shot('10-start-with-powerups');
+  check('title screen shows the volume rows', (await page.evaluate(`window.__game.scene.getScene('StartScene').children.list.filter((c) => c.type === 'Text').map((t) => t.text)`)).some((t) => t.startsWith('> Music') && t.includes('60%')));
+  await page.keyboard.press('ArrowRight');
+  await sleep(120);
+  a = await audio();
+  check('Right on the title screen raises Music to 70 % (live and saved)', near(a.vm, 0.7, 1e-9) && near(a.music?.gain, 0.49) && (await stored('asteroids.musicVolume')) === '0.7' && a.musicInstances === 1);
   await page.keyboard.press('Space');
   await page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 3000 });
   check('can start again; still one music instance', (await audio()).musicInstances === 1);
+
+  // --- a new session remembers the mix -------------------------------------------------------------------------------------------
+  await page.keyboard.press('KeyM'); // leave a mute preference behind too
+  await sleep(100);
+  await page.reload();
+  await page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
+  a = await audio();
+  check('after a reload Music 70 %, SFX 70 % and mute are restored', near(a.vm, 0.7, 1e-9) && near(a.vs, 0.7, 1e-9) && a.muted === true, JSON.stringify({ vm: a.vm, vs: a.vs, muted: a.muted }));
+  await page.keyboard.press('KeyM'); // unmute: the music starts, at the restored level
+  await page.waitForFunction(() => !window.__game.sound.locked, null, { timeout: 5000 }).catch(() => {});
+  await sleep(500);
+  a = await audio();
+  check('...and the music starts straight at the saved level', !a.muted && a.music?.playing === true && near(a.music?.gain, 0.49) && a.musicInstances === 1, JSON.stringify({ muted: a.muted, gain: a.music?.gain, playing: a.music?.playing, locked: a.locked }));
+  await shot('12-start-after-reload');
 
   // --- scaling ------------------------------------------------------------------------------------------------------------
   for (const vp of [{ width: 800, height: 600 }, { width: 1920, height: 500 }]) {

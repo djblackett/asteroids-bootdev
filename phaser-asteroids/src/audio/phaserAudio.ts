@@ -1,8 +1,10 @@
 import Phaser from 'phaser';
 import { defaultRng } from '../core/rng';
-import { MUSIC_KEY, MUSIC_MUTE_STORAGE_KEY, MUSIC_VOLUME, type SfxKey } from './audioConfig';
-import { MusicController, type MusicTrack } from './musicController';
-import { SfxPlayer, type PlayingSound, type SfxBackend } from './sfxPlayer';
+import { DEFAULT_MUSIC_VOLUME, MUSIC_KEY, type SfxKey } from './audioConfig';
+import { adjustVolume, createAudioParts, volumeOf, type AudioParts } from './audioSetup';
+import { browserStorage, musicGain, type VolumeChannel } from './audioSettings';
+import type { MusicController, MusicTrack } from './musicController';
+import type { SfxPlayer, PlayingSound, SfxBackend } from './sfxPlayer';
 
 export const AUDIO_REGISTRY_KEY = 'audio';
 
@@ -47,6 +49,8 @@ class PhaserSfxBackend implements SfxBackend {
 /** The single looping music track. Created lazily on first play; never duplicated. */
 class PhaserMusicTrack implements MusicTrack {
   private sound: Phaser.Sound.BaseSound | null = null;
+  /** Remembered so a track created later (first key press) starts at the right level. */
+  private gain = musicGain(DEFAULT_MUSIC_VOLUME);
 
   constructor(private readonly manager: Sound) {}
 
@@ -54,7 +58,7 @@ class PhaserMusicTrack implements MusicTrack {
     if (this.sound) return;
     if (!this.manager.game.cache.audio.exists(MUSIC_KEY)) return;
     try {
-      this.sound = this.manager.add(MUSIC_KEY, { loop: true, volume: MUSIC_VOLUME });
+      this.sound = this.manager.add(MUSIC_KEY, { loop: true, volume: this.gain });
       this.sound.play();
     } catch (error) {
       console.warn('[asteroids] could not start music', error);
@@ -74,25 +78,14 @@ class PhaserMusicTrack implements MusicTrack {
     (this.sound as Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound | null)?.setRate(rate);
   }
 
+  setVolume(gain: number): void {
+    this.gain = gain;
+    (this.sound as Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound | null)?.setVolume(gain);
+  }
+
   /** For tests and diagnostics. */
   get instance(): Phaser.Sound.BaseSound | null {
     return this.sound;
-  }
-}
-
-function readMuted(): boolean {
-  try {
-    return window.localStorage.getItem(MUSIC_MUTE_STORAGE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function writeMuted(muted: boolean): void {
-  try {
-    window.localStorage.setItem(MUSIC_MUTE_STORAGE_KEY, muted ? '1' : '0');
-  } catch {
-    // Private mode / blocked storage: the setting simply is not remembered.
   }
 }
 
@@ -105,8 +98,7 @@ function writeMuted(muted: boolean): void {
  * regained focus.
  */
 export class AudioDirector {
-  readonly music: MusicController;
-  readonly sfx: SfxPlayer;
+  private readonly parts: AudioParts;
   private readonly track: PhaserMusicTrack;
   private blurred = false;
   private hidden = false;
@@ -118,8 +110,7 @@ export class AudioDirector {
     manager.pauseOnBlur = false;
 
     this.track = new PhaserMusicTrack(manager);
-    this.music = new MusicController(this.track, { muted: readMuted(), onMuteChanged: writeMuted });
-    this.sfx = new SfxPlayer(new PhaserSfxBackend(manager), defaultRng);
+    this.parts = createAudioParts(browserStorage(), this.track, new PhaserSfxBackend(manager), defaultRng);
 
     const events = game.events;
     const update = (): void => this.music.setWindowActive(!this.blurred && !this.hidden);
@@ -152,6 +143,23 @@ export class AudioDirector {
       this.waitingForUnlock = true;
       manager.once(Phaser.Sound.Events.UNLOCKED, () => this.music.start());
     }
+  }
+
+  get music(): MusicController {
+    return this.parts.music;
+  }
+  get sfx(): SfxPlayer {
+    return this.parts.sfx;
+  }
+
+  /** The Music or SFX setting, 0..1. */
+  volume(channel: VolumeChannel): number {
+    return volumeOf(this.parts, channel);
+  }
+
+  /** Moves a setting one step: applies at once, is saved, and an SFX change plays a sample shot. */
+  adjustVolume(channel: VolumeChannel, direction: 1 | -1): number {
+    return adjustVolume(this.parts, channel, direction);
   }
 
   /** The live music sound object (null until playback was requested). Exposed for browser tests. */

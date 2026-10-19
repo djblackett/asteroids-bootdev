@@ -4,83 +4,26 @@ import {
   EXPLOSION_MAX_CONCURRENT,
   MEGA_POWER_MUSIC_SPEED,
   MEGA_POWER_MUSIC_SPEEDUP_ENABLED,
-  SFX_VOLUME,
+  SFX_GAIN,
   type SfxKey,
 } from '../src/audio/audioConfig';
-import { MusicController, type MusicTrack } from '../src/audio/musicController';
-import { cueForEvent, explosionKey, SfxPlayer, type PlayingSound, type SfxBackend } from '../src/audio/sfxPlayer';
+import { MusicController } from '../src/audio/musicController';
+import { cueForEvent, explosionKey, SfxPlayer, type SfxBackend } from '../src/audio/sfxPlayer';
 import type { SimEvent } from '../src/core/game';
 import { seededRng } from '../src/core/rng';
+import { FakeBackend, FakeTrack } from './audioFakes';
 import { FRAME, hold, pickupAtShip, quietSim, rock, runFor } from './helpers';
-
-/** Records every play request; sounds last until `finishAll` is called. */
-class FakeBackend implements SfxBackend {
-  readonly requests: Array<{ key: SfxKey; volume: number }> = [];
-  private readonly live: Array<() => void> = [];
-  stopped = 0;
-  autoFinish = false;
-
-  play(key: SfxKey, volume: number, onFinished: () => void): PlayingSound | null {
-    this.requests.push({ key, volume });
-    if (this.autoFinish) {
-      onFinished();
-      return { stop: () => undefined };
-    }
-    let done = false;
-    const finish = (): void => {
-      if (!done) {
-        done = true;
-        onFinished();
-      }
-    };
-    this.live.push(finish);
-    return {
-      stop: () => {
-        this.stopped++;
-        finish();
-      },
-    };
-  }
-
-  finishAll(): void {
-    for (const f of this.live.splice(0)) f();
-  }
-
-  count(prefix: string): number {
-    return this.requests.filter((r) => r.key.startsWith(prefix)).length;
-  }
-}
-
-class FakeTrack implements MusicTrack {
-  calls: string[] = [];
-  rates: number[] = [];
-  play(): void {
-    this.calls.push('play');
-  }
-  pause(): void {
-    this.calls.push('pause');
-  }
-  resume(): void {
-    this.calls.push('resume');
-  }
-  setRate(rate: number): void {
-    this.rates.push(rate);
-  }
-  count(call: string): number {
-    return this.calls.filter((c) => c === call).length;
-  }
-}
 
 describe('sound-event mapping (as in the Python play_* calls)', () => {
   const rng = seededRng(5);
 
   it('maps the events that make noise in Python to the right sounds and volumes', () => {
-    expect(cueForEvent({ type: 'laser_fired' }, rng)).toEqual({ key: 'laser', volume: SFX_VOLUME.laser });
-    expect(cueForEvent({ type: 'boost_started' }, rng)).toEqual({ key: 'boost', volume: SFX_VOLUME.boost });
-    expect(cueForEvent({ type: 'player_hit', livesLeft: 1 }, rng)).toEqual({ key: 'player_death', volume: SFX_VOLUME.player_death });
+    expect(cueForEvent({ type: 'laser_fired' }, rng)).toEqual({ key: 'laser', volume: SFX_GAIN.laser });
+    expect(cueForEvent({ type: 'boost_started' }, rng)).toEqual({ key: 'boost', volume: SFX_GAIN.boost });
+    expect(cueForEvent({ type: 'player_hit', livesLeft: 1 }, rng)).toEqual({ key: 'player_death', volume: SFX_GAIN.player_death });
     const shot = cueForEvent({ type: 'shot_fired' }, rng);
     expect(['shoot_low', 'shoot_mid', 'shoot_high']).toContain(shot?.key);
-    expect(shot?.volume).toBe(SFX_VOLUME.shoot);
+    expect(shot?.volume).toBe(SFX_GAIN[shot?.key as SfxKey]);
   });
 
   it.each([
