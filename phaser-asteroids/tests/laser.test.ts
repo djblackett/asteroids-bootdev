@@ -123,7 +123,7 @@ describe('laser in the simulation', () => {
     expect(events).toContainEqual({ type: 'laser_fired' });
     expect(rocks.slice(0, 3).every((r) => r.dying)).toBe(true);
     expect(rocks[3]?.dying).toBe(false); // 60 px off the beam, radius 20
-    expect(sim.player.score).toBe(10 + 20 + 50);
+    expect(sim.player.score).toBe(10 + 30 + 100); // 10 x 1.0, 20 x 1.5, 50 x 2.0 (combo)
   });
 
   it('does not consume or interact with ordinary shots', () => {

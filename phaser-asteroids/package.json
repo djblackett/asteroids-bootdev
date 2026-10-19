@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:browser": "npm run build && node scripts/smoke.mjs",
-    "test:input": "npm run build && node scripts/keyboard.mjs"
+    "test:input": "npm run build && node scripts/keyboard.mjs",
+    "test:combat": "npm run build && node scripts/combat.mjs"
   },
   "dependencies": {
     "phaser": "4.2.1"

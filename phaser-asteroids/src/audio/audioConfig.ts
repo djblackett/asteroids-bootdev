@@ -102,6 +102,13 @@ export const SFX_GAIN: Readonly<Record<SfxKey, number>> = {
 };
 
 /**
+ * UFOs are silent in Python (no sound for spawning, firing or being destroyed). A destroyed UFO reuses the existing
+ * explosion samples (large UFO = medium, small UFO = small) through the normal explosion limiter and falloff; this
+ * scales just those, so UFO kills can be made louder or quieter without touching the approved asteroid explosions.
+ */
+export const UFO_EXPLOSION_GAIN_SCALE = 1.0;
+
+/**
  * Overlapping sounds of one group add up, so each new sound is quieter by this factor for every sound of its
  * group that is still playing (at most `OVERLAP_FALLOFF_MAX_STEPS` of them count). Rapid Fire starts a shot every
  * 0.1 s while each lasts 0.3 s: after the first two shots the stream settles at about 1.3 x the loudness of one

@@ -5,7 +5,7 @@ export interface Shot {
   position: Vec2;
   velocity: Vec2;
   radius: number;
-  /** Player number that fired the shot (UFO shots will use a different owner kind later). */
+  /** Player number that fired the shot. UFO shots are a separate type (`UfoShot`) kept in their own list. */
   owner: number;
   alive: boolean;
 }
@@ -35,7 +35,7 @@ export function isOutsidePlayfield(position: Vec2, margin: number): boolean {
  * Advances a shot. Unlike the Python original, shots that leave the playfield are despawned
  * (otherwise they fly forever and stay in the collision loops).
  */
-export function updateShot(shot: Shot, dt: number): void {
+export function updateShot(shot: Pick<Shot, 'position' | 'velocity' | 'alive'>, dt: number): void {
   shot.position.x += shot.velocity.x * dt;
   shot.position.y += shot.velocity.y * dt;
   if (isOutsidePlayfield(shot.position, SHOT_CULL_MARGIN)) shot.alive = false;

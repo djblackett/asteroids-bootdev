@@ -111,7 +111,8 @@ describe('boost ramming', () => {
     sim.asteroids.push(...rocks);
     sim.step(FRAME);
     expect(rocks.every((r) => r.dying)).toBe(true);
-    expect(sim.player.score).toBe(10 + 20 + 50);
+    // Three kills in one frame climb the combo: 10 x 1.0 + 20 x 1.5 + 50 x 2.0.
+    expect(sim.player.score).toBe(10 + 30 + 100);
     expect(sim.player.lives).toBe(3);
   });
 

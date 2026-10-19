@@ -23,6 +23,7 @@ npm run build      # typecheck + production build into dist/
 npm run preview    # serve dist/ at http://localhost:4173
 npm run test:browser  # build, then drive it in headless Chrome (needs Chrome/Edge installed; see below)
 npm run test:input    # build, then real-browser keyboard tests: simultaneous keys, pause / retry / blur with keys held
+npm run test:combat   # build, then real-browser tests of combos, kill-streak banners and UFOs (same Chrome requirement)
 ```
 
 `npm run test:browser` uses `playwright-core` (dev dependency, no browser download) with a locally installed Chrome,
@@ -64,6 +65,8 @@ src/
     constants.ts  math.ts  rng.ts       ported constants, Pygame-convention vector maths, injectable RNG
     player.ts  shot.ts  asteroid.ts     entity state + rules (power-up timers, boost and laser live on the player)
     powerup.ts  laser.ts                pick-ups and drop odds; the laser ray and its hit test
+    scoring.ts                          combo multiplier / 3 s window, kill-streak milestones and banner animation curves
+    ufo.ts                              large and small UFOs: wandering, aiming, shots, spawn schedule
     spawner.ts  particles.ts  starfield.ts
     game.ts                             GameSim: one run of the game; step(dt, input) -> events
   scenes/    Boot (load audio) -> Start (title) -> Game (glue: input, sim.step, draw, overlays)
@@ -72,7 +75,7 @@ src/
   audio/     Pure logic (event -> sound, music state machine, volume settings, mix config) + one Phaser adapter (`AudioDirector`)
   ui/        HUD, pause / game-over overlays, the Music / SFX volume panel
 tests/       Vitest suites for src/core and src/audio (no browser, no audio device)
-scripts/     smoke.mjs: browser smoke test; keyboard.mjs: real-browser keyboard tests
+scripts/     smoke.mjs: browser smoke test; keyboard.mjs: real-browser keyboard tests; combat.mjs: combo / banner / UFO tests
 docs/        implementation-progress.md
 ```
 

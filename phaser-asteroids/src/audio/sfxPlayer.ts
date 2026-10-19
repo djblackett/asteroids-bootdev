@@ -9,6 +9,7 @@ import {
   OVERLAP_WINDOW_SECONDS,
   SFX_GAIN,
   SFX_GROUP,
+  UFO_EXPLOSION_GAIN_SCALE,
   type SfxGroup,
   type SfxKey,
 } from './audioConfig';
@@ -31,7 +32,8 @@ export function explosionKey(radius: number): SfxKey {
 /**
  * Which sound, if any, a simulation event makes. Mirrors where Python calls its `play_*` functions:
  * shooting, an asteroid starting to break up (including one that crashed into the ship), losing a life,
- * the laser and the boost. Wall hits, armored-asteroid dings, pick-ups and game over are silent in Python.
+ * the laser and the boost. Wall hits, armored-asteroid dings, pick-ups, game over and UFOs appearing or firing are silent
+ * in Python. The one addition is a destroyed UFO, which reuses an explosion sample (Python is silent there too).
  */
 export function cueForEvent(event: SimEvent, rng: Rng): SoundCue | null {
   switch (event.type) {
@@ -43,6 +45,10 @@ export function cueForEvent(event: SimEvent, rng: Rng): SoundCue | null {
     case 'asteroid_destroyed': {
       const key = explosionKey(event.radius);
       return { key, volume: SFX_GAIN[key] };
+    }
+    case 'ufo_destroyed': {
+      const key = explosionKey(event.radius);
+      return { key, volume: SFX_GAIN[key] * UFO_EXPLOSION_GAIN_SCALE };
     }
     case 'player_hit':
       return { key: 'player_death', volume: SFX_GAIN.player_death };

@@ -1,7 +1,7 @@
 # Implementation progress
 
 Phaser **4.2.1** · TypeScript 7.0.2 (strict) · Vite 8.3.4 · Vitest 5.0.5 · playwright-core 1.64.1 (dev only, for the
-browser smoke test). Last updated 2026-10-18.
+browser tests). Last updated 2026-10-19.
 
 ## Status
 
@@ -9,6 +9,7 @@ browser smoke test). Last updated 2026-10-18.
 | ----- | ----- | ------ |
 | 1 | Foundation, player movement, shooting, asteroids, lives / respawn / game over / restart, HUD, starfield, pause | Done |
 | 2 | Music and sound effects, six-type power-up system (Revive deferred), laser beam, boost, combined-ability testing | Done |
+| 3 | Combo scoring, kill-streak banners, large and small UFOs (AI, shots, collisions, drops), integrated combat tests | Done (see "Phase 3") |
 
 ## Phase 2: what was added
 
@@ -93,6 +94,88 @@ in `audioConfig.ts`.
   damage logic: asteroids are hit as if shot (full points, drops possible) and the ship takes no damage, uses up no
   shield and wastes no respawn protection. An armored asteroid absorbs the first contact frame and breaks on the next.
   As in Python, boost activates after movement in the same frame, so the first frame is still normal speed.
+
+## Phase 3: combos, kill streaks and UFOs (2026-10-19)
+
+New pure modules `src/core/scoring.ts` and `src/core/ufo.ts`, wired into `GameSim` (still driven only by
+`step(dt, input)`); presentation in `ui/hud.ts` (`ComboHud`, `KillStreakBanner`) and `render/worldRenderer.ts` (UFOs,
+enemy shots). Everything below was read from the Python source, not from the reconnaissance document, and several
+details differ from that document (marked **≠ recon**).
+
+### Combo and kill streaks (`collisions.py`, `killstreak.py`, `gameloop.py`, `hud.py`)
+
+- **What counts as a kill**: an asteroid that is actually *destroyed* by a player shot, a laser hit or a boost ram, **or by a UFO
+  shot** (that last one pays nobody but still advances the combo and can drop a power-up: kept). Each kill: combo + 1, 3 s
+  window restarted, score = `int(points x multiplier)` at the *new* count (x1, 1.5, 2, 2.5, x3 from the 5th). Not kills: a
+  non-lethal armored hit, an asteroid that crashes into the ship (shield or not), and **UFOs (≠ recon: they pay a flat 200 / 500,
+  never multiplied, and do not touch the combo or the streak)**.
+- **Reset**: only the 3 s timer (real time, so Slow Motion does not stretch it; it is not stepped while paused) or a new game.
+  Losing a life does **not** reset it. On expiry the announced milestone is forgotten too, so 15 can be announced again.
+- **Milestones** 15 KILLING SPREE! / 30 RAMPAGE! / 50 DOMINATING! / 75 UNSTOPPABLE! / 100 GODLIKE! / 150 LEGENDARY! /
+  200 BEYOND LEGENDARY!, same names and colours. One banner at a time, a newer one replaces the old, 2.5 s. The curves are Python's:
+  slides in from 100 px above over the first 20 %, fades over the first / last 15 %, pulses to 1.075x twice a second, with a dimmer
+  glow (a Phaser text stroke). It is two reused Text objects that never take input. Hidden at game over, as in Python.
+- **HUD**: from the 2nd kill "Nx COMBO" and "m.mx Points!" at the upper right (yellow, orange from 3, purple from 5), as in Python.
+  Fonts are the browser monospace, a little smaller than Python's so the widest banner and the 3-digit combo never overlap
+  (checked in a real browser).
+- **Event contract**: `asteroid_destroyed` now carries `combo` / `multiplier` (absent for crash kills); `kill_streak` follows the
+  kill that reached the milestone (so it can never be skipped, doubled or reordered: the count only ever moves by 1).
+
+### UFOs (`ufo.py`, `asteroidfield.py`, `collisions.py`, `gameloop.py`)
+
+- **Stats** as in Python: large r30, 100 px/s, a shot every 2 s, accuracy 0, 200 pts; small r20, 180 px/s, every 1.5 s, accuracy
+  0.7, 500 pts. Shots: r6, 350 px/s, reddish ring, in their own list (`sim.ufoShots`) and type, so they are never confused with
+  the ship's and cannot hurt UFOs. A new UFO starts at rest, draws its first heading (small: 40 % a straight left / right run)
+  and a first-shot delay of 0.5-1.5 s; every 2-4 s it picks a new heading; velocity eases towards it; it wraps once a full radius off-screen.
+- **"70 % accuracy"** is not a hit chance: the shot's direction is the line to the nearest living, non-respawning ship, plus a
+  uniform deviation of up to `180 x (1 - accuracy)` degrees, so a small UFO is at most 54 degrees off (about 19 % land within
+  10 degrees) and a large one (0) fires in a uniformly random direction. With no target both aim at a random screen point.
+- **Spawning (continuous mode)**: first attempt after 5 s of play, then one every 15 s counted from the previous attempt; an attempt
+  with 2 UFOs alive is skipped, not queued. Position is the asteroid edge table (60 px outside, 20-80 % along), so a UFO spawns past
+  its own wrap line and first jumps to the opposite side: a Python quirk, kept. Difficulty scaling and Slow Motion do not touch UFOs.
+  **≠ recon: small UFOs never spawn in continuous mode**, because Python only ever raises the field's wave number in wave mode (it
+  stays 1, small needs 5). The selector is ported (`chooseUfoType(wave)`); `UFO_CONTINUOUS_EFFECTIVE_WAVE` (1) in `constants.ts`
+  is the one switch (set it to 5 or more to see 40 % small UFOs). Small UFOs are fully implemented and tested (reachable with `?debug`
+  and `sim.spawnUfo('small', x, y)`).
+- **Collisions, in Python's order** (asteroids, shots vs asteroids, laser, **shots vs UFOs, ship vs UFOs, UFO shots vs ship**, pick-ups):
+  - A player shot is used up by the first UFO it touches. UFO kill = flat points, burst of 10, shake 6, **one guaranteed ordinary
+    power-up** (never Mega or Revive) at its position; `ufo.alive` stops a UFO being paid or dropping twice (a shot and a ram in the
+    same frame pay once).
+  - **Boost ram** kills the UFO and costs neither life, shield nor respawn protection.
+  - **Normal contact** runs `takeDamage`: life lost (respawn at 320,360 with 2 s protection), or a shield / protection absorbs it,
+    **but the UFO survives the contact**. As in Python a shield therefore buys exactly one frame against a UFO *body* (the next frame
+    of contact takes the life); respawn protection absorbs it for its 2 s.
+  - **UFO shots hurt a boosting ship** (the boost only protects against ramming); a shield / protection absorbs one and the shot is used up.
+  - **≠ recon: the Laser Beam does not hit UFOs in Python** (`handle_laser_asteroid_collisions` only looks at asteroids). Kept: the beam
+    passes through. `LASER_HITS_UFOS` in `constants.ts` flips it (a UFO dies once per beam: flat points, one drop; tested with the switch on).
+- **Audio**: Python plays no UFO sound at all except the normal death sound when one hurts you. Spawn / fire stay silent; a destroyed UFO
+  reuses the existing explosion samples (large = medium, small = small) through the normal explosion limiter, scaled by
+  `UFO_EXPLOSION_GAIN_SCALE` (1.0, its own knob). Music, shots and asteroid explosions are untouched; the unused `enemy-ship*.ogg` stay unused.
+- **Rendering**: Python's `UFO.draw`: filled disc (green large, purple small, brighter on a 0.3 s blink), lighter dome arc, white
+  outline, 3 / 2 yellow lights that blink.
+- **Frame-rate independence**: the velocity easing is `1 - exp(-2 dt)` (Python: `min(1, 2 dt)`, within 4 % at 60 fps); timers count dt;
+  the sim already sub-steps at 1/30 s.
+
+## Verification, Phase 3 (2026-10-19)
+
+- Baseline before the pass: typecheck clean, **367 unit tests**, smoke **72/72**, keyboard **49/49** (the 2026-10-18 figures below are older).
+- Now: typecheck clean; **486 unit tests in 19 files** (+119: `scoring` 40, `ufo` 56, `combat` 15, `laserUfo` 2, `ufoAudio` 6); production build OK;
+  `npm run test:browser` **72/72**, `npm run test:input` **49/49**, new `npm run test:combat` **37/37** (run 12 times in a row after the last change, 37/37 each).
+- Four older tests were changed, not weakened: they asserted the pre-combo scores (e.g. 3 laser kills = 80, now 140 with x1 / 1.5 / 2) or the exact `player_hit` event (now has `source`).
+- `quietSim` (the test helper that switches the asteroid spawner off) now also switches the UFO schedule off; the 8-minute fuzz tests and the new 5-minute combat fuzz
+  (30 / 60 / 144 fps, UFOs and combos on, restarts) run with UFOs enabled. A conservation test checks that the score always equals the points announced by events.
+- Browser (`combat.mjs`, real key events, `?debug` only to place things): first UFO measured at 5.0 s game time and large; both UFO types render and fire; UFO shot costs a life /
+  is absorbed by shield / is absorbed by respawn protection; shot kill = 500, one `ufo_destroyed` and one drop event; drop collected; boost ram = +200, no damage, shield kept;
+  contact costs a life; laser passes through; combo of 4-5 from real gunfire with HUD, expiry 3 s later; UFO during a combo leaves it at 3; 22-rock chain shows KILLING SPREE! / "15 KILLS",
+  does not block input, ends after 2.5 s; BEYOND LEGENDARY! and "200x COMBO" do not overlap (measured text bounds); armored first hit is no kill; pause freezes UFOs, shots and clock;
+  8 s of intense combat with 2 UFOs, Rapid + Multi-Shot, fast asteroid spawns: avg frame 16.6 ms, UFO shots <= 9, sound objects <= 19, particles <= 66; three game-over -> restart rounds with
+  UFOs, an enemy shot, a banner and a combo on screen: clean state, one music instance, no listener or display-object build-up.
+- **Engines tested: Chromium 155 headless (Chrome, SwiftShader software WebGL) on Windows only.** No Firefox, Safari, real GPU or touch device.
+- Screenshots looked at: UFOs + enemy shots, UFO kill + drop, combo HUD, kill-streak banner, BEYOND LEGENDARY!, intense combat, game over with UFOs.
+- **One unexplained flake**: once in ~30 runs the widest-banner check saw the combo HUD but no banner text (state was not captured that time; extra diagnostics were added
+  afterwards and it has not recurred in 25+ runs, nor in a 12-iteration isolated reproduction). Logic review of `KillStreakBanner` found no path to it; treat it as open.
+  A second flake (a UFO "at 4 s") was a test timing assumption and was replaced by a per-frame measurement of the spawn time.
+- Not verified: how the UFO-kill explosion sounds in a real listening session; banner look at other window sizes beyond the scaling checks.
 
 ## Verification performed (2026-10-18)
 
@@ -231,7 +314,7 @@ Other deviations:
    sparks are limited to 60 bursts/s.
 2. Variable timestep from raw frame timestamps (Phaser's smoothed `delta` is clamped for 120 frames after boot/wake);
    frames are clamped to 0.1 s and split into ≤1/30 s sub-steps. Bounce damping is `0.85^(dt·60)`.
-3. **Combo multiplier and kill streaks still deferred**, so chained kills score less than in Python (up to 3×).
+3. Shots (the ship's and the UFOs') despawn 50 px outside the playfield; Python never removes them. A destroyed UFO is not silent (Python plays no sound): it reuses an explosion sample.
 4. A dying asteroid cannot absorb a shot on the frame it starts dying; the 0.2 s no-shooting grace applies after restarts too.
 5. Single player only: start at the screen centre, respawn at (320, 360); arrow keys work as well as WASD.
 6. HUD simplified (`P1`, `Lives`, clock, ability lines); no high-score list; browser monospace font.
@@ -242,7 +325,11 @@ Other deviations:
 10. Shield-absorbed collisions play the explosion but not the death sound (Python plays death only when a life is lost).
 11. Armored asteroids rammed by a boost break after 2 *frames* of contact, as in Python; that is faintly frame-rate dependent.
 
-Original quirks deliberately **kept**: only large asteroids ever enter the field (edge spawns sit 60 px off-screen, so
+Original quirks deliberately **kept** (Phase 3): UFO kills do not count for the combo; UFO shots kill asteroids for the combo but not for
+score; a shield lasts one frame against a UFO body; boost does not stop UFO shots; the laser ignores UFOs; continuous mode never spawns
+small UFOs; UFOs spawn 60 px outside their own wrap line and jump across first; losing a life keeps the combo.
+
+Original quirks deliberately **kept** (earlier): only large asteroids ever enter the field (edge spawns sit 60 px off-screen, so
 small / medium ones despawn on their first update; effective spawn rate ≈ ⅓ of nominal); wall clamp only runs while the
 ship is driven; touching a rock while respawn-protected still destroys it; volatile asteroids have weight 0; Mega
 Power's blanket switch-off of Rapid Fire / Multi-Shot.
@@ -267,17 +354,16 @@ Power's blanket switch-off of Rapid Fire / Multi-Shot.
 
 ## Not implemented yet (deferred)
 
-Two-player co-op (and with it Revive), UFOs, combo multipliers, kill-streak banners, wave mode, death taunts, elaborate
-particles, high-score screen, gamepad, touch, online leaderboards.
+Two-player co-op (and with it Revive, friendly fire, shared lives), wave mode (and with it the wave-based UFO schedule and small
+UFOs), death taunts, high-score screen, gamepad, touch, online leaderboards.
 
 ## Next steps
 
 1. **Decide on the spawn quirk** (only large asteroids): keep the original difficulty, or spawn at `-radius` so all sizes
    appear (≈3× more asteroids at the same rate). It also determines how often power-ups drop.
 2. Listen to the audio and adjust `MUSIC_MAX_GAIN`, `SFX_GAIN` and the overlap values in `src/audio/audioConfig.ts`; decide on the Mega speed-up.
-3. Scoring module with combo multiplier and kill streaks (replace the inline score updates in `GameSim.hitAsteroid`).
-4. UFOs: enemy shots and collisions slot into `GameSim` next to asteroids; boost ramming and the laser already have
-   the hooks (Python also lets both kill UFOs).
+3. Decide on the two Python gaps found in Phase 3 (the laser ignores UFOs; small UFOs never appear in continuous mode): each is one constant.
+4. Optional UFO polish: a quiet spawn / fire cue (the unused `enemy-ship*.ogg` are candidates) with its own gain in `audioConfig.ts`.
 5. Two players: turn `player` into an array, add a second `KeyScheme` (arrows + Enter / RShift / RCtrl), shared lives,
    friendly fire, then Revive.
 6. High scores in `localStorage`; gamepad / touch via `PlayerInput`.

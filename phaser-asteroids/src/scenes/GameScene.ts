@@ -14,7 +14,7 @@ import {
 import { createKeyPressDispatcher } from '../input/keyPress';
 import { readPlayerInput, SOLO_KEYS } from '../input/keyboardControls';
 import { drawStarfield, drawWorld } from '../render/worldRenderer';
-import { AbilityHud, Hud, Overlay } from '../ui/hud';
+import { AbilityHud, ComboHud, Hud, KillStreakBanner, Overlay } from '../ui/hud';
 import { addText, COLORS } from '../ui/text';
 import { VolumePanel } from '../ui/volumePanel';
 import { SCENE_GAME, SCENE_START } from './keys';
@@ -38,6 +38,8 @@ export class GameScene extends Phaser.Scene {
   private worldGfx!: Phaser.GameObjects.Graphics;
   private hud!: Hud;
   private abilityHud!: AbilityHud;
+  private comboHud!: ComboHud;
+  private streakBanner!: KillStreakBanner;
   private pauseOverlay!: Overlay;
   private gameOverOverlay!: Overlay;
   private retryButton!: Phaser.GameObjects.Rectangle;
@@ -69,6 +71,8 @@ export class GameScene extends Phaser.Scene {
     this.worldGfx = this.add.graphics().setDepth(1);
     this.hud = new Hud(this);
     this.abilityHud = new AbilityHud(this);
+    this.comboHud = new ComboHud(this);
+    this.streakBanner = new KillStreakBanner(this);
     this.audio = getAudio(this);
     this.audio.startMusicWhenUnlocked();
 
@@ -127,6 +131,8 @@ export class GameScene extends Phaser.Scene {
     drawWorld(this.worldGfx, sim, time);
     this.hud.update(sim);
     this.abilityHud.update(sim, time);
+    this.comboHud.update(sim);
+    this.streakBanner.update(sim);
     this.audio.music.setGamePaused(this.paused);
     this.audio.music.setMegaPowerActive(sim.player.megaPower.active);
     this.updateOverlays();

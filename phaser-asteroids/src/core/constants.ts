@@ -96,6 +96,86 @@ export const SLOW_MOTION_DURATION = 6.0;
 export const SLOW_MOTION_FACTOR = 0.4; // asteroids only
 export const MEGA_POWER_DURATION = 6.0;
 
+// --- Combo and kill streaks -------------------------------------------------
+/** Seconds after a kill before the combo drops back to zero; every kill restarts the window. */
+export const COMBO_TIMEOUT = 3.0;
+/** Score multiplier by kills in the current combo. Python: `COMBO_MULTIPLIERS.get(count, COMBO_MULTIPLIERS[5])`. */
+export const COMBO_MULTIPLIERS: Readonly<Record<number, number>> = { 1: 1.0, 2: 1.5, 3: 2.0, 4: 2.5, 5: 3.0 };
+
+export interface KillStreakMilestone {
+  kills: number;
+  name: string;
+  color: number;
+}
+/** Banner shown the moment the combo count reaches `kills`. Ascending order. */
+export const KILL_STREAK_MILESTONES: readonly KillStreakMilestone[] = [
+  { kills: 15, name: 'KILLING SPREE!', color: 0xffc832 },
+  { kills: 30, name: 'RAMPAGE!', color: 0xff9600 },
+  { kills: 50, name: 'DOMINATING!', color: 0xff64ff },
+  { kills: 75, name: 'UNSTOPPABLE!', color: 0xff3232 },
+  { kills: 100, name: 'GODLIKE!', color: 0xff0000 },
+  { kills: 150, name: 'LEGENDARY!', color: 0xffd700 },
+  { kills: 200, name: 'BEYOND LEGENDARY!', color: 0x00ffff },
+];
+export const KILL_STREAK_NOTIFICATION_DURATION = 2.5; // seconds
+
+// --- UFOs ------------------------------------------------------------------
+export const UFO_ENABLED = true;
+export const UFO_MAX_ACTIVE = 2;
+
+export const UFO_LARGE_RADIUS = 30;
+export const UFO_LARGE_SPEED = 100; // px/s
+export const UFO_LARGE_SHOOT_COOLDOWN = 2.0;
+/** 0 = random direction, 1 = perfect aim: the shot may stray up to `180 * (1 - accuracy)` degrees either way. */
+export const UFO_LARGE_SHOOT_ACCURACY = 0.0;
+export const UFO_LARGE_POINTS = 200;
+
+export const UFO_SMALL_RADIUS = 20;
+export const UFO_SMALL_SPEED = 180;
+export const UFO_SMALL_SHOOT_COOLDOWN = 1.5;
+export const UFO_SMALL_SHOOT_ACCURACY = 0.7; // = at most 54 degrees off the line to the ship
+export const UFO_SMALL_POINTS = 500;
+
+export const UFO_SHOT_SPEED = 350;
+export const UFO_SHOT_RADIUS = 6;
+
+/** A UFO picks a new heading every 2-4 s and eases its velocity towards it. */
+export const UFO_DIRECTION_CHANGE_MIN = 2.0;
+export const UFO_DIRECTION_CHANGE_MAX = 4.0;
+/** Python: `velocity.lerp(target, min(1, dt * 2))`; here the continuous form `1 - exp(-2 dt)`, which is frame-rate independent. */
+export const UFO_VELOCITY_EASE_RATE = 2.0;
+/** Small UFOs fly straight across the screen horizontally 40 % of the time. */
+export const UFO_SMALL_HORIZONTAL_CHANCE = 0.4;
+/** First shot comes after a random delay in this range. */
+export const UFO_FIRST_SHOT_MIN = 0.5;
+export const UFO_FIRST_SHOT_MAX = 1.5;
+export const UFO_BLINK_INTERVAL = 0.3;
+
+/** Continuous mode: first UFO after 5 s of play, then one attempt every 15 s. */
+export const UFO_CONTINUOUS_SPAWN_TIME = 5.0;
+export const UFO_CONTINUOUS_RESPAWN_TIME = 15.0;
+/** Spawn point along the chosen edge, as a fraction of its length. */
+export const UFO_SPAWN_EDGE_MIN = 0.2;
+export const UFO_SPAWN_EDGE_MAX = 0.8;
+/** From this wave on, 40 % of spawns are small UFOs. */
+export const UFO_SMALL_WAVE_START = 5;
+export const UFO_SMALL_SPAWN_CHANCE = 0.4;
+/**
+ * The wave number used to pick the UFO type in continuous mode. Python's `AsteroidField.current_wave` is only ever
+ * changed by wave mode, so in continuous mode it stays 1 and small UFOs never spawn. Set this to 5 or more to let
+ * continuous mode spawn them (40 %), or implement wave mode and pass the real wave.
+ */
+export const UFO_CONTINUOUS_EFFECTIVE_WAVE = 1;
+
+export const UFO_DESTROY_SHAKE = 6;
+export const UFO_DESTROY_PARTICLES = 10;
+
+/**
+ * Python's `handle_laser_asteroid_collisions` only looks at asteroids: a Laser Beam passes straight through UFOs
+ * (shots and boost ramming are the only ways to kill one). Kept for parity; set to true to let the beam kill UFOs.
+ */
+export const LASER_HITS_UFOS = false;
+
 // --- Laser beam ------------------------------------------------------------
 export const LASER_BEAM_MAX_SHOTS = 15;
 export const LASER_BEAM_COOLDOWN = 1.0;

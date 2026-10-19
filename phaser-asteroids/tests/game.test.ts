@@ -166,7 +166,7 @@ describe('player damage, respawn and game over', () => {
     expect(sim.player.isRespawning).toBe(true);
     expect(sim.player.score).toBe(0);
     expect(rock.dying).toBe(true);
-    expect(events).toContainEqual({ type: 'player_hit', livesLeft: 2 });
+    expect(events).toContainEqual({ type: 'player_hit', livesLeft: 2, source: 'asteroid' });
     expect(sim.phase).toBe('playing');
   });
 

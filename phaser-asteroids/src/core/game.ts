@@ -11,6 +11,7 @@ import {
   EXHAUST_PARTICLE_SPREAD,
   GAME_OVER_RETRY_DELAY,
   GAME_START_COOLDOWN,
+  LASER_HITS_UFOS,
   MAX_FRAME_DT,
   MAX_SUBSTEP_DT,
   MEGA_POWER_DURATION,
@@ -24,6 +25,8 @@ import {
   SCREEN_SHAKE_MAX,
   SLOW_MOTION_DURATION,
   SLOW_MOTION_FACTOR,
+  UFO_DESTROY_PARTICLES,
+  UFO_DESTROY_SHAKE,
 } from './constants';
 import {
   beginDeath,
@@ -49,22 +52,59 @@ import {
   type PlayerInput,
   type PlayerState,
 } from './player';
-import { maybeSpawnPowerUp, updatePowerUp, type PowerUp, type PowerUpType } from './powerup';
-import { defaultRng, uniform, type Rng } from './rng';
+import {
+  createPowerUp,
+  maybeSpawnPowerUp,
+  ORDINARY_POWERUPS,
+  updatePowerUp,
+  type PowerUp,
+  type PowerUpType,
+} from './powerup';
+import { defaultRng, pick, uniform, type Rng } from './rng';
+import {
+  createBanner,
+  createCombo,
+  registerKill,
+  scaledPoints,
+  tickBanner,
+  tickCombo,
+  type ComboState,
+  type StreakBanner,
+} from './scoring';
 import { updateShot, type Shot } from './shot';
 import { createSpawner, updateSpawner, type SpawnerState } from './spawner';
 import { Starfield } from './starfield';
+import {
+  createUfo,
+  createUfoSpawner,
+  UFO_STATS,
+  updateUfo,
+  updateUfoSpawner,
+  type Ufo,
+  type UfoShot,
+  type UfoSpawnerState,
+  type UfoType,
+} from './ufo';
 
 /** Things that happened during a step that the presentation layer may want to react to (audio, ...). */
 export type SimEvent =
   | { type: 'shot_fired' } // one per trigger pull, however many projectiles it produced
   | { type: 'laser_fired' }
   | { type: 'boost_started' }
-  | { type: 'asteroid_destroyed'; radius: number; points: number }
+  /**
+   * An asteroid started to break up. `points` is what was paid (0 when it crashed into the ship or was shot by a UFO).
+   * `combo` / `multiplier` are present when it was a kill that counted towards the combo.
+   */
+  | { type: 'asteroid_destroyed'; radius: number; points: number; combo?: number; multiplier?: number }
   | { type: 'asteroid_hit'; position: Vec2 }
   | { type: 'powerup_dropped'; powerType: PowerUpType }
   | { type: 'powerup_collected'; powerType: PowerUpType }
-  | { type: 'player_hit'; livesLeft: number }
+  | { type: 'player_hit'; livesLeft: number; source?: 'asteroid' | 'ufo' | 'ufo_shot' }
+  /** The combo just reached a kill-streak milestone: show the banner. At most one per kill. */
+  | { type: 'kill_streak'; kills: number; name: string; color: number }
+  | { type: 'ufo_spawned'; ufoType: UfoType }
+  | { type: 'ufo_fired'; ufoType: UfoType }
+  | { type: 'ufo_destroyed'; ufoType: UfoType; points: number; radius: number; position: Vec2 }
   | { type: 'wall_bounce' }
   | { type: 'game_over'; score: number };
 
@@ -82,6 +122,8 @@ export interface GameSimOptions {
   rng?: Rng;
   /** Overrides the "no shooting right after starting" grace period (mainly for tests). */
   startCooldown?: number;
+  /** False switches the UFO schedule off (Python `UFO_ENABLED`); UFOs can still be added with `spawnUfo`. */
+  ufos?: boolean;
 }
 
 /**
@@ -97,11 +139,20 @@ export class GameSim {
   shots: Shot[] = [];
   asteroids: Asteroid[] = [];
   powerups: PowerUp[] = [];
+  ufos: Ufo[] = [];
+  /** Enemy projectiles; see `UfoShot` for how they differ from `shots`. */
+  ufoShots: UfoShot[] = [];
   lasers: LaserBeam[] = [];
   pickupFlashes: PickupFlash[] = [];
   readonly particles = new ParticleSystem();
   readonly starfield: Starfield;
   readonly spawner: SpawnerState = createSpawner();
+  readonly ufoSpawner: UfoSpawnerState;
+
+  /** Combo / kill-streak counter (see `scoring.ts`). */
+  readonly combo: ComboState = createCombo();
+  /** The kill-streak banner on screen, if any. */
+  streakBanner: StreakBanner | null = null;
 
   /** Seconds of play since (re)start. */
   time = 0;
@@ -131,6 +182,15 @@ export class GameSim {
     this.startCooldown = options.startCooldown ?? GAME_START_COOLDOWN;
     this.player = createPlayer(PLAYER_START_X, PLAYER_START_Y);
     this.starfield = new Starfield(this.rng);
+    this.ufoSpawner = createUfoSpawner(options.ufos ?? true);
+  }
+
+  /** Adds a UFO (the schedule uses this too). It starts at rest and picks its first heading at random. */
+  spawnUfo(type: UfoType, x: number, y: number): Ufo {
+    const ufo = createUfo(x, y, type, this.rng);
+    this.ufos.push(ufo);
+    this.events.push({ type: 'ufo_spawned', ufoType: type });
+    return ufo;
   }
 
   get isGameOver(): boolean {
@@ -172,6 +232,8 @@ export class GameSim {
     this.processCollisions(dt);
     this.particles.update(dt);
     this.shots = this.shots.filter((s) => s.alive);
+    this.ufoShots = this.ufoShots.filter((s) => s.alive);
+    this.ufos = this.ufos.filter((u) => u.alive);
     this.asteroids = this.asteroids.filter((a) => a.alive);
     this.powerups = this.powerups.filter((p) => p.alive);
   }
@@ -180,6 +242,9 @@ export class GameSim {
     if (this.startCooldown > 0) this.startCooldown -= dt;
     this.time += dt;
     this.difficultyTimer += dt;
+
+    tickCombo(this.combo, dt);
+    if (this.streakBanner && !tickBanner(this.streakBanner, dt)) this.streakBanner = null;
 
     if (this.slowMotion.active) {
       this.slowMotion.timer -= dt;
@@ -256,7 +321,14 @@ export class GameSim {
     // New asteroids are updated in the same frame they spawn (this matters for the edge-cull quirk).
     this.asteroids.push(...updateSpawner(this.spawner, dt, this.asteroidSpawnRate, this.rng));
 
+    const newUfo = updateUfoSpawner(this.ufoSpawner, this.spawner.gameplayTimer, this.ufos.length, this.rng);
+    if (newUfo) {
+      this.ufos.push(newUfo);
+      this.events.push({ type: 'ufo_spawned', ufoType: newUfo.type });
+    }
+
     for (const shot of this.shots) updateShot(shot, dt);
+    for (const shot of this.ufoShots) updateShot(shot, dt);
 
     // Slow Motion scales asteroid movement only. The death animation still ends after 0.15 real seconds.
     const baseDt = dt * this.asteroidSpeedMultiplier;
@@ -268,16 +340,43 @@ export class GameSim {
     this.asteroids.push(...children);
 
     for (const powerup of this.powerups) updatePowerUp(powerup, dt);
+
+    // UFOs run on real time: neither difficulty scaling nor Slow Motion touches them. A shot fired now first moves next frame.
+    const player = this.player;
+    const target = player.lives > 0 && !player.isRespawning ? player.position : null;
+    for (const ufo of this.ufos) {
+      const shot = updateUfo(ufo, dt, target, this.rng);
+      if (shot) {
+        this.ufoShots.push(shot);
+        this.events.push({ type: 'ufo_fired', ufoType: ufo.type });
+      }
+    }
   }
 
   // --- collisions -----------------------------------------------------------
 
   private processCollisions(dt: number): void {
-    // Same priority as the Python loop: player, shots, lasers, pickups.
+    // Same priority as the Python loop: player vs asteroids, shots vs asteroids, lasers vs asteroids, shots vs UFOs,
+    // ship vs UFOs, UFO shots vs ship, pickups. Each step stops the whole pass if it ended the game.
     if (!this.collidePlayerWithAsteroids()) return;
     this.collideShotsWithAsteroids();
     this.collideLasersWithAsteroids(dt);
+    this.collideShotsWithUfos();
+    if (!this.collidePlayerWithUfos()) return;
+    if (!this.collideUfoShotsWithPlayer()) return;
     this.collectPowerUps();
+  }
+
+  /** Loses a life (or the game) after `takeDamage` said so. @returns false if that ended the game. */
+  private afterLifeLost(source: 'asteroid' | 'ufo' | 'ufo_shot'): boolean {
+    const player = this.player;
+    this.events.push({ type: 'player_hit', livesLeft: player.lives, source });
+    if (player.lives > 0) {
+      respawnPlayer(player, PLAYER_RESPAWN_X, PLAYER_RESPAWN_Y);
+      return true;
+    }
+    this.triggerGameOver();
+    return false;
   }
 
   /** @returns false if the game ended during this check. */
@@ -294,16 +393,7 @@ export class GameSim {
         continue;
       }
 
-      const damage = takeDamage(player);
-      if (damage === 'life_lost') {
-        this.events.push({ type: 'player_hit', livesLeft: player.lives });
-        if (player.lives > 0) {
-          respawnPlayer(player, PLAYER_RESPAWN_X, PLAYER_RESPAWN_Y);
-        } else {
-          this.triggerGameOver();
-          return false;
-        }
-      }
+      if (takeDamage(player) === 'life_lost' && !this.afterLifeLost('asteroid')) return false;
       // Whatever hit the ship is destroyed too (no score, no drops), even when a shield or
       // invulnerability absorbed it.
       this.destroyWithoutScore(asteroid, 0.5);
@@ -318,6 +408,17 @@ export class GameSim {
         if (!asteroid.alive || asteroid.dying) continue;
         if (!circlesOverlap(shot, asteroid)) continue;
         this.hitAsteroid(asteroid, this.player);
+        shot.alive = false;
+        break;
+      }
+    }
+    // UFO shots wreck asteroids too. As in Python the kill pays nobody but still counts for the combo and can drop a power-up.
+    for (const shot of this.ufoShots) {
+      if (!shot.alive) continue;
+      for (const asteroid of this.asteroids) {
+        if (!asteroid.alive || asteroid.dying) continue;
+        if (!circlesOverlap(shot, asteroid)) continue;
+        this.hitAsteroid(asteroid, null);
         shot.alive = false;
         break;
       }
@@ -337,8 +438,55 @@ export class GameSim {
         if (!asteroid.alive || asteroid.dying) continue;
         if (laserHits(laser, asteroid)) this.hitAsteroid(asteroid, this.player);
       }
+      if (LASER_HITS_UFOS) {
+        for (const ufo of this.ufos) {
+          if (ufo.alive && laserHits(laser, ufo)) this.destroyUfo(ufo, this.player);
+        }
+      }
     }
     this.lasers = remaining;
+  }
+
+  /** A player shot is used up by the first UFO it touches. */
+  private collideShotsWithUfos(): void {
+    for (const ufo of this.ufos) {
+      if (!ufo.alive) continue;
+      for (const shot of this.shots) {
+        if (!shot.alive || !circlesOverlap(ufo, shot)) continue;
+        this.destroyUfo(ufo, this.player);
+        shot.alive = false;
+        break;
+      }
+    }
+  }
+
+  /**
+   * Ramming with a boost destroys the UFO and costs the ship nothing (no shield, no life). Otherwise `takeDamage`
+   * runs but, as in Python, the UFO survives the contact: respawn protection or a shield only absorbs the hit.
+   * @returns false if the game ended.
+   */
+  private collidePlayerWithUfos(): boolean {
+    const player = this.player;
+    for (const ufo of this.ufos) {
+      if (!ufo.alive || player.lives <= 0 || !circlesOverlap(player, ufo)) continue;
+      if (player.boost.active) {
+        this.destroyUfo(ufo, player);
+        continue;
+      }
+      if (takeDamage(player) === 'life_lost' && !this.afterLifeLost('ufo')) return false;
+    }
+    return true;
+  }
+
+  /** UFO shots hurt a boosting ship too (the boost only protects against ramming). Every shot that connects is used up. */
+  private collideUfoShotsWithPlayer(): boolean {
+    const player = this.player;
+    for (const shot of this.ufoShots) {
+      if (!shot.alive || player.lives <= 0 || !circlesOverlap(player, shot)) continue;
+      shot.alive = false;
+      if (takeDamage(player) === 'life_lost' && !this.afterLifeLost('ufo_shot')) return false;
+    }
+    return true;
   }
 
   private collectPowerUps(): void {
@@ -383,7 +531,7 @@ export class GameSim {
    * One hit on an asteroid from a shot, laser or boost ram. Armored asteroids absorb the first hit
    * (flash + sparks, no points); a kill scores, starts the death animation and may drop a power-up.
    */
-  private hitAsteroid(asteroid: Asteroid, scorer: PlayerState): void {
+  private hitAsteroid(asteroid: Asteroid, scorer: PlayerState | null): void {
     const result = takeHit(asteroid);
     if (!result.destroyed) {
       this.applyEffect(result.effect, 1);
@@ -391,16 +539,39 @@ export class GameSim {
       return;
     }
 
-    const points = getPoints(asteroid);
-    scorer.score += points;
+    // A kill: advance the combo first, then pay at the new multiplier (`scorer` is null for UFO shots, which pay nobody).
+    const credit = registerKill(this.combo);
+    const points = scorer ? scaledPoints(getPoints(asteroid), credit.multiplier) : 0;
+    if (scorer) scorer.score += points;
     const drop = maybeSpawnPowerUp(asteroid.position.x, asteroid.position.y, this.rng);
     this.applyEffect(beginDeath(asteroid), 1);
-    this.events.push({ type: 'asteroid_destroyed', radius: asteroid.radius, points });
+    this.events.push({ type: 'asteroid_destroyed', radius: asteroid.radius, points, combo: credit.count, multiplier: credit.multiplier });
 
+    if (credit.milestone) {
+      this.streakBanner = createBanner(credit.milestone);
+      this.events.push({ type: 'kill_streak', kills: credit.milestone.kills, name: credit.milestone.name, color: credit.milestone.color });
+    }
     if (drop) {
       this.powerups.push(drop);
       this.events.push({ type: 'powerup_dropped', powerType: drop.type });
     }
+  }
+
+  /**
+   * A UFO dies: flat points (200 / 500, never multiplied), no combo or kill-streak progress, a burst, a screen shake
+   * and one guaranteed ordinary power-up (never MEGA POWER). Callers check `ufo.alive` first, which is what stops a UFO
+   * being destroyed, paid or dropped for twice.
+   */
+  private destroyUfo(ufo: Ufo, scorer: PlayerState): void {
+    ufo.alive = false;
+    const points = UFO_STATS[ufo.type].points;
+    scorer.score += points;
+    this.addScreenShake(UFO_DESTROY_SHAKE);
+    emitBurst(this.particles, ufo.position.x, ufo.position.y, UFO_DESTROY_PARTICLES, this.rng);
+    const drop = createPowerUp(ufo.position.x, ufo.position.y, pick(this.rng, ORDINARY_POWERUPS), this.rng);
+    this.powerups.push(drop);
+    this.events.push({ type: 'ufo_destroyed', ufoType: ufo.type, points, radius: ufo.radius, position: { ...ufo.position } });
+    this.events.push({ type: 'powerup_dropped', powerType: drop.type });
   }
 
   private destroyWithoutScore(asteroid: Asteroid, shakeScale: number): void {
@@ -425,6 +596,7 @@ export class GameSim {
     this.phase = 'gameOver';
     this.retryDelay = GAME_OVER_RETRY_DELAY;
     this.lasers = [];
+    this.streakBanner = null;
     this.events.push({ type: 'game_over', score: this.player.score });
   }
 }

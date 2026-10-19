@@ -100,7 +100,7 @@ describe('combined abilities', () => {
     sim.asteroids.push(...cluster);
     sim.step(FRAME, hold({ laser: true }));
     expect(cluster.every((a) => a.dying)).toBe(true);
-    expect(sim.player.score).toBe(60);
+    expect(sim.player.score).toBe(10 + 15 + 20 + 25 + 30 + 30); // combo multipliers 1, 1.5, 2, 2.5, 3, 3
     runFor(sim, 0.2);
     // Six larges -> twelve mediums (some may already have been caught by the still-live beam).
     expect(sim.asteroids.length + sim.asteroids.filter((a) => a.dying).length).toBeGreaterThanOrEqual(1);

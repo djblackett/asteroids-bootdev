@@ -6,6 +6,7 @@ import type { LaserBeam } from '../core/laser';
 import { getForwardVector } from '../core/math';
 import { shipTriangle, type PlayerState } from '../core/player';
 import type { Starfield } from '../core/starfield';
+import type { Ufo } from '../core/ufo';
 import { rainbowColor, scaleColor } from './colors';
 import { drawPowerUpIcon, POWERUP_COLOR } from './powerupIcons';
 
@@ -94,6 +95,56 @@ function drawPlayer(g: Graphics, sim: GameSim, timeMs: number): void {
   }
 }
 
+const UFO_SHOT_RED = 0xff6464;
+const UFO_LIGHT_ON = 0xffff00;
+const UFO_LIGHT_OFF = 0x646400;
+const UFO_LARGE_BRIGHT = 0x64ff64;
+const UFO_LARGE_DIM = 0x32c832;
+const UFO_SMALL_BRIGHT = 0xff64ff;
+const UFO_SMALL_DIM = 0xc832c8;
+/** Python draws large UFOs with 3 lights and small ones with 2, at 60 % of the radius. */
+const UFO_LIGHTS: Record<Ufo['type'], number> = { large: 3, small: 2 };
+
+const lighten = (color: number, by: number): number =>
+  (Math.min(255, ((color >> 16) & 0xff) + by) << 16) | (Math.min(255, ((color >> 8) & 0xff) + by) << 8) | Math.min(255, (color & 0xff) + by);
+
+/**
+ * Python `UFO.draw`: a filled disc (green large / purple small, brighter on the blink), a lighter dome arc across its
+ * upper half, a white outline and a few yellow lights that blink with it.
+ */
+function drawUfo(g: Graphics, u: Ufo): void {
+  const { x, y } = u.position;
+  const r = u.radius;
+  const large = u.type === 'large';
+  const body = large ? (u.blinkState ? UFO_LARGE_BRIGHT : UFO_LARGE_DIM) : u.blinkState ? UFO_SMALL_BRIGHT : UFO_SMALL_DIM;
+
+  g.fillStyle(body, 1);
+  g.fillCircle(x, y, r);
+
+  // pygame's arc of the top half of a 2r x r box: the upper half of an ellipse r wide and r / 2 tall.
+  g.lineStyle(3, lighten(body, 50), 1);
+  g.beginPath();
+  const segments = 16;
+  for (let i = 0; i <= segments; i++) {
+    const t = (Math.PI * i) / segments;
+    const px = x + r * Math.cos(t);
+    const py = y - r / 2 - (r / 2) * Math.sin(t);
+    if (i === 0) g.moveTo(px, py);
+    else g.lineTo(px, py);
+  }
+  g.strokePath();
+
+  g.lineStyle(2, WHITE, 1);
+  g.strokeCircle(x, y, r);
+
+  g.fillStyle(u.blinkState ? UFO_LIGHT_ON : UFO_LIGHT_OFF, 1);
+  const lights = UFO_LIGHTS[u.type];
+  for (let i = 0; i < lights; i++) {
+    const dir = getForwardVector((360 / lights) * i);
+    g.fillCircle(x + dir.x * r * 0.6, y + dir.y * r * 0.6, 2);
+  }
+}
+
 /** Glow, beam and core, each dimming to black as the beam's 0.3 s life runs out. */
 function drawLaser(g: Graphics, laser: LaserBeam): void {
   const fade = Math.max(0, 1 - laser.timer / laser.lifetime);
@@ -118,6 +169,11 @@ export function drawWorld(g: Graphics, sim: GameSim, timeMs: number): void {
 
   g.lineStyle(2, WHITE, 1);
   for (const s of sim.shots) if (s.alive) g.strokeCircle(s.position.x, s.position.y, s.radius);
+
+  for (const u of sim.ufos) if (u.alive) drawUfo(g, u);
+  // Enemy shots are bigger and reddish so they cannot be mistaken for the ship's white ones.
+  g.lineStyle(2, UFO_SHOT_RED, 1);
+  for (const s of sim.ufoShots) if (s.alive) g.strokeCircle(s.position.x, s.position.y, s.radius);
 
   drawPlayer(g, sim, timeMs);
 
