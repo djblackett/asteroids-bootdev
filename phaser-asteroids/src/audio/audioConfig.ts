@@ -69,19 +69,33 @@ export const SFX_GROUP: Readonly<Record<SfxKey, SfxGroup>> = {
 };
 
 /**
+ * Gain of the explosion category at an SFX setting of 100 %: the gain of the biggest explosion. The sizes below
+ * scale it, so this is the one number that moves all asteroid explosions against shots, laser and the rest.
+ * Measured: the explosion files start as hot as a shot (about -8 dB RMS) and decay, so at 0.8 against 0.28 for a
+ * shot a lone large explosion is about 9 dB above a shot, a small one about 6.6 dB.
+ */
+export const EXPLOSION_GAIN = 0.8;
+
+/** Each explosion size as a fraction of `EXPLOSION_GAIN` (small -2.5 dB, medium -1.2 dB). Bigger is louder. */
+export const EXPLOSION_SIZE_RATIO = { small: 0.75, medium: 0.875, large: 1 } as const;
+
+const explosionGain = (size: keyof typeof EXPLOSION_SIZE_RATIO): number =>
+  Math.round(EXPLOSION_GAIN * EXPLOSION_SIZE_RATIO[size] * 1000) / 1000;
+
+/**
  * Gain of each effect at an SFX setting of 100 % (multiply by the setting for the real level; 80 % by default).
  * Python (desktop) used shots 0.4, laser 0.7, boost and death 2 (clamped to 1) and explosions 1.0, which puts
  * the gunfire at roughly the same loudness as the music and everything else clipping. Here gunfire sits well
- * under the music; explosions (bigger ones louder), the laser and the death sound are the strongest effects but
- * still sit under the music's average level.
+ * under the music; explosions (bigger ones louder, see `EXPLOSION_GAIN`) are the strongest effects, with the laser
+ * and the death sound close behind.
  */
 export const SFX_GAIN: Readonly<Record<SfxKey, number>> = {
   shoot_low: 0.28,
   shoot_mid: 0.28,
   shoot_high: 0.28,
-  explosion_small: 0.48,
-  explosion_medium: 0.56,
-  explosion_large: 0.64,
+  explosion_small: explosionGain('small'),
+  explosion_medium: explosionGain('medium'),
+  explosion_large: explosionGain('large'),
   laser: 0.5,
   boost: 0.6,
   player_death: 0.7,
@@ -109,12 +123,19 @@ export const OVERLAP_FALLOFF_MAX_STEPS = 3;
  */
 export const OVERLAP_WINDOW_SECONDS: Readonly<Partial<Record<SfxGroup, number>>> = {
   shoot: 0.25,
+  // The explosion files are 2.2 / 4.9 / 12.3 s long but only the first part is audible (above -40 dB: about 0.8 /
+  // 1.3 / 3.5 s, the rest is a near-silent tail). Counting the whole file made most explosions in busy play quieter
+  // by up to 11 dB or skipped them altogether. This also bounds the explosion limits below.
+  explosion: 1.5,
 };
 
-/** Python skips an explosion when 3 copies of that exact sound are already playing (stops "mudding"). */
+/**
+ * Python skips an explosion when 3 copies of that exact sound are already playing (stops "mudding"). Here only
+ * explosions that started within `OVERLAP_WINDOW_SECONDS.explosion` count, so a silent tail never blocks a new one.
+ */
 export const EXPLOSION_MAX_CONCURRENT = 3;
 
-/** On top of the Python rule: at most this many explosions of any size at once (it allowed 9, up to 12 s long). */
+/** On top of the Python rule: at most this many explosions of any size within the window (it allowed 9, up to 12 s long). */
 export const EXPLOSION_MAX_TOTAL = 4;
 
 /**

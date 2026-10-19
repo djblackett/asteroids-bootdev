@@ -3,13 +3,16 @@ import {
   AUDIO_ASSETS,
   DEFAULT_MUSIC_VOLUME,
   DEFAULT_SFX_VOLUME,
+  EXPLOSION_GAIN,
   EXPLOSION_MAX_CONCURRENT,
   EXPLOSION_MAX_TOTAL,
+  EXPLOSION_SIZE_RATIO,
   MUSIC_MAX_GAIN,
   MUSIC_MUTE_STORAGE_KEY,
   MUSIC_VOLUME_STORAGE_KEY,
   OVERLAP_FALLOFF,
   OVERLAP_FALLOFF_MAX_STEPS,
+  OVERLAP_WINDOW_SECONDS,
   SFX_GAIN,
   SFX_GROUP,
   SFX_VOLUME_STORAGE_KEY,
@@ -500,8 +503,13 @@ describe('the mix (guards for the default levels; the final judgement is by ear)
     expect(DEFAULT_SFX_VOLUME).toBeLessThan(1);
   });
 
-  it('no single effect is louder than the music at default settings, and gunfire is at most half of it', () => {
-    for (const key of Object.keys(SFX_GAIN) as SfxKey[]) expect(effective(key)).toBeLessThanOrEqual(musicDefault + 1e-9);
+  it('no effect is far louder than the music at default settings, and gunfire is at most half of it', () => {
+    // Gains are not loudness: the music file is mastered hotter than an explosion lasts, so explosions may sit a
+    // little above the music's gain (the biggest by 15 %) and still be well within it on average.
+    for (const key of Object.keys(SFX_GAIN) as SfxKey[]) {
+      const limit = SFX_GROUP[key] === 'explosion' ? musicDefault * 1.15 : musicDefault;
+      expect(effective(key)).toBeLessThanOrEqual(limit + 1e-9);
+    }
     for (const key of ['shoot_low', 'shoot_mid', 'shoot_high'] as const) expect(effective(key)).toBeLessThanOrEqual(musicDefault / 2);
   });
 
@@ -511,6 +519,26 @@ describe('the mix (guards for the default levels; the final judgement is by ear)
     }
     expect(SFX_GAIN.explosion_small).toBeLessThanOrEqual(SFX_GAIN.explosion_medium);
     expect(SFX_GAIN.explosion_medium).toBeLessThanOrEqual(SFX_GAIN.explosion_large);
+  });
+
+  it('keeps the levels the user approved: music and shots are unchanged', () => {
+    expect(MUSIC_MAX_GAIN).toBe(0.7);
+    expect(DEFAULT_MUSIC_VOLUME).toBe(0.8);
+    expect(DEFAULT_SFX_VOLUME).toBe(0.8);
+    for (const key of ['shoot_low', 'shoot_mid', 'shoot_high'] as const) expect(SFX_GAIN[key]).toBe(0.28);
+    expect(OVERLAP_FALLOFF.shoot).toBe(0.65);
+    expect(OVERLAP_WINDOW_SECONDS.shoot).toBe(0.25);
+  });
+
+  it('explosions have their own category gain: clearly above a shot, scaled by size, one number moves all three', () => {
+    const shot = SFX_GAIN.shoot_mid;
+    expect(SFX_GAIN.explosion_large).toBeCloseTo(EXPLOSION_GAIN * EXPLOSION_SIZE_RATIO.large);
+    expect(SFX_GAIN.explosion_medium).toBeCloseTo(EXPLOSION_GAIN * EXPLOSION_SIZE_RATIO.medium);
+    expect(SFX_GAIN.explosion_small).toBeCloseTo(EXPLOSION_GAIN * EXPLOSION_SIZE_RATIO.small);
+    expect(SFX_GAIN.explosion_small).toBeGreaterThanOrEqual(shot * 2); // at least 6 dB above a shot, even the smallest
+    expect(SFX_GAIN.explosion_small).toBeLessThan(SFX_GAIN.explosion_medium);
+    expect(SFX_GAIN.explosion_medium).toBeLessThan(SFX_GAIN.explosion_large);
+    expect(SFX_GAIN.explosion_large).toBeLessThanOrEqual(1); // the biggest never asks for more than full scale
   });
 
   it('the three shot variants are equally loud (the variant is random, the level must not be)', () => {
@@ -592,6 +620,40 @@ describe('simultaneous sounds', () => {
     ]);
     // Four explosions together add up to well under 4 full-level explosions.
     expect(backend.liveGain).toBeLessThan(large * 3);
+  });
+
+  it('a silent tail does not quieten or block later explosions (only the audible start counts)', () => {
+    const backend = new TimedBackend();
+    const player = timedPlayer(backend);
+    const window = OVERLAP_WINDOW_SECONDS.explosion!;
+    player.handle([LARGE, LARGE, LARGE, MEDIUM]);
+    expect(backend.started).toHaveLength(EXPLOSION_MAX_TOTAL);
+    // Still inside the window: capped and attenuated, as before.
+    backend.advanceTo(window - 0.1);
+    player.handle([SMALL]);
+    expect(backend.started).toHaveLength(EXPLOSION_MAX_TOTAL);
+    // Past it the four earlier explosions are still "playing" (their files run for seconds) but no longer count.
+    backend.advanceTo(window + 0.1);
+    expect(player.playingCount()).toBe(4);
+    player.handle([LARGE, SMALL]);
+    expect(backend.started).toHaveLength(EXPLOSION_MAX_TOTAL + 2);
+    expect(backend.started.at(-2)?.volume).toBeCloseTo(SFX_GAIN.explosion_large * DEFAULT_SFX_VOLUME);
+    expect(backend.started.at(-1)?.volume).toBeCloseTo(SFX_GAIN.explosion_small * DEFAULT_SFX_VOLUME * OVERLAP_FALLOFF.explosion);
+  });
+
+  it('in a long fight most explosions sound near full level instead of being quartered or dropped', () => {
+    const backend = new TimedBackend();
+    const player = timedPlayer(backend);
+    const requested = 40;
+    for (let i = 0; i < requested; i++) {
+      backend.advanceTo(i * 0.5); // two explosions a second of mixed sizes, for 20 s
+      player.handle([[LARGE, MEDIUM, SMALL][i % 3]!]);
+    }
+    expect(backend.started.length).toBe(requested); // none dropped
+    const levels = backend.started.map((s) => s.volume / (SFX_GAIN[s.key] * DEFAULT_SFX_VOLUME));
+    levels.sort((a, b) => a - b);
+    expect(levels[Math.floor(levels.length / 2)]).toBeGreaterThanOrEqual(OVERLAP_FALLOFF.explosion ** 2 - 1e-9); // median
+    expect(Math.max(...levels)).toBeCloseTo(1);
   });
 
   it('the attenuation is lifted as soon as the earlier sounds have ended', () => {

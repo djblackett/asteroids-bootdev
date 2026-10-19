@@ -43,12 +43,15 @@ in `audioConfig.ts`.
   and the shots are the densest sounds (-9 dB RMS, peaks -0.3 dBFS), so the Python desktop values (music 0.5, shots 0.4)
   put gunfire at about the same loudness as the music, 6 dB above it in Rapid Fire, and explosions at 1.0 clipped.
 - **Defaults**: Music 80 % x `MUSIC_MAX_GAIN` 0.7 = gain 0.56; SFX 80 %; per-effect gains `SFX_GAIN` (shots 0.28, explosions
-  0.48 / 0.56 / 0.64 by size, laser 0.5, boost 0.6, death 0.7, all at an SFX setting of 100 %). Both settings default to
+  0.6 / 0.7 / 0.8 by size = `EXPLOSION_GAIN` 0.8 x `EXPLOSION_SIZE_RATIO` 0.75 / 0.875 / 1, laser 0.5, boost 0.6, death 0.7,
+  all at an SFX setting of 100 %). Both settings default to
   80 % so either can be raised.
 - **Overlap rules** (no ducking, no compressor): each sound is quieter by `OVERLAP_FALLOFF` for every sound of its group that
   is still playing, capped at 3 steps. Shots only count the ones started in the last 0.25 s (`OVERLAP_WINDOW_SECONDS`), so
   normal fire (every 0.3 s) is always at full level while Rapid Fire settles near 1.3x one shot instead of 3x. Explosions are
-  limited to 3 of one size (Python's rule) and 4 in total.
+  limited to 3 of one size (Python's rule) and 4 in total, but, like the falloff, only explosions that started in the last
+  1.5 s count: the files are 2.2 / 4.9 / 12.3 s long but audible (above -40 dB) for only about 0.8 / 1.3 / 3.5 s, and counting
+  the silent tails had made most explosions in busy play 3-11 dB quieter or dropped.
 - Music volume goes to the playing track's gain node at once, also while paused or muted; mute and volume are independent
   (muting never changes the saved volume, M still only mutes the music). SFX changes apply to the next effects and play
   a sample shot (always at the nominal level) so the setting can be judged by ear; at 0 no effect is started at all.
@@ -208,7 +211,7 @@ retry with keys held; alt-tab away and back (keys must not stick).
 
 Playback succeeds in tests, but whether it *sounds right* is unverified:
 
-1. Overall balance: music 0.56 against shots 0.22 / explosions 0.38-0.51 / laser 0.4 / boost 0.48 / death 0.56 (effective gains at the
+1. Overall balance: music 0.56 against shots 0.22 / explosions 0.48-0.64 / laser 0.4 / boost 0.48 / death 0.56 (effective gains at the
    default 80 % settings). These come from measuring the files and an offline render of busy scenes, not from listening;
    the values to try first are in "Mix and volume controls" and in `src/audio/audioConfig.ts`.
 2. Whether the three shot variants and three explosion sizes sound as varied as the desktop version's pitch-shifted

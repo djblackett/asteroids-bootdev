@@ -76,9 +76,9 @@ export interface SfxPlayerOptions {
 /**
  * Plays sound effects for simulation events. Any number of different sounds can overlap, but:
  * - an explosion is skipped when `EXPLOSION_MAX_CONCURRENT` copies of it, or `EXPLOSION_MAX_TOTAL` explosions of
- *   any size, are already playing;
- * - every sound is quieter for each sound of its group still playing (`OVERLAP_FALLOFF`, short sounds only count
- *   while recent, `OVERLAP_WINDOW_SECONDS`), so Rapid Fire and piles of explosions do not add up to a wall of sound;
+ *   any size, are already playing (only ones started within `OVERLAP_WINDOW_SECONDS` count: the rest is a silent tail);
+ * - every sound is quieter for each sound of its group still playing (`OVERLAP_FALLOFF`, shots and explosions only
+ *   count while recent, `OVERLAP_WINDOW_SECONDS`), so Rapid Fire and piles of explosions do not add up to a wall of sound;
  * - the SFX setting is read when a sound starts. Sounds already playing keep their level (they are short).
  */
 export class SfxPlayer {
@@ -140,13 +140,16 @@ export class SfxPlayer {
     return n;
   }
 
-  /** Sounds of the group that count as overlapping a sound starting at `now`. */
-  private overlapping(group: SfxGroup, now: number): number {
+  /** Sounds of the group (or just of `only`) that count as overlapping a sound starting at `now`. */
+  private overlapping(group: SfxGroup, now: number, only?: SfxKey): number {
     const window = OVERLAP_WINDOW_SECONDS[group];
-    if (window === undefined) return this.playingInGroup(group);
     let n = 0;
     for (const [key, voices] of this.active) {
-      if (SFX_GROUP[key] !== group) continue;
+      if (SFX_GROUP[key] !== group || (only !== undefined && key !== only)) continue;
+      if (window === undefined) {
+        n += voices.size;
+        continue;
+      }
       for (const startedAt of voices.values()) if (now - startedAt < window) n++;
     }
     return n;
@@ -161,12 +164,16 @@ export class SfxPlayer {
   private play(cue: SoundCue, attenuateOverlap = true): void {
     if (this.volume <= 0) return;
     const group = SFX_GROUP[cue.key];
-    const inGroup = this.playingInGroup(group);
+    const now = this.clock();
     const voices = this.active.get(cue.key) ?? new Map<PlayingSound, number>();
     this.active.set(cue.key, voices);
-    if (group === 'explosion' && (voices.size >= EXPLOSION_MAX_CONCURRENT || inGroup >= EXPLOSION_MAX_TOTAL)) return;
+    if (
+      group === 'explosion' &&
+      (this.overlapping(group, now, cue.key) >= EXPLOSION_MAX_CONCURRENT || this.overlapping(group, now) >= EXPLOSION_MAX_TOTAL)
+    ) {
+      return;
+    }
 
-    const now = this.clock();
     const overlapping = attenuateOverlap ? Math.min(this.overlapping(group, now), OVERLAP_FALLOFF_MAX_STEPS) : 0;
     const volume = cue.volume * this.volume * OVERLAP_FALLOFF[group] ** overlapping;
     let handle: PlayingSound | null = null;
