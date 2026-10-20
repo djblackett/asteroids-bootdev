@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { AUDIO_ASSETS } from '../audio/audioConfig';
 import { AUDIO_REGISTRY_KEY, AudioDirector } from '../audio/phaserAudio';
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
+import { installGamepadHub } from '../input/gameGamepads';
 import { installHeldKeys } from '../input/gameKeys';
 import { addText, COLORS } from '../ui/text';
 import { SCENE_BOOT, SCENE_START } from './keys';
@@ -33,6 +34,8 @@ export class BootScene extends Phaser.Scene {
     this.registry.set(AUDIO_REGISTRY_KEY, new AudioDirector(this.game));
     // One held-key tracker for the whole game: held keys survive pause, retry and scene changes.
     installHeldKeys(this.game);
+    // One gamepad hub for the whole game: assignments survive pause, retry and scene changes (see gamepadHub.ts).
+    installGamepadHub(this.game);
     this.scene.start(SCENE_START);
   }
 }

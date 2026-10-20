@@ -12,7 +12,8 @@
     "test:browser": "npm run build && node scripts/smoke.mjs",
     "test:input": "npm run build && node scripts/keyboard.mjs",
     "test:combat": "npm run build && node scripts/combat.mjs",
-    "test:coop": "npm run build && node scripts/coop.mjs"
+    "test:coop": "npm run build && node scripts/coop.mjs",
+    "test:gamepad": "npm run build && node scripts/gamepad.mjs"
   },
   "dependencies": {
     "phaser": "4.2.1"

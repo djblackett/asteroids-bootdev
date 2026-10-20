@@ -69,6 +69,8 @@ export interface DiagnosticFrame {
   sim: SimSnapshot;
   /** Player 2's side of the simulation snapshot in a two-player game. */
   sim2?: SimSnapshot;
+  /** Gamepad section (bounded text from `GamepadHub.diagnosticLines`) and which players a pad is driving right now. */
+  pad?: { lines: readonly string[]; driven: readonly [boolean, boolean] };
 }
 
 const sorted = (values: Iterable<string>): string[] => [...values].sort();
@@ -92,9 +94,12 @@ export type HistoryEntry =
       input2?: PlayerInput;
       boostActive: boolean;
       canShoot: boolean;
+      pad?: string;
     };
 
 const flag = (value: boolean | undefined): number => (value ? 1 : 0);
+/** Only the pad lines that change when a pad is used (axes and buttons), so idle pads add no history entries. */
+const padSignature = (frame: DiagnosticFrame): string => (frame.pad ? frame.pad.lines.filter((l) => /normalised|goes to/.test(l)).join('|') : '');
 const inputText = (input: PlayerInput): string =>
   `rotate=${input.rotate} move=${input.move} shoot=${flag(input.shoot)} laser=${flag(input.laser)} boost=${flag(input.boost)}`;
 
@@ -170,7 +175,7 @@ export class KeyDiagnostics {
     if (this.frozen) return;
     this.latest = t;
     const gameHeld = sorted(frame.trackerHeld);
-    const signature = `${gameHeld.join(',')}|${sorted(this.raw).join(',')}|${inputText(frame.input)}|${frame.input2 ? inputText(frame.input2) : ''}|${flag(frame.sim.boostActive)}${flag(frame.sim.canShoot)}`;
+    const signature = `${gameHeld.join(',')}|${sorted(this.raw).join(',')}|${inputText(frame.input)}|${frame.input2 ? inputText(frame.input2) : ''}|${flag(frame.sim.boostActive)}${flag(frame.sim.canShoot)}|${padSignature(frame)}`;
     if (signature !== this.lastSignature) {
       this.lastSignature = signature;
       this.add({
@@ -182,6 +187,7 @@ export class KeyDiagnostics {
         ...(frame.input2 ? { input2: { ...frame.input2 } } : {}),
         boostActive: frame.sim.boostActive,
         canShoot: frame.sim.canShoot,
+        ...(frame.pad?.driven.some(Boolean) ? { pad: padSignature(frame) } : {}),
       });
     } else {
       this.prune();
@@ -229,8 +235,9 @@ export class KeyDiagnostics {
     const rawHeld = { isAnyDown: (codes: readonly string[]) => codes.some((code) => this.raw.has(code)) };
     const checks: Array<[string, KeyScheme, PlayerInput | undefined]> = [['', this.scheme, frame.input]];
     if (this.scheme2) checks.push(['P2 ', this.scheme2, frame.input2]);
-    for (const [who, scheme, actual] of checks) {
-      if (!actual) continue;
+    for (const [index, [who, scheme, actual]] of checks.entries()) {
+      // A player a controller also drives has an input the keys alone do not explain; the pad lines show that source.
+      if (!actual || frame.pad?.driven[index]) continue;
       const expected = readPlayerInput(rawHeld, scheme);
       const mismatched = (Object.keys(expected) as (keyof PlayerInput)[]).filter((key) => expected[key] !== actual[key]);
       if (mismatched.length > 0) return `STAGE 3 PROBLEM - ${who}input mapping differs from the keys held: ${mismatched.join(', ')}`;
@@ -265,6 +272,7 @@ export class KeyDiagnostics {
       'A held key missing from line 1 never reached the page (keyboard / OS limit), not the game.',
       'recent events (newest last):',
       ...recent.map((e) => `  ${e.type === 'keydown' ? 'v' : '^'} ${e.code.padEnd(11)} repeat=${e.repeat ? 'yes' : 'no '} t=${e.t.toFixed(0)}ms`),
+      ...(frame.pad ? ['', ...frame.pad.lines] : []),
     ];
     return lines.join('\n');
   }
@@ -278,7 +286,7 @@ export class KeyDiagnostics {
         return `${when}  ${e.type === 'keydown' ? 'v keydown' : '^ keyup  '} ${e.code.padEnd(11)} repeat=${e.repeat ? 'yes' : 'no '} raw held=[${e.rawHeld.join(' ')}]`;
       }
       if (e.kind === 'note') return `${when}  ! ${e.text}`;
-      return `${when}  INPUT    ${inputText(e.input)}${e.input2 ? `  P2: ${inputText(e.input2)}` : ''}  | raw=[${e.rawHeld.join(' ')}] game=[${e.gameHeld.join(' ')}] boostActive=${flag(e.boostActive)} canShoot=${flag(e.canShoot)}`;
+      return `${when}  INPUT    ${inputText(e.input)}${e.input2 ? `  P2: ${inputText(e.input2)}` : ''}${e.pad ? `  [pad ${e.pad}]` : ''}  | raw=[${e.rawHeld.join(' ')}] game=[${e.gameHeld.join(' ')}] boostActive=${flag(e.boostActive)} canShoot=${flag(e.canShoot)}`;
     });
   }
 
@@ -311,6 +319,8 @@ export class KeyDiagnostics {
 
 export interface MountedDiagnostics {
   update(frame: DiagnosticFrame): void;
+  /** A free-text line in the timeline (a controller connected, disconnected, assigned...). */
+  note(text: string): void;
   destroy(): void;
 }
 
@@ -441,6 +451,9 @@ export function mountKeyDiagnostics(win: Window, scheme: KeyScheme, scheme2: Key
   win.addEventListener('focus', onFocus);
 
   return {
+    note(text) {
+      diagnostics.note(text, now());
+    },
     update(frame) {
       lastFrame = frame;
       const t = now();

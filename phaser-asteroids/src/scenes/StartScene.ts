@@ -7,7 +7,10 @@ import { Starfield } from '../core/starfield';
 import { getSetup, setSetup, type GameSetup } from '../gameSetup';
 import { toCss } from '../render/colors';
 import { drawPowerUpIcon, POWERUP_COLOR } from '../render/powerupIcons';
+import { getGamepadHub } from '../input/gameGamepads';
+import type { GamepadHub } from '../input/gamepadHub';
 import { createKeyPressDispatcher } from '../input/keyPress';
+import { ControllerPanel } from '../ui/controllerPanel';
 import { drawStarfield } from '../render/worldRenderer';
 import { CachedText } from '../ui/hud';
 import { addText, COLORS } from '../ui/text';
@@ -71,12 +74,17 @@ export class StartScene extends Phaser.Scene {
   private volumePanel!: VolumePanel;
   private starting = false;
   private setup!: GameSetup;
+  private pads!: GamepadHub;
+  private padPanel!: ControllerPanel;
+  private prompt!: Phaser.GameObjects.Text;
 
   private oneLabel!: Phaser.GameObjects.Text;
   private twoLabel!: Phaser.GameObjects.Text;
   private soloObjects: Phaser.GameObjects.GameObject[] = [];
   private coopObjects: Phaser.GameObjects.GameObject[] = [];
   private p2Controls: Phaser.GameObjects.Text[] = [];
+  /** The headings that say which player a controller drives (the keys listed under them stay active). */
+  private headings: { solo?: Phaser.GameObjects.Text; p1?: Phaser.GameObjects.Text; p2?: Phaser.GameObjects.Text } = {};
   private options!: { lives: CachedText; fire: CachedText; keys: CachedText; speeds: CachedText };
 
   constructor() {
@@ -101,8 +109,19 @@ export class StartScene extends Phaser.Scene {
     this.buildSoloPage();
     this.buildCoopPage();
 
-    const prompt = addText(this, CENTER_X, 630, 'Press SPACE or click to start', { size: 32, originX: 0.5, originY: 0.5 });
-    this.tweens.add({ targets: prompt, alpha: 0.35, duration: 700, yoyo: true, repeat: -1 });
+    this.prompt = addText(this, CENTER_X, 630, 'Press SPACE or click to start', { size: 32, originX: 0.5, originY: 0.5 });
+    this.tweens.add({ targets: this.prompt, alpha: 0.35, duration: 700, yoyo: true, repeat: -1 });
+
+    this.pads = getGamepadHub(this);
+    // Presses meant for the scene we came from (the BACK that opened this menu, a RETRY that was refused) are not ours.
+    this.pads.discardPresses();
+    this.padPanel = new ControllerPanel(
+      this,
+      this.pads,
+      () => this.setup.game.playerCount,
+      (padKey) => this.pads.cycle(padKey, this.setup.game.playerCount),
+      () => this.toggleLayout(),
+    );
 
     this.musicHint = new CachedText(
       addText(this, SCREEN_WIDTH - 12, SCREEN_HEIGHT - 10, '', { size: 18, color: COLORS.dim, originX: 1, originY: 1, bold: false }),
@@ -124,6 +143,12 @@ export class StartScene extends Phaser.Scene {
         createKeyPressDispatcher({
           Space: () => this.start(),
           KeyM: () => this.audio.music.toggleMuted(),
+          KeyC: () => this.toggleLayout(),
+          Escape: () => this.padPanel.setLayoutVisible(false),
+          KeyG: () => {
+            const key = this.padPanel.firstPadKey();
+            if (key !== null) this.pads.cycle(key, this.setup.game.playerCount);
+          },
           ArrowUp: panelKey('ArrowUp'),
           ArrowDown: panelKey('ArrowDown'),
           ArrowLeft: panelKey('ArrowLeft'),
@@ -159,6 +184,60 @@ export class StartScene extends Phaser.Scene {
     }
     this.musicHint.set(`M: music ${this.audio.music.isMuted ? 'off' : 'on'}`);
     this.volumePanel.update();
+    this.handlePadPresses();
+    this.padPanel.update();
+    const count = this.setup.game.playerCount;
+    const withPad = (text: string, slot: 0 | 1): string => (this.pads.padFor(slot, count) ? `${text}  + CONTROLLER` : text);
+    this.headings.solo?.setText(withPad('CONTROLS', 0));
+    this.headings.p1?.setText(withPad('PLAYER 1', 0));
+    this.headings.p2?.setText(withPad('PLAYER 2', 1));
+    const padReady = this.pads.padFor(0, this.setup.game.playerCount) !== null || this.pads.padFor(1, this.setup.game.playerCount) !== null;
+    this.prompt.setText(padReady ? 'Press SPACE, click or A to start' : 'Press SPACE or click to start');
+  }
+
+  /**
+   * Controller buttons on the title screen, one fresh press at a time. LB / RB give the pad to Player 1 / 2, A (or START) on
+   * an unassigned pad joins the first free player and on an assigned pad starts the game, D-pad left / right pick one or
+   * two players, Y shows the layout and B / BACK closes it. Nothing here needs the keyboard.
+   */
+  private handlePadPresses(): void {
+    const count = this.setup.game.playerCount;
+    for (const press of this.pads.drainPresses()) {
+      const assigned = this.pads.playerOf(press.padKey, count) !== null;
+      switch (press.button) {
+        case 'lb':
+          this.pads.assign(press.padKey, 0, count);
+          break;
+        case 'rb':
+          this.pads.assign(press.padKey, 1, count);
+          break;
+        case 'a':
+        case 'start':
+          if (this.padPanel.layoutVisible) this.padPanel.setLayoutVisible(false);
+          else if (assigned) this.start();
+          else this.pads.join(press.padKey, count);
+          break;
+        case 'y':
+          this.toggleLayout();
+          break;
+        case 'b':
+        case 'back':
+          this.padPanel.setLayoutVisible(false);
+          break;
+        case 'left':
+          this.setPlayers(1);
+          break;
+        case 'right':
+          this.setPlayers(2);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  private toggleLayout(): void {
+    this.padPanel.setLayoutVisible(!this.padPanel.layoutVisible);
   }
 
   private get phase(): Phase {
@@ -178,7 +257,8 @@ export class StartScene extends Phaser.Scene {
 
   private buildSoloPage(): void {
     const add = (o: Phaser.GameObjects.GameObject): void => void this.soloObjects.push(o);
-    add(addText(this, CENTER_X, 146, 'CONTROLS', { size: 30, color: COLORS.heading, originX: 0.5, originY: 0.5 }));
+    this.headings.solo = addText(this, CENTER_X, 146, 'CONTROLS', { size: 30, color: COLORS.heading, originX: 0.5, originY: 0.5 });
+    add(this.headings.solo);
     CONTROLS.forEach((line, i) => {
       add(addText(this, CENTER_X, 184 + i * 27, line, { size: 20, color: COLORS.hint, originX: 0.5, originY: 0.5, bold: false }));
     });
@@ -194,7 +274,9 @@ export class StartScene extends Phaser.Scene {
   private buildCoopPage(): void {
     const add = (o: Phaser.GameObjects.GameObject): void => void this.coopObjects.push(o);
     const column = (x: number, title: string, color: string, lines: readonly string[]): Phaser.GameObjects.Text[] => {
-      add(addText(this, x, 138, title, { size: 28, color, originY: 0.5 }));
+      const heading = addText(this, x, 138, title, { size: 28, color, originY: 0.5 });
+      this.headings[title === 'PLAYER 1' ? 'p1' : 'p2'] = heading;
+      add(heading);
       return lines.map((line, i) => {
         const text = addText(this, x, 172 + i * 25, line, { size: 19, color: COLORS.hint, originY: 0.5, bold: false });
         add(text);
@@ -237,6 +319,7 @@ export class StartScene extends Phaser.Scene {
 
   private setPlayers(count: 1 | 2): void {
     if (this.setup.game.playerCount === count) return;
+    this.pads.playerCountChanged(count);
     this.setup = { ...this.setup, game: { ...this.setup.game, playerCount: count } };
     this.save();
   }

@@ -1,7 +1,7 @@
 # Implementation progress
 
 Phaser **4.2.1** · TypeScript 7.0.2 (strict) · Vite 8.3.4 · Vitest 5.0.5 · playwright-core 1.64.1 (dev only, for the
-browser tests). Last updated 2026-10-19 (Phase 4).
+browser tests). Last updated 2026-10-19 (Phase 5).
 
 ## Status
 
@@ -11,6 +11,7 @@ browser tests). Last updated 2026-10-19 (Phase 4).
 | 2 | Music and sound effects, six-type power-up system (Revive deferred), laser beam, boost, combined-ability testing | Done |
 | 3 | Combo scoring, kill-streak banners, large and small UFOs (AI, shots, collisions, drops), integrated combat tests | Done (see "Phase 3") |
 | 4 | Two-player local co-op (independent / shared lives, friendly fire, speed handicaps, Revive, co-op HUD and menu), Laser Beam kills UFOs, gradual small UFOs, shield-vs-UFO fix | Done (see "Phase 4") |
+| 5 | Gamepad support: Python mapping recovered, keyboard + controller co-op (Player 1 keyboard, Player 2 pad), hot-plug, assignment UI, `?keydebug` pad section | Done and tested with a simulated gamepad; **real-hardware test pending** (see "Phase 5") |
 
 ## Phase 2: what was added
 
@@ -296,6 +297,163 @@ Both ships dying in one frame (independent and shared, including a pool of 1); t
 - A one-in-~30 intermittent failure was seen once in the pre-existing smoke check "Down + Right x2 raises SFX to 100 %" (see the verification section).
 
 
+## Phase 5: gamepad support and keyboard + controller co-op (2026-10-19)
+
+Baseline at the start (re-measured, not assumed): tree clean at `8c3ade1`, typecheck clean, **627 unit tests**, smoke 72, keyboard 49, combat 39,
+co-op 65. Nothing outside `phaser-asteroids/` was touched, no Python file was modified, nothing is committed. `src/core/` (the simulation),
+the audio, and every scoring / collision / Revive / UFO rule are unchanged: the pad is only another producer of `PlayerInput`.
+
+### The original Pygame controller layout (read from `player.py`, `controlconfig.py`, `events.py`, `main.py`)
+
+Python reads pads through `pygame.joystick` (pygame 2 / SDL, indices as seen on Windows with an Xbox pad). A player's `input_source` is
+`keyboard`, `keyboard_2`, `gamepad_0` or `gamepad_1`; each `Player.update` polls only its own device, so any mix of devices works.
+
+| Python (`Player.update`, gamepad branch) | Detail |
+| --- | --- |
+| Rotate | **Left stick X**, axis 0. `rotate_input = axis` once `abs(axis) > 0.15`: analogue, *not* rescaled past the dead zone |
+| Forward / backward | **Left stick Y**, axis 1. `move_input = -axis` once `abs(axis) > 0.15`, analogue: a light push is slower. One stick does both (rotate + thrust together is normal) |
+| Shoot | **Right trigger**, axis 5 `> 0.5`, **or the A button** (button 0): either held = continuous fire (the cooldown is in `shoot()`) |
+| Laser | **X** (button 2), once per press (`laser_key_pressed` latch) |
+| Boost | **B** (button 1), once per press (`boost_key_pressed` latch) |
+| Pause | **Start** (`JOYBUTTONDOWN`, button 7 in SDL's numbering). `Esc` / `M` / `Q` while paused are keyboard-only |
+| Menus | Title: A starts. Game over: A retries (after the retry delay). Control setup: A confirms, D-pad (buttons 11-14 or the hat) navigates |
+| Assignment | **Control-setup screen** (`controlconfig.py`): per player, cycle through "Keyboard" and "Controller N - name" for every pad SDL listed at start-up. Default: 2 pads -> P1 `gamepad_0`, P2 `gamepad_1`; 1 pad -> P1 `gamepad_0` (and P2 keyboard 2); 0 pads -> two keyboards. A warning shows if both players use the same input. `reset_game()` without a config picks keyboard + `gamepad_0` for one pad |
+| Keyboard + pad together | Yes, as two players (P1 keyboard, P2 `gamepad_0`): the configuration that worked well. For one player the setup screen picks one device; there is no merge |
+| Hot-plug | **None.** Pads are enumerated once (`pygame.joystick.init()` at start-up and in `ControlConfig`); a missing pad is silently neutral (`get_count() > index` guard) |
+| D-pad in play | **Not used**; sticks only. Bumpers, Back, stick clicks, Y: unused |
+
+Incomplete / platform-specific parts: axis 5 for the trigger and Start = 7 are SDL-on-Windows numbers (the browser's standard mapping numbers
+the same physical controls differently); the A-button fallback is what keeps pads without a trigger axis usable; there is no disconnect handling and
+no controller-to-player assignment beyond the start-up count. `test_gamepad.py` is a diagnostic that only prints raw button / axis numbers.
+
+### The Phaser layout (standard-mapping pads: Xbox, and most others in Chrome / Edge / Firefox / Safari)
+
+| Physical control | Python | Phaser |
+| --- | --- | --- |
+| Left stick X | rotate, dead zone 0.15, analogue | same (rotate = raw axis past 0.15, clamped to [-1, 1]; `stickAxis`) |
+| Left stick Y | move = -axis, dead zone 0.15, analogue | same (up = forward) |
+| D-pad | menus only | **also** rotate / move in play, *only while the stick is centred* (browser addition, below) |
+| RT | axis 5 > 0.5 | **button 7** value >= 0.5 (the standard mapping exposes triggers as analogue buttons) |
+| A | shoot | shoot |
+| X | laser (once per press) | laser (once per press, by the existing `keyHeld` latch in `player.ts`) |
+| B | boost (once per press) | boost (once per press) |
+| Start | pause (button 7) | pause / resume (**button 9**, standard numbering) |
+| Back | none | main menu, only while paused or on game over (browser addition; Python used the keyboard's Esc) |
+| A on game over / title | retry / start | retry (fresh press, after the retry delay) / start (on an assigned pad) |
+| LB / RB / Y on the title | none | LB = Player 1, RB = Player 2, Y = show the controller layout (assignment UI, see below) |
+
+**Non-standard devices** (`Gamepad.mapping !== 'standard'`): read with Python's own raw indices and nothing else: axes 0 / 1 for the stick,
+the trigger on axis 5 (> 0.5), buttons 0 / 1 / 2 for A / B / X, Start = 7, Back = 6, **no D-pad and no bumpers** (on raw devices they are
+hats or arbitrary axes). The title screen flags such a pad "(non-standard layout)". This is a best effort and the most likely place to
+need adjusting on odd hardware (`LAYOUTS.generic` in `src/input/gamepadMapping.ts`).
+
+### Deliberate browser adaptations
+
+- **Indices**: RT is a button (7) and Start is 9 in the browser's standard mapping; the same *physical* controls are mapped, not the same numbers.
+- **Dead zone / sensitivity are Python's**, unrescaled (`STICK_DEADZONE = 0.15`, `TRIGGER_THRESHOLD = 0.5`, in `gamepadMapping.ts`). A rescaled
+  dead zone would be smoother but would change the turn speed at mid-deflection, which Python's feel depends on. Full deflection = exactly the keyboard's
+  speed, a half push is half speed; frame-rate independent because `step` already multiplies by `dt` (unit tested at 30 / 60 / 144 fps).
+- **D-pad in play, Back = menu, A = retry, D-pad on the title (1 / 2 players) and on the pause screen (volumes)**: small additions so a controller user never
+  has to reach for the keyboard for pause / resume / retry / menu. Everything else on the title screen (lives, friendly fire, speed) stays keyboard / mouse.
+- **No hot-plug in Python; the browser requires it**, hence the hub below. **Assignment** is explicit and visible ("press A" / LB / RB) instead of Python's
+  start-up cycle screen, because browsers only report a pad after a button press and may renumber it.
+- All ship physics, rotation speed, boost speed and cooldowns are untouched. `PlayerInput.rotate` / `move` were already analogue in the TypeScript
+  simulation, so no simulation change was needed.
+
+### Architecture (where the pad plugs in)
+
+```
+navigator.getGamepads() --(browserGamepadReader: copies)--> GamepadHub.poll()  <-- Phaser PRE_STEP, once per frame (gameGamepads.ts)
+                                                              |  presses (up->down edges), connection / assignment state, arming
+HeldKeys (keys) -> readPlayerInput(scheme) ----+              v
+                                               +--> mergeInputs --> PlayerInput per player --> GameSim.step(dt, in1, in2)   (unchanged)
+GamepadHub.command(slot, playerCount) --------+
+```
+
+- `src/input/gamepadMapping.ts` (pure): snapshot -> named buttons -> `PlayerInput` (`padToInput`), `mergeInputs`, the layout tables and the layout-screen text.
+- `src/input/gamepadHub.ts` (pure, injectable `GamepadReader`): every connected pad, player assignment, edge detection, arming, events, diagnostics text.
+- `src/input/gameGamepads.ts`: installs the one game-wide hub (BootScene, like `HeldKeys`), polls on `prestep`, wires `blur` / `focus` / `visibilitychange` /
+  `gamepadconnected` / `gamepaddisconnected`, undoes all of it on game destroy. Scenes never add window listeners for pads.
+- `src/input/playerInputs.ts`: `readPlayerInputs(held, hub, schemes)` = the keyboard of each player merged with that player's pad. **`GameSim` and everything in `src/core` is untouched.**
+- `src/ui/controllerPanel.ts` + `StartScene` / `GameScene` changes: status line, layout screen, one-shot pad buttons, disconnect pause.
+
+### How controllers are detected and assigned
+
+- **Detection** is by polling `getGamepads()` every frame (events are only an extra poll trigger). A pad plugged in before the page loaded is listed after its first
+  button press (a browser rule). A controller is only ever shown as usable while it is **connected right now**.
+- **Title screen** (bottom left, up to two lines and a hint; nothing on the gameplay HUD): `No controller detected - press a button on it` / `Controller 1: <name> ->
+  not assigned (press A to join)` / `... -> PLAYER 2` / red `PLAYER 2: <name> DISCONNECTED - reconnect it`. The two-player page also marks the heading
+  `PLAYER 2  + CONTROLLER`, and the start prompt gains "or A" once a pad is assigned.
+- **Joining**: **A** (or Start) on an unassigned pad takes the first free player: in a two-player game **Player 2 first** (keyboard Player 1 + controller Player 2 is the
+  intended setup), then Player 1 for a second pad; in a one-player game Player 1. A pad that joined by this policy follows the player count (joined as P1 in 1P, it moves
+  to P2 when you press **2**). **LB** / **RB** assign a pad to Player 1 / 2 on purpose (not moved afterwards); **G** or a click on its line cycles P2 -> P1 -> none. One pad
+  per player, one player per pad: assigning moves, never duplicates. An unassigned pad controls nothing (it can still navigate the title screen). With one player, the pad
+  assigned to either slot drives the single ship.
+- **Combining with the keyboard** (the same player has both): a player's keyboard keys always stay live. Per axis, if the keyboard is pushing it the keyboard wins outright,
+  otherwise the pad's analogue value is used (never contradictory steering); shoot / laser / boost are OR-ed. Two players sharing one keyboard is unchanged.
+- **Disconnect / reconnect**: a pad that disappears is dropped on the very next poll and its commands are neutral at once. An assigned player keeps a reservation **by device
+  name only** (a reservation never makes a pad "available"): the title screen says DISCONNECTED, a game in progress **pauses** with `PLAYER n'S CONTROLLER DISCONNECTED - plug it
+  in again` on the pause screen, and a pad with the same name that connects again (browser indices change, so it is matched by name, preferring the same index) takes the player
+  back automatically; a different controller does not inherit it. Reconnecting does not resume the game: START / P does.
+- **Arming** (no unintended activations): a pad is neutral until every one of its buttons has been seen released, after it connects, after the window loses / regains focus or the
+  tab is hidden, and when a run starts or restarts. So the press that woke the pad, the A that pressed RETRY / start, or a trigger held through a focus change cannot fire a weapon.
+  Laser / boost held across pause are handled by the existing `ignoreHeldAbilityKeys` (it reads the merged input).
+- **One-shot buttons** (START pause, A retry, BACK menu, title-screen buttons) are up -> down edges queued by the hub (bounded queue), accepted only from a pad assigned in this
+  game, discarded when a scene starts; holding a button never repeats it. A is deliberately also the cannon: retry needs a *fresh* press after the retry delay.
+
+### Diagnostics (`?keydebug`)
+
+The existing panel gains a "gamepads" section (hub-built and bounded: <= 4 pads, ~5 lines each, at most 12 buttons listed): per pad the browser's mapping string and the layout used, axis /
+button counts, raw axes 0-5, raw buttons currently down (with analogue values), the normalised command, whether it is armed, and the player it goes to (or "nobody"). Connect / disconnect /
+neutral-reset events go into the timeline (so they are in the freeze / copy report) and a history entry is added only when a pad's command changes. The stage-3 verdict is skipped for a
+player a pad also drives (the pad lines explain that input). Nothing runs without `?keydebug`.
+
+### Tests and verification
+
+Unit: **733 passing** (was 627; +106): `gamepadMapping` (32: dead zone boundaries, both rotation directions, forward / backward, thrust + steer, trigger 0.49 / 0.5, A / X / B, all held
+at once, non-standard layout, D-pad fallback, merge policy, names), `gamepadHub` (43: connect / detect, arming, press edges, assignment and the join policy, cycle, one vs two players,
+disconnect / reconnect by name and index, identical pads, focus, listener cleanup, diagnostics bounds, event-log bound), `gamepadInstall` (4: poll per frame, connect events, blur /
+hidden / focus, listener cleanup), `padCoop` (23: keyboard P1 + pad P2 through the real `readPlayerInputs` -> `GameSim.step`: independent movement, opposite turns, simultaneous fire,
+laser / boost once per press, identical commands = identical ships, 30 / 60 / 144 fps, power-ups, scoring, elimination, Revive, shared lives, friendly fire, unplug mid-action,
+reconnect, focus, restart, one-player pad, mode switching) and `padDiagnostics` (4). Everything is driven by synthetic snapshots through an injected reader (`tests/padFakes.ts`);
+no test needs a controller.
+
+Browser (`npm run test:gamepad`, `scripts/gamepad.mjs`, **82 checks**): Chrome 155 headless with an init script replacing `navigator.getGamepads` by a controlled provider, real keyboard
+events for the keyboard player. Covers: keyboard-only play unaffected; detection (wake-up press, "not assigned"); A / LB / RB / G assignment and the 1P -> 2P move; the layout screen (C, Esc,
+Y, B); Player 1 keyboard + Player 2 pad moving, turning and shooting at the same moment with correct shot ownership; trigger 0.3 vs 0.8, A, drift inside the dead zone, half vs full
+deflection, laser and boost once per press; START pause / resume with controls held; disconnect mid-action (auto-pause, note, no stuck input), reconnect with a trigger held (not trusted
+until released), disconnect / reconnect while paused; window blur / focus; elimination and Revive of the pad player, scoring; game over -> retry with a held A (no early retry, no shooting
+at run start), 4 restarts (one listener), B / X / stick held across a restart; START -> BACK to the menu (no listener left); one-player pad-only play and keyboard + pad on one ship; two
+controllers each driving only their own ship and unplugging one; a non-standard device; no Gamepad API at all (plain http); the `?keydebug` pad section; zero console errors. **This is a simulated provider, not hardware.**
+
+Final suite: typecheck clean, production build OK, unit 733, smoke 72/72, keyboard 49/49, combat 39/39, co-op 65/65, gamepad 82/82 (Chromium 155 headless, Windows). **Flake note:** `test:input` (keyboard.mjs) is timing-based and failed ~1 run in 8 on a clean build of the pre-Phase-5 `HEAD` as well as on this one (different checks each time: "arrow keys also work together with Space", "movement + boost ... clearly faster", "after unpausing ... keep moving AND turning"); every failing check is a fixed-length key hold measured against wall-clock sleeps, and all pass on a rerun. Not caused by the pad code, but not fixed either. The browser scripts also share preview ports (keyboard + combat 4398, smoke + coop 4399, gamepad 4400), so do not run those pairs in parallel.
+
+### Not verified (needs a person with a real controller)
+
+No physical controller, Firefox or Safari was available. Still to confirm by hand (checklist below): that real Chrome / Edge reports the pad with `mapping: "standard"` and the
+indices assumed here, that RT really reaches 0.5 and the stick returns inside the 0.15 dead zone on the user's pad (drift varies by unit), that the pad's wake-up behaviour matches the "press a
+button" wording, wireless / Bluetooth reconnection timing, the feel of analogue turning, and Firefox / Safari (Firefox's pad ids and mapping strings differ; Safari also needs a button
+press). Chrome only exposes `navigator.getGamepads()` in a secure context (https, or `localhost` / `127.0.0.1`); a plain-http LAN address shows "Gamepads unavailable".
+
+### Manual test with an Xbox-style controller (Windows 11, Chrome or Edge)
+
+1. `cd phaser-asteroids && npm run dev` (or `npm run build && npm run preview`) and open **http://localhost:5173/?keydebug** (preview: 4173). `localhost` counts as secure, so the Gamepad API works.
+2. Connect the pad (USB cable, or Bluetooth / Xbox Wireless Adapter). Windows' "Set up USB game controllers" (`joy.cpl`) should list it. In the page, press any button on the pad: the bottom-left
+   line should change from `No controller detected` to `Controller 1: Xbox ... Controller -> not assigned (press A to join)`.
+3. Press **2** on the keyboard (two players), then **A** on the pad: the line becomes `... -> PLAYER 2` and the Player 2 heading reads `PLAYER 2  + CONTROLLER`. **C** (or **Y**) shows the layout;
+   LB / RB move the pad to Player 1 / 2: put it back on Player 2.
+4. Press **Space** (or A on the pad) to start. Player 1 = keyboard (WASD, Space, E, Left Shift), Player 2 = pad. Check **every** control on the pad: left stick left / right rotates (half push =
+   slower), up / down moves forward / back, thrust + steer together, hold RT = continuous fire, A also fires, X = laser (one per press, `LASER n/15` drops by one), B = boost (3 s, magenta ship),
+   D-pad moves when the stick is centred. Release the stick: the ship must stop turning and drifting (no creep). Then use both players **at the same time** (P1 W + D + Space while P2 stick + RT).
+5. **START** pauses (overlay says "P or START to Resume"); START resumes with the stick still held and no laser / boost re-fire. Unplug the pad (or remove its batteries) mid-flight: the game must
+   pause with the red `PLAYER 2'S CONTROLLER DISCONNECTED` line and the ship must not keep moving. Plug it in and press a button: the pad should be Player 2 again (the title screen / `?keydebug` log
+   say so); START resumes. Alt-Tab away and back: the game is paused and the pad is ignored until you release everything, then works.
+6. Let Player 2 die (3 lives) and confirm it cannot move or shoot; let Player 1 pick up a green Revive: Player 2 returns and the pad drives it. Let both die: **A** retries after the 1.5 s delay and the
+   ship must not fire from the A you just pressed. **START, then BACK** returns to the title screen with the pad still assigned.
+7. If something is off, press **Freeze Capture** in the `?keydebug` panel and **Copy Diagnostic Report**. Collect: the report (it holds the browser's mapping string, raw axes 0-5, raw buttons with
+   values, the normalised command, the target player and the connect / disconnect timeline), the exact controller model and how it is connected, the browser and its version, and, for drift problems, the idle
+   values of axes 0 / 1.
+
 ## Verification, Phase 3 (2026-10-19)
 
 - Baseline before the pass: typecheck clean, **367 unit tests**, smoke **72/72**, keyboard **49/49** (the 2026-10-18 figures below are older).
@@ -495,7 +653,7 @@ Power's blanket switch-off of Rapid Fire / Multi-Shot.
 
 ## Not implemented yet (deferred)
 
-Wave mode (and with it the wave-based UFO schedule), death taunts, high-score screen, gamepad, touch, online leaderboards, more than
+Wave mode (and with it the wave-based UFO schedule), death taunts, high-score screen, touch, online leaderboards, more than
 two players, key remapping.
 
 ## Next steps
@@ -507,5 +665,4 @@ two players, key remapping.
 4. Optional UFO polish: a quiet spawn / fire cue (the unused `enemy-ship*.ogg` are candidates) with its own gain in `audioConfig.ts`.
 5. ~~Two players~~ (done in Phase 4). Next candidates: a short audio cue for Revive / elimination (needs a listening session), key remapping UI,
    a two-player-aware `?keydebug` capture per player.
-6. High scores in `localStorage`; gamepad / touch via `PlayerInput` (`readPlayerInput` already takes a per-player `KeyScheme`; a gamepad
-   scheme would produce the same `PlayerInput`).
+6. High scores in `localStorage`; touch via `PlayerInput` (gamepads are done in Phase 5: the pad hub produces the same `PlayerInput`, and a touch controller can be one more source in `readPlayerInputs`).

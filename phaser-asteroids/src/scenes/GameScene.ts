@@ -4,7 +4,9 @@ import { SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
 import { GameSim, type SimEvent } from '../core/game';
 import { NO_INPUT, type PlayerInput } from '../core/player';
 import { getSetup, simConfigOf } from '../gameSetup';
+import { getGamepadHub } from '../input/gameGamepads';
 import { getHeldKeys } from '../input/gameKeys';
+import type { GamepadHub } from '../input/gamepadHub';
 import type { HeldKeys } from '../input/heldKeys';
 import {
   keyDiagnosticsEnabled,
@@ -13,7 +15,8 @@ import {
   type MountedDiagnostics,
 } from '../input/keyDiagnostics';
 import { createKeyPressDispatcher } from '../input/keyPress';
-import { keySchemesFor, readPlayerInput, type KeyScheme } from '../input/keyboardControls';
+import { keySchemesFor, type KeyScheme } from '../input/keyboardControls';
+import { readPlayerInputs } from '../input/playerInputs';
 import { drawStarfield, drawWorld } from '../render/worldRenderer';
 import { AbilityHud, ComboHud, Hud, KillStreakBanner, Overlay, playerColor, TeamHud } from '../ui/hud';
 import { addText, COLORS } from '../ui/text';
@@ -50,6 +53,10 @@ export class GameScene extends Phaser.Scene {
   private retryReady: boolean | null = null;
   /** Game-wide held keys (see heldKeys.ts); survives pause, retry and scene changes. */
   private held!: HeldKeys;
+  /** Game-wide gamepad hub (see gamepadHub.ts): another input source for the same players. */
+  private pads!: GamepadHub;
+  /** Set when an assigned controller disappears mid-run; shown on the pause screen until play resumes. */
+  private padNote = '';
   /** Only present with `?keydebug`. */
   private keyDiag: MountedDiagnostics | null = null;
   private phaserDiagKeys: Array<[string, Phaser.Input.Keyboard.Key]> = [];
@@ -74,6 +81,7 @@ export class GameScene extends Phaser.Scene {
     this.paused = false;
     this.lastFrameTime = null;
     this.retryReady = null;
+    this.padNote = '';
   }
 
   create(): void {
@@ -88,11 +96,9 @@ export class GameScene extends Phaser.Scene {
     this.audio = getAudio(this);
     this.audio.startMusicWhenUnlocked();
 
-    this.pauseOverlay = new Overlay(this, 0.59, 72, CENTER_Y - 80, 3);
+    this.pauseOverlay = new Overlay(this, 0.59, 72, CENTER_Y - 80, 4);
     this.pauseOverlay.setTitle('PAUSED');
-    this.pauseOverlay.setLine(0, 'Press P to Resume', CENTER_Y + 10, COLORS.hint, 28);
-    // Line 1 (music toggle) is refreshed every frame in updateOverlays.
-    this.pauseOverlay.setLine(2, 'Press ESC for Main Menu', CENTER_Y + 240, COLORS.dim, 22);
+    // Lines 0 (resume), 1 (music toggle), 2 (menu) and 3 (controller note) are refreshed every frame in updateOverlays.
     this.volumePanel = new VolumePanel(this, this.audio, CENTER_X, CENTER_Y + 105, 24, 34, 21);
     this.volumePanel.setVisible(false);
 
@@ -120,6 +126,7 @@ export class GameScene extends Phaser.Scene {
     const dt = this.lastFrameTime === null ? 0 : Math.max(0, (time - this.lastFrameTime) / 1000);
     this.lastFrameTime = time;
 
+    this.handlePadPresses();
     const inputs = sim.isGameOver ? this.schemes.map(() => NO_INPUT) : this.readInputs();
     if (!this.paused) {
       const events = sim.step(dt, inputs[0] ?? NO_INPUT, inputs[1] ?? NO_INPUT);
@@ -132,6 +139,10 @@ export class GameScene extends Phaser.Scene {
       phaserHeld: this.phaserDiagKeys.filter(([, key]) => key.isDown).map(([name]) => name),
       trackerHeld: this.held.snapshot(),
       input: inputs[0] ?? NO_INPUT,
+      pad: {
+        lines: this.pads.diagnosticLines(this.playerCount),
+        driven: [this.pads.padFor(0, this.playerCount) !== null, this.pads.padFor(1, this.playerCount) !== null],
+      },
       ...(p2 ? { input2: inputs[1] ?? NO_INPUT, sim2: this.diagSnapshot(p2) } : {}),
       sim: this.diagSnapshot(p1 ?? sim.player),
     });
@@ -148,9 +159,50 @@ export class GameScene extends Phaser.Scene {
     this.updateOverlays();
   }
 
-  /** One input per player, each read from that player's own keys. */
+  /** One input per player: that player's own keys, merged with the controller assigned to them (if any). */
   private readInputs(): PlayerInput[] {
-    return this.schemes.map((scheme) => readPlayerInput(this.held, scheme));
+    return readPlayerInputs(this.held, this.pads, this.schemes);
+  }
+
+  private get playerCount(): 1 | 2 {
+    return this.schemes.length === 2 ? 2 : 1;
+  }
+
+  /**
+   * One-shot controller buttons, from controllers assigned to a player in this game only: START pauses / resumes, A retries
+   * after Game Over, BACK returns to the menu (paused or game over), the D-pad adjusts the volumes on the pause screen.
+   * Each is a fresh press (up to down); holding a button down never repeats it.
+   */
+  private handlePadPresses(): void {
+    const count = this.playerCount;
+    for (const press of this.pads.drainPresses()) {
+      if (this.pads.playerOf(press.padKey, count) === null) continue;
+      switch (press.button) {
+        case 'start':
+          this.togglePause();
+          break;
+        case 'a':
+          this.retry();
+          break;
+        case 'back':
+          this.toMenu();
+          break;
+        case 'up':
+          this.adjustVolumes('ArrowUp');
+          break;
+        case 'down':
+          this.adjustVolumes('ArrowDown');
+          break;
+        case 'left':
+          this.adjustVolumes('ArrowLeft');
+          break;
+        case 'right':
+          this.adjustVolumes('ArrowRight');
+          break;
+        default:
+          break;
+      }
+    }
   }
 
   private diagSnapshot(p: GameSim['player']): { rotation: number; boostActive: boolean; canShoot: boolean; shootTimer: number; shots: number } {
@@ -170,6 +222,10 @@ export class GameScene extends Phaser.Scene {
 
   private setupInput(): void {
     this.held = getHeldKeys(this);
+    this.pads = getGamepadHub(this);
+    // A run starts with every controller neutral until its buttons are released: the A that pressed RETRY (or START on the
+    // title screen) is also the cannon, and must not fire the moment the run begins. Presses meant for the last scene go too.
+    this.pads.disarmAll('run started');
     this.ignoreHeldAbilityKeys();
     const keyboard = this.input.keyboard;
     if (!keyboard) return;
@@ -217,7 +273,10 @@ export class GameScene extends Phaser.Scene {
     if (this.sim.isGameOver) return;
     this.paused = !this.paused;
     // Held movement keys are deliberately NOT reset: the keyboard has not released them, so play resumes with them held.
-    if (!this.paused) this.ignoreHeldAbilityKeys();
+    if (!this.paused) {
+      this.padNote = '';
+      this.ignoreHeldAbilityKeys();
+    }
   }
 
   /** The arrow keys also steer the ship, so they only work the volume controls on the pause screen. */
@@ -242,10 +301,23 @@ export class GameScene extends Phaser.Scene {
       // Keys released while the window was unfocused never send a keyup; HeldKeys forgets them itself on blur / hide.
       this.paused = true;
     };
+    // A controller that drives a ship in this run disappearing pauses the game at once (its commands are already neutral),
+    // so nobody plays on with a dead ship; reconnecting it hands the ship back, and START resumes.
+    const stopPadEvents = this.pads.onEvent((event) => {
+      if (event.type === 'connected') this.keyDiag?.note(`controller connected: #${event.pad.index} ${event.pad.name}`);
+      else if (event.type === 'disconnected') this.keyDiag?.note(`controller DISCONNECTED: #${event.pad.index} ${event.pad.name}`);
+      else if (event.type === 'disarmed') this.keyDiag?.note(`controllers neutral: ${event.reason}`);
+      if (event.type !== 'disconnected' || this.sim.isGameOver) return;
+      const slot = this.playerCount === 2 ? event.slot : event.soloSlot;
+      if (slot === null) return;
+      this.paused = true;
+      this.padNote = `PLAYER ${slot + 1}'S CONTROLLER DISCONNECTED - plug it in again`;
+    });
     const events = this.game.events;
     events.on(Phaser.Core.Events.BLUR, autoPause);
     events.on(Phaser.Core.Events.HIDDEN, autoPause);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      stopPadEvents();
       this.keyDiag?.destroy();
       this.keyDiag = null;
       this.phaserDiagKeys = [];
@@ -271,7 +343,12 @@ export class GameScene extends Phaser.Scene {
     const showPause = this.paused && !over;
     this.pauseOverlay.setVisible(showPause);
     this.volumePanel.setVisible(showPause);
+    // Controller hints appear only while a controller is actually driving a ship in this run.
+    const padActive = (showPause || over) && this.padActive();
     if (showPause) {
+      this.pauseOverlay.setLine(0, padActive ? 'Press P or START to Resume' : 'Press P to Resume', CENTER_Y + 10, COLORS.hint, 28);
+      this.pauseOverlay.setLine(2, padActive ? 'Press ESC or BACK for Main Menu' : 'Press ESC for Main Menu', CENTER_Y + 240, COLORS.dim, 22);
+      this.pauseOverlay.setLine(3, this.padNote, CENTER_Y + 205, '#ff6464', 20);
       const music = this.audio.music.isMuted ? 'Off' : 'On';
       this.pauseOverlay.setLine(1, `Press M to Toggle Music (${music})`, CENTER_Y + 55, COLORS.dim, 22);
       this.volumePanel.update();
@@ -297,11 +374,17 @@ export class GameScene extends Phaser.Scene {
     }
     this.gameOverOverlay.setLine(
       1,
-      ready ? 'Press R or click RETRY' : `Wait ${Math.floor(sim.retryDelay) + 1}...`,
+      ready ? (padActive ? 'Press R, A or click RETRY' : 'Press R or click RETRY') : `Wait ${Math.floor(sim.retryDelay) + 1}...`,
       CENTER_Y + 220,
       ready ? COLORS.hint : '#969696',
       28,
     );
-    this.gameOverOverlay.setLine(2, 'Press ESC for Main Menu', CENTER_Y + 260, COLORS.dim, 20);
+    this.gameOverOverlay.setLine(2, padActive ? 'Press ESC or BACK for Main Menu' : 'Press ESC for Main Menu', CENTER_Y + 260, COLORS.dim, 20);
+  }
+
+  /** Whether a connected controller currently drives a ship in this run. */
+  private padActive(): boolean {
+    const count = this.playerCount;
+    return this.pads.padFor(0, count) !== null || this.pads.padFor(1, count) !== null;
   }
 }

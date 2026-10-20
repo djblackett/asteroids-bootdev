@@ -25,6 +25,7 @@ npm run test:browser  # build, then drive it in headless Chrome (needs Chrome/Ed
 npm run test:input    # build, then real-browser keyboard tests: simultaneous keys, pause / retry / blur with keys held
 npm run test:combat   # build, then real-browser tests of combos, kill-streak banners and UFOs (same Chrome requirement)
 npm run test:coop     # build, then real-browser two-player tests: both players on one keyboard, lives, friendly fire, Revive, HUD
+npm run test:gamepad  # build, then real-browser tests with a SIMULATED gamepad (keyboard + controller co-op, hot-plug, focus, pause, restart)
 ```
 
 `npm run test:browser` uses `playwright-core` (dev dependency, no browser download) with a locally installed Chrome,
@@ -41,7 +42,8 @@ the exact `PlayerInput` handed to the simulation, and a verdict). Use it to chec
 The panel keeps a rolling ~10 s history (timestamped raw keydown / keyup events, held keys, and the input handed to
 `GameSim.step()`). **Freeze Capture** preserves the history and current state so you can release the keys and take
 screenshots; **Copy Diagnostic Report** copies a text report (the frozen one if frozen); **Clear Capture** discards it
-and resumes. Nothing is cleared by releasing keys or blurring the window.
+and resumes. Nothing is cleared by releasing keys or blurring the window. With a controller connected the same panel also lists each
+controller's mapping, raw axes / buttons, the normalised command and which player receives it (bounded: 4 pads, a few lines each).
 
 ## Controls
 
@@ -76,6 +78,31 @@ P pauses, M mutes, R retries after game over (Enter does too, but only in a one-
 cannon). Python uses Right Ctrl for Player 2's boost; in a browser Ctrl + W closes the tab (Player 1 holds W all the time)
 and a page cannot stop that, so it is `.` here. If the arrow cluster ghosts on your keyboard, press **K** for the I J K L layout.
 
+### Gamepad (Xbox-style; any browser "standard" mapping)
+
+The usual setup is **Player 1 on the keyboard, Player 2 on a controller**, as in the Python game. Plug the controller in, press a
+button on it (browsers only reveal a controller after a press), choose **2** players, and press **A** on the controller: it joins
+as Player 2 (the status line at the bottom left of the title screen says so). **LB** gives it to Player 1, **RB** to Player 2
+(also **G**, or a click on its line, to cycle). **C** (or **Y** on the pad) shows the controller layout. A player with a controller
+keeps their keyboard keys too; where both push the same axis the keyboard wins, buttons are OR-ed.
+
+| Control | Action |
+| --- | --- |
+| Left stick left / right | Rotate (analogue: a light push turns slower; dead zone 0.15, as in Python) |
+| Left stick up / down | Forward / backward (analogue) |
+| D-pad | Same as the stick, only while the stick is centred (browser addition) |
+| RT (hold) or A | Shoot (continuous) |
+| X | Laser Beam (once per press) |
+| B | Boost (once per press) |
+| START | Pause / resume |
+| BACK | Main menu (while paused or on the game-over screen) |
+| A | Retry after game over; join / start on the title screen |
+| D-pad on the title screen | Left / right = 1 or 2 players; on the pause screen it adjusts the volumes |
+
+A controller that is unplugged during play pauses the game and names the player; plugging it back in returns the ship to the pad.
+Buttons held when a controller connects, the window regains focus, or a run (re)starts are ignored until released. Details and the
+recovered Python mapping are in `docs/implementation-progress.md` (Phase 5).
+
 ## Layout
 
 ```
@@ -91,13 +118,13 @@ src/
     gameConfig.ts                       players / lives mode / friendly fire / speed handicaps chosen on the title screen
   scenes/    Boot (load audio) -> Start (title) -> Game (glue: input, sim.step, draw, overlays)
   render/    Procedural drawing into two reusable Graphics objects (stars, playfield)
-  input/     Held keys (by KeyboardEvent.code) -> PlayerInput; one-shot key dispatcher; ?keydebug diagnostics
+  input/     Held keys (by KeyboardEvent.code) and gamepads (GamepadHub, gamepadMapping) -> the same PlayerInput; one-shot key dispatcher; ?keydebug diagnostics
   audio/     Pure logic (event -> sound, music state machine, volume settings, mix config) + one Phaser adapter (`AudioDirector`)
-  ui/        HUD, pause / game-over overlays, the Music / SFX volume panel
+  ui/        HUD, pause / game-over overlays, the Music / SFX volume panel, the title screen's controller status
 tests/       Vitest suites for src/core and src/audio (no browser, no audio device)
   gameSetup.ts  The title screen's choices (kept in the Phaser registry); the game scene builds a fresh GameSim from them
 scripts/     smoke.mjs: browser smoke test; keyboard.mjs: real-browser keyboard tests; combat.mjs: combo / banner / UFO tests;
-             coop.mjs: two-player tests
+             coop.mjs: two-player tests; gamepad.mjs: keyboard + simulated-gamepad co-op tests
 docs/        implementation-progress.md
 ```
 
