@@ -88,7 +88,7 @@ describe('integrated combat scenarios', () => {
     drop.type = 'shield';
     sim.player.position = { x: 400, y: 360 };
     const events = sim.step(FRAME);
-    expect(eventsOfType(events, 'powerup_collected')).toEqual([{ type: 'powerup_collected', powerType: 'shield' }]);
+    expect(eventsOfType(events, 'powerup_collected')).toEqual([{ type: 'powerup_collected', powerType: 'shield', player: 1 }]);
     expect(sim.player.shieldActive).toBe(true);
   });
 

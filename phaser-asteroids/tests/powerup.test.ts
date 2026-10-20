@@ -159,7 +159,7 @@ describe('collection', () => {
     const events = sim.step(FRAME);
     expect(sim.powerups).toHaveLength(0);
     expect(sim.player.rapidFire.active).toBe(true);
-    expect(events).toContainEqual({ type: 'powerup_collected', powerType: 'rapid_fire' });
+    expect(events).toContainEqual({ type: 'powerup_collected', powerType: 'rapid_fire', player: 1 });
     expect(sim.pickupFlashes).toHaveLength(1);
   });
 
@@ -555,7 +555,7 @@ describe('Revive (single player)', () => {
     const events = sim.step(FRAME);
     expect(sim.powerups).toHaveLength(0);
     expect(sim.player.lives).toBe(2);
-    expect(events).toContainEqual({ type: 'powerup_collected', powerType: 'revive' });
+    expect(events).toContainEqual({ type: 'powerup_collected', powerType: 'revive', player: 1 });
   });
 });
 

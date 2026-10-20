@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FRAME, collectEvents, eventsOfType, hold, quietSim, runFor } from './helpers';
 
-// Python's beam ignores UFOs (see LASER_HITS_UFOS in constants.ts). This file checks the opt-in behaviour so it stays
-// correct if the switch is turned on.
+// Python's beam ignores UFOs; since Phase 4 the beam kills them (LASER_HITS_UFOS is true by default, see constants.ts). This file
+// pins the switch explicitly so these tests keep checking "on" even if the default is ever changed back. The pass-through
+// ("off") behaviour is covered by the `laserHitsUfos: false` option in ufo.test.ts and refinements.test.ts.
 vi.mock('../src/core/constants', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../src/core/constants')>()),
   LASER_HITS_UFOS: true,

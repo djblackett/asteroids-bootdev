@@ -5,6 +5,7 @@ export const FONT_FAMILY = '"Courier New", Courier, monospace';
 export const COLORS = {
   white: '#ffffff',
   player1: '#64c8ff',
+  player2: '#ffc864',
   dim: '#b4b4b4',
   hint: '#c8c8c8',
   heading: '#ffc800',

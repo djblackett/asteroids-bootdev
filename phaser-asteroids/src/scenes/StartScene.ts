@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 import { getAudio, type AudioDirector } from '../audio/phaserAudio';
-import { POWERUP_RADIUS, SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
+import { POWERUP_RADIUS, SCREEN_HEIGHT, SCREEN_WIDTH, SPEED_OPTIONS } from '../core/constants';
 import type { PowerUpType } from '../core/powerup';
 import { defaultRng } from '../core/rng';
 import { Starfield } from '../core/starfield';
+import { getSetup, setSetup, type GameSetup } from '../gameSetup';
 import { toCss } from '../render/colors';
 import { drawPowerUpIcon, POWERUP_COLOR } from '../render/powerupIcons';
 import { createKeyPressDispatcher } from '../input/keyPress';
@@ -31,16 +32,52 @@ const POWERUPS: ReadonlyArray<readonly [PowerUpType, string, string]> = [
   ['slow_motion', 'Slow Motion', 'Slows asteroids'],
   ['mega_power', 'MEGA POWER', 'ALL POWERS!'],
 ];
-const POWERUP_ROW_Y = (i: number): number => 385 + i * 40;
-const ICON_X = CENTER_X - 230;
+/** Two players: the same list plus the Revive. */
+const COOP_POWERUPS: ReadonlyArray<readonly [PowerUpType, string, string]> = [
+  ['rapid_fire', 'Rapid Fire', 'Faster shooting'],
+  ['multi_shot', 'Multi-Shot', 'Shoot 3 bullets'],
+  ['shield', 'Shield', 'One-hit protection'],
+  ['revive', 'Revive', 'Brings back a downed partner'],
+  ['slow_motion', 'Slow Motion', 'Slows asteroids'],
+  ['mega_power', 'MEGA POWER', 'ALL POWERS!'],
+];
 
-/** Title / controls screen. Starting from a key press or click also satisfies the browser's audio-unlock gesture. */
+const P1_CONTROLS = ['W / S  Forward / Back', 'A / D  Rotate', 'SPACE  Shoot', 'E  Laser Beam', 'L-SHIFT  Boost'];
+const P2_CONTROLS = {
+  arrows: ['UP / DOWN  Forward / Back', 'LEFT / RIGHT  Rotate', 'ENTER  Shoot', 'R-SHIFT  Laser Beam', '.  Boost'],
+  ijkl: ['I / K  Forward / Back', 'J / L  Rotate', ';  Shoot', 'U  Laser Beam', 'O  Boost'],
+} as const;
+
+// One-player layout (the classic screen, moved down a little to make room for the mode selector).
+const SOLO_POWERUP_ROW_Y = (i: number): number => 392 + i * 38;
+const SOLO_ICON_X = CENTER_X - 230;
+// Two-player layout: power-ups in two columns of three.
+const COOP_POWERUP_POS = (i: number): { x: number; y: number } => ({ x: i < 3 ? 120 : 700, y: 514 + (i % 3) * 38 });
+
+/** Seconds-free labels for the speed handicap: 0.5 -> "50%". */
+const speedLabel = (speed: number): string => `${Math.round(speed * 100)}%`;
+
+type Phase = 'solo' | 'coop';
+
+/**
+ * Title / controls screen. Starting from a key press or click also satisfies the browser's audio-unlock gesture.
+ * `1` / `2` choose one or two players; with two players `L` (lives), `F` (friendly fire), `K` (Player 2's keys) and `S` / `D`
+ * (the players' speed handicaps) change the options. The choice is kept in the registry for the next run.
+ */
 export class StartScene extends Phaser.Scene {
   private iconGfx!: Phaser.GameObjects.Graphics;
   private musicHint!: CachedText;
   private audio!: AudioDirector;
   private volumePanel!: VolumePanel;
   private starting = false;
+  private setup!: GameSetup;
+
+  private oneLabel!: Phaser.GameObjects.Text;
+  private twoLabel!: Phaser.GameObjects.Text;
+  private soloObjects: Phaser.GameObjects.GameObject[] = [];
+  private coopObjects: Phaser.GameObjects.GameObject[] = [];
+  private p2Controls: Phaser.GameObjects.Text[] = [];
+  private options!: { lives: CachedText; fire: CachedText; keys: CachedText; speeds: CachedText };
 
   constructor() {
     super(SCENE_START);
@@ -48,6 +85,10 @@ export class StartScene extends Phaser.Scene {
 
   create(): void {
     this.starting = false;
+    this.soloObjects = [];
+    this.coopObjects = [];
+    this.p2Controls = [];
+    this.setup = getSetup(this.registry);
     this.audio = getAudio(this);
     this.audio.startMusicWhenUnlocked();
 
@@ -55,21 +96,12 @@ export class StartScene extends Phaser.Scene {
     drawStarfield(stars, new Starfield(defaultRng));
     this.iconGfx = this.add.graphics().setDepth(2);
 
-    addText(this, CENTER_X, 50, 'ASTEROIDS', { size: 64, originX: 0.5, originY: 0.5 });
-    addText(this, CENTER_X, 112, 'CONTROLS', { size: 30, color: COLORS.heading, originX: 0.5, originY: 0.5 });
-    CONTROLS.forEach((line, i) => {
-      addText(this, CENTER_X, 150 + i * 27, line, { size: 20, color: COLORS.hint, originX: 0.5, originY: 0.5, bold: false });
-    });
+    addText(this, CENTER_X, 46, 'ASTEROIDS', { size: 60, originX: 0.5, originY: 0.5 });
+    this.buildModeSelector();
+    this.buildSoloPage();
+    this.buildCoopPage();
 
-    addText(this, CENTER_X, 345, 'POWER-UPS', { size: 30, color: COLORS.heading, originX: 0.5, originY: 0.5 });
-    POWERUPS.forEach(([type, name, description], i) => {
-      const y = POWERUP_ROW_Y(i);
-      const color = type === 'mega_power' ? '#ff64ff' : toCss(POWERUP_COLOR[type]);
-      addText(this, CENTER_X - 190, y, name, { size: 22, color, originY: 0.5 });
-      addText(this, CENTER_X + 10, y, description, { size: 20, color: COLORS.hint, originY: 0.5, bold: false });
-    });
-
-    const prompt = addText(this, CENTER_X, 625, 'Press SPACE or click to start', { size: 32, originX: 0.5, originY: 0.5 });
+    const prompt = addText(this, CENTER_X, 630, 'Press SPACE or click to start', { size: 32, originX: 0.5, originY: 0.5 });
     this.tweens.add({ targets: prompt, alpha: 0.35, duration: 700, yoyo: true, repeat: -1 });
 
     this.musicHint = new CachedText(
@@ -84,6 +116,9 @@ export class StartScene extends Phaser.Scene {
     if (keyboard) {
       keyboard.addCapture('SPACE,UP,DOWN,LEFT,RIGHT');
       const panelKey = (code: string) => (): void => void this.volumePanel.handleKey(code);
+      const when = (phase: Phase, action: () => void) => (): void => {
+        if (this.phase === phase) action();
+      };
       keyboard.on(
         Phaser.Input.Keyboard.Events.ANY_KEY_DOWN,
         createKeyPressDispatcher({
@@ -93,17 +128,157 @@ export class StartScene extends Phaser.Scene {
           ArrowDown: panelKey('ArrowDown'),
           ArrowLeft: panelKey('ArrowLeft'),
           ArrowRight: panelKey('ArrowRight'),
+          Digit1: () => this.setPlayers(1),
+          Numpad1: () => this.setPlayers(1),
+          Digit2: () => this.setPlayers(2),
+          Numpad2: () => this.setPlayers(2),
+          KeyL: when('coop', () => this.toggleLives()),
+          KeyF: when('coop', () => this.toggleFriendlyFire()),
+          KeyK: when('coop', () => this.toggleP2Keys()),
+          KeyS: when('coop', () => this.cycleSpeed(0)),
+          KeyD: when('coop', () => this.cycleSpeed(1)),
         }),
       );
     }
-    this.input.once('pointerdown', () => this.start());
+    // A click anywhere starts the game, except on the clickable options themselves.
+    this.input.on('pointerdown', (_pointer: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
+      if (over.length === 0) this.start();
+    });
+    this.refresh();
   }
 
   override update(time: number): void {
     this.iconGfx.clear();
-    POWERUPS.forEach(([type], i) => drawPowerUpIcon(this.iconGfx, type, ICON_X, POWERUP_ROW_Y(i), POWERUP_RADIUS, time));
+    if (this.phase === 'solo') {
+      POWERUPS.forEach(([type], i) => drawPowerUpIcon(this.iconGfx, type, SOLO_ICON_X, SOLO_POWERUP_ROW_Y(i), POWERUP_RADIUS, time));
+    } else {
+      COOP_POWERUPS.forEach(([type], i) => {
+        const { x, y } = COOP_POWERUP_POS(i);
+        drawPowerUpIcon(this.iconGfx, type, x, y, POWERUP_RADIUS, time);
+      });
+    }
     this.musicHint.set(`M: music ${this.audio.music.isMuted ? 'off' : 'on'}`);
     this.volumePanel.update();
+  }
+
+  private get phase(): Phase {
+    return this.setup.game.playerCount === 2 ? 'coop' : 'solo';
+  }
+
+  // --- building the screen ---------------------------------------------------
+
+  private buildModeSelector(): void {
+    const make = (x: number, label: string, players: 1 | 2): Phaser.GameObjects.Text =>
+      addText(this, x, 96, label, { size: 24, originX: 0.5, originY: 0.5 })
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.setPlayers(players));
+    this.oneLabel = make(CENTER_X - 170, '[1]  ONE PLAYER', 1);
+    this.twoLabel = make(CENTER_X + 170, '[2]  TWO PLAYERS', 2);
+  }
+
+  private buildSoloPage(): void {
+    const add = (o: Phaser.GameObjects.GameObject): void => void this.soloObjects.push(o);
+    add(addText(this, CENTER_X, 146, 'CONTROLS', { size: 30, color: COLORS.heading, originX: 0.5, originY: 0.5 }));
+    CONTROLS.forEach((line, i) => {
+      add(addText(this, CENTER_X, 184 + i * 27, line, { size: 20, color: COLORS.hint, originX: 0.5, originY: 0.5, bold: false }));
+    });
+    add(addText(this, CENTER_X, 357, 'POWER-UPS', { size: 30, color: COLORS.heading, originX: 0.5, originY: 0.5 }));
+    POWERUPS.forEach(([type, name, description], i) => {
+      const y = SOLO_POWERUP_ROW_Y(i);
+      const color = type === 'mega_power' ? '#ff64ff' : toCss(POWERUP_COLOR[type]);
+      add(addText(this, CENTER_X - 190, y, name, { size: 22, color, originY: 0.5 }));
+      add(addText(this, CENTER_X + 10, y, description, { size: 20, color: COLORS.hint, originY: 0.5, bold: false }));
+    });
+  }
+
+  private buildCoopPage(): void {
+    const add = (o: Phaser.GameObjects.GameObject): void => void this.coopObjects.push(o);
+    const column = (x: number, title: string, color: string, lines: readonly string[]): Phaser.GameObjects.Text[] => {
+      add(addText(this, x, 138, title, { size: 28, color, originY: 0.5 }));
+      return lines.map((line, i) => {
+        const text = addText(this, x, 172 + i * 25, line, { size: 19, color: COLORS.hint, originY: 0.5, bold: false });
+        add(text);
+        return text;
+      });
+    };
+    column(150, 'PLAYER 1', COLORS.player1, P1_CONTROLS);
+    this.p2Controls = column(720, 'PLAYER 2', COLORS.player2, P2_CONTROLS.arrows);
+    add(addText(this, CENTER_X, 306, 'P  -  Pause        ESC  -  Menu        R  -  Retry', { size: 17, color: COLORS.dim, originX: 0.5, originY: 0.5, bold: false }));
+
+    const option = (y: number, onClick: () => void): CachedText => {
+      const text = addText(this, CENTER_X, y, '', { size: 21, color: COLORS.white, originX: 0.5, originY: 0.5 })
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', onClick);
+      add(text);
+      return new CachedText(text, COLORS.white, 21);
+    };
+    this.options = {
+      lives: option(342, () => this.toggleLives()),
+      fire: option(372, () => this.toggleFriendlyFire()),
+      keys: option(402, () => this.toggleP2Keys()),
+      speeds: option(432, () => this.cycleSpeed(0)),
+    };
+
+    add(addText(this, CENTER_X, 476, 'POWER-UPS', { size: 26, color: COLORS.heading, originX: 0.5, originY: 0.5 }));
+    COOP_POWERUPS.forEach(([type, name, description], i) => {
+      const { x, y } = COOP_POWERUP_POS(i);
+      const color = type === 'mega_power' ? '#ff64ff' : toCss(POWERUP_COLOR[type]);
+      add(addText(this, x + 32, y, name, { size: 19, color, originY: 0.5 }));
+      add(addText(this, x + 190, y, description, { size: 17, color: COLORS.hint, originY: 0.5, bold: false }));
+    });
+  }
+
+  // --- choices ---------------------------------------------------------------
+
+  private save(): void {
+    setSetup(this.registry, this.setup);
+    this.refresh();
+  }
+
+  private setPlayers(count: 1 | 2): void {
+    if (this.setup.game.playerCount === count) return;
+    this.setup = { ...this.setup, game: { ...this.setup.game, playerCount: count } };
+    this.save();
+  }
+
+  private toggleLives(): void {
+    const livesMode = this.setup.game.livesMode === 'shared' ? 'independent' : 'shared';
+    this.setup = { ...this.setup, game: { ...this.setup.game, livesMode } };
+    this.save();
+  }
+
+  private toggleFriendlyFire(): void {
+    this.setup = { ...this.setup, game: { ...this.setup.game, friendlyFire: !this.setup.game.friendlyFire } };
+    this.save();
+  }
+
+  private toggleP2Keys(): void {
+    this.setup = { ...this.setup, p2Keys: this.setup.p2Keys === 'arrows' ? 'ijkl' : 'arrows' };
+    this.save();
+  }
+
+  private cycleSpeed(player: 0 | 1): void {
+    const speed: [number, number] = [this.setup.game.speed[0], this.setup.game.speed[1]];
+    const at = SPEED_OPTIONS.indexOf(speed[player]);
+    speed[player] = SPEED_OPTIONS[(at + 1) % SPEED_OPTIONS.length] ?? 1;
+    this.setup = { ...this.setup, game: { ...this.setup.game, speed } };
+    this.save();
+  }
+
+  /** Shows the page for the chosen player count and rewrites the option lines. */
+  private refresh(): void {
+    const coop = this.phase === 'coop';
+    this.oneLabel.setColor(coop ? COLORS.dim : COLORS.heading).setAlpha(coop ? 0.7 : 1);
+    this.twoLabel.setColor(coop ? COLORS.heading : COLORS.dim).setAlpha(coop ? 1 : 0.7);
+    for (const o of this.soloObjects) (o as Phaser.GameObjects.Text).setVisible(!coop);
+    for (const o of this.coopObjects) (o as Phaser.GameObjects.Text).setVisible(coop);
+
+    const g = this.setup.game;
+    this.options.lives.set(g.livesMode === 'shared' ? '[L]  LIVES:  SHARED  (6 for the team)' : '[L]  LIVES:  INDEPENDENT  (3 each)');
+    this.options.fire.set(`[F]  FRIENDLY FIRE:  ${g.friendlyFire ? 'ON' : 'OFF'}`);
+    this.options.keys.set(`[K]  PLAYER 2 KEYS:  ${this.setup.p2Keys === 'arrows' ? 'ARROWS + ENTER' : 'I J K L + ;'}`);
+    this.options.speeds.set(`[S]  P1 SPEED:  ${speedLabel(g.speed[0])}        [D]  P2 SPEED:  ${speedLabel(g.speed[1])}`);
+    P2_CONTROLS[this.setup.p2Keys].forEach((line, i) => this.p2Controls[i]?.setText(line));
   }
 
   private start(): void {

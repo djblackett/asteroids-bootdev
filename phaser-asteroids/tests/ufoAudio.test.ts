@@ -4,7 +4,7 @@ import { cueForEvent, SfxPlayer } from '../src/audio/sfxPlayer';
 import type { SimEvent } from '../src/core/game';
 import { seededRng } from '../src/core/rng';
 import { FakeBackend } from './audioFakes';
-import { FRAME, parkedUfoFor, quietSim, runFor, shotAt } from './helpers';
+import { FRAME, collectEvents, parkedUfoFor, quietSim, runFor, shotAt } from './helpers';
 
 describe('UFO sounds', () => {
   const rng = seededRng(5);
@@ -42,7 +42,9 @@ describe('UFO sounds', () => {
     player.handle(sim.step(FRAME)); // shield absorbs
     expect(backend.requests).toHaveLength(0);
     expect(ufo.alive).toBe(true);
-    player.handle(sim.step(FRAME)); // next frame of contact costs the life
+    player.handle(collectEvents(sim, 0.5)); // staying in the same contact is still free
+    expect(backend.requests).toHaveLength(0);
+    player.handle(collectEvents(sim, 1)); // once the grace period is over the contact costs the life, with one death sound
     expect(backend.count('player_death')).toBe(1);
   });
 

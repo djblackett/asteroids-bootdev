@@ -1,8 +1,9 @@
 import { createAsteroid, type Asteroid } from '../src/core/asteroid';
 import type { AsteroidArchetype } from '../src/core/constants';
 import { GameSim, type SimEvent } from '../src/core/game';
+import type { GameConfig } from '../src/core/gameConfig';
 import type { Vec2 } from '../src/core/math';
-import { NO_INPUT, type PlayerInput } from '../src/core/player';
+import { NO_INPUT, type PlayerInput, type PlayerState } from '../src/core/player';
 import { createPowerUp, type PowerUp, type PowerUpType } from '../src/core/powerup';
 import { seededRng, type Rng } from '../src/core/rng';
 import type { Shot } from '../src/core/shot';
@@ -107,4 +108,44 @@ export function parkedUfoFor(sim: GameSim, type: UfoType, x: number, y: number):
   ufo.movementTimer = -1e9;
   ufo.targetVelocity = { x: 0, y: 0 };
   return ufo;
+}
+
+/** A two-player sim with the asteroid spawner and UFO schedule off (see `quietSim`). */
+export function quietCoop(config: Partial<GameConfig> = {}, seed = 1, rng: Rng = seededRng(seed)): GameSim {
+  const sim = new GameSim({ rng, startCooldown: 0, ufos: false, config: { playerCount: 2, ...config } });
+  sim.spawner.spawnTimer = -1e9;
+  return sim;
+}
+
+/** A resting player shot fired by player `owner`. */
+export function shotBy(owner: number, x: number, y: number, vx = 0, vy = 0): Shot {
+  return { position: { x, y }, velocity: { x: vx, y: vy }, radius: 5, owner, alive: true };
+}
+
+/** A stationary pickup of `type` at a point. */
+export function pickupAt(sim: GameSim, type: PowerUpType, x: number, y: number): PowerUp {
+  const p = createPowerUp(x, y, type, seededRng(3));
+  p.velocity = { x: 0, y: 0 };
+  sim.powerups.push(p);
+  return p;
+}
+
+/** Drops a small rock on `player` and steps one frame: one asteroid hit (shield / protection / life, as the rules say). */
+export function crashInto(sim: GameSim, player: PlayerState): SimEvent[] {
+  sim.asteroids.push(rock(player.position.x, player.position.y, 20));
+  return sim.step(FRAME);
+}
+
+/** Removes respawn protection so the next hit counts, then hits. */
+export function hitUnprotected(sim: GameSim, player: PlayerState): SimEvent[] {
+  player.isRespawning = false;
+  player.shieldActive = false;
+  return crashInto(sim, player);
+}
+
+/** Hits `player` until they are out of lives (or the run ends). */
+export function knockOut(sim: GameSim, player: PlayerState): SimEvent[] {
+  const all: SimEvent[] = [];
+  for (let i = 0; i < 20 && player.lives > 0 && !sim.isGameOver; i++) all.push(...hitUnprotected(sim, player));
+  return all;
 }

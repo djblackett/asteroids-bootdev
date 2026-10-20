@@ -70,6 +70,27 @@ export const PLAYER_RESPAWN_Y = Math.floor(SCREEN_HEIGHT / 2);
 /** Initial point in single-player mode. */
 export const PLAYER_START_X = Math.floor(SCREEN_WIDTH / 2);
 export const PLAYER_START_Y = Math.floor(SCREEN_HEIGHT / 2);
+/** Two players start on, and respawn at, their own spawn points (Python P1_SPAWN / P2_SPAWN); index = player number - 1. */
+export const PLAYER_SPAWNS: ReadonlyArray<{ readonly x: number; readonly y: number }> = [
+  { x: SCREEN_WIDTH * 0.25, y: Math.floor(SCREEN_HEIGHT / 2) },
+  { x: SCREEN_WIDTH * 0.75, y: Math.floor(SCREEN_HEIGHT / 2) },
+];
+
+// --- Two-player co-op ---------------------------------------------------------
+/** Shared-lives pool for the whole team (Python `SHARED_LIVES_POOL`). */
+export const SHARED_LIVES_POOL = 6;
+/** Friendly fire default in the menu (Python `FRIENDLY_FIRE_ENABLED`). */
+export const FRIENDLY_FIRE_DEFAULT = true;
+/** Lives a revived player comes back with (Python hard-codes 3). */
+export const REVIVE_LIVES = 3;
+/**
+ * Python defines `REVIVE_SPAWN_CHANCE` = 0.3 ("30 % chance to spawn revive when a player dies") but never uses it, so no
+ * Revive ever appeared. Here it is the share of power-up drops (an asteroid's 8 % roll and the guaranteed UFO drop) that
+ * turn into a Revive while a player is out of lives and their teammate is still alive and no Revive is already on the field.
+ */
+export const REVIVE_SPAWN_CHANCE = 0.3;
+/** Menu choices for a player's movement speed (Python `speed_options`); the multiplier only scales forward / backward speed. */
+export const SPEED_OPTIONS: readonly number[] = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 // --- Shooting --------------------------------------------------------------
 export const SHOT_RADIUS = 5;
@@ -157,24 +178,46 @@ export const UFO_CONTINUOUS_RESPAWN_TIME = 15.0;
 /** Spawn point along the chosen edge, as a fraction of its length. */
 export const UFO_SPAWN_EDGE_MIN = 0.2;
 export const UFO_SPAWN_EDGE_MAX = 0.8;
-/** From this wave on, 40 % of spawns are small UFOs. */
+/** Wave mode (not implemented yet): from this wave on, 40 % of spawns are small UFOs. */
 export const UFO_SMALL_WAVE_START = 5;
 export const UFO_SMALL_SPAWN_CHANCE = 0.4;
+
 /**
- * The wave number used to pick the UFO type in continuous mode. Python's `AsteroidField.current_wave` is only ever
- * changed by wave mode, so in continuous mode it stays 1 and small UFOs never spawn. Set this to 5 or more to let
- * continuous mode spawn them (40 %), or implement wave mode and pass the real wave.
+ * Continuous mode: when small UFOs enter the schedule. Python picks the type from the *wave* number, which only wave mode
+ * ever advances, so in continuous mode small UFOs never appeared. Here the existing difficulty progression is reused
+ * instead: `GameSim.difficultyLevel` goes up by one every `DIFFICULTY_INCREASE_INTERVAL` (30 s) and is what makes the
+ * asteroids faster. Each row is "from this difficulty level on, a UFO spawn is small with this probability" (the highest
+ * row reached wins; before the first row every spawn is a large UFO and no random number is drawn).
+ *
+ *   level 4  (2:00)  20 %  - the odd small UFO
+ *   level 8  (4:00)  40 %  - the rate Python uses from wave 5
+ *   level 12 (6:00)  60 %  - small UFOs are now the more likely spawn
+ *
+ * Spawn timing (first at 5 s, then every 15 s) and the maximum of 2 UFOs are unchanged. Set the table to `[]` to restore
+ * the original "large only" behaviour.
  */
-export const UFO_CONTINUOUS_EFFECTIVE_WAVE = 1;
+export const UFO_SMALL_PROGRESSION: ReadonlyArray<{ readonly level: number; readonly chance: number }> = [
+  { level: 4, chance: 0.2 },
+  { level: 8, chance: 0.4 },
+  { level: 12, chance: 0.6 },
+];
+
+/**
+ * A shield (or a life) lost to a UFO *body* only protects against that contact once: while the ship stays inside the same
+ * UFO it takes no second hit for up to this long. Separating ends the grace at once, so a fresh collision is a new hit, and
+ * after the grace has run out the normal rules apply again (a shield never gives lasting immunity).
+ */
+export const UFO_SHIELD_CONTACT_GRACE = 1.0;
 
 export const UFO_DESTROY_SHAKE = 6;
 export const UFO_DESTROY_PARTICLES = 10;
 
 /**
- * Python's `handle_laser_asteroid_collisions` only looks at asteroids: a Laser Beam passes straight through UFOs
- * (shots and boost ramming are the only ways to kill one). Kept for parity; set to true to let the beam kill UFOs.
+ * Python's `handle_laser_asteroid_collisions` only looks at asteroids, so its Laser Beam passes straight through UFOs.
+ * That is an oversight we deliberately fixed: the beam kills every UFO it touches (once per beam: flat points, one
+ * guaranteed power-up). Set to false to restore the original pass-through.
  */
-export const LASER_HITS_UFOS = false;
+export const LASER_HITS_UFOS = true;
 
 // --- Laser beam ------------------------------------------------------------
 export const LASER_BEAM_MAX_SHOTS = 15;

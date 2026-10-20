@@ -47,30 +47,54 @@ export class CachedText {
   }
 }
 
-/** Score / lives / clock. */
+const PLAYER_COLORS: readonly string[] = [COLORS.player1, COLORS.player2];
+export const playerColor = (index: number): string => PLAYER_COLORS[index] ?? COLORS.white;
+
+/**
+ * Score / lives / clock. One player: top left, exactly as before. Two players: Player 1 top left, Player 2 top right
+ * (as in Python), the clock stays in the middle. In a shared-lives game the per-player lives are replaced by the team's
+ * `SHARED LIVES` line (see `TeamHud`). A ship that is out of lives shows `OUT` in grey.
+ */
 export class Hud {
-  private readonly score: CachedText;
-  private readonly lives: CachedText;
+  private readonly scores: CachedText[];
+  private readonly lives: CachedText[];
   private readonly clock: CachedText;
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, playerCount = 1) {
     const make = (x: number, y: number, size: number, color: string, originX = 0): CachedText =>
       new CachedText(addText(scene, x, y, '', { size, color, originX }).setDepth(10), color, size);
-    this.score = make(10, 10, 20, COLORS.player1);
-    this.lives = make(10, 45, 20, COLORS.player1);
+    this.scores = [];
+    this.lives = [];
+    for (let i = 0; i < playerCount; i++) {
+      const right = i === 1;
+      const x = right ? SCREEN_WIDTH - 10 : 10;
+      const color = playerColor(i);
+      this.scores.push(make(x, 10, 20, color, right ? 1 : 0));
+      this.lives.push(make(x, 45, 20, color, right ? 1 : 0));
+    }
     this.clock = make(SCREEN_WIDTH / 2, 10, 34, COLORS.white, 0.5);
   }
 
   update(sim: GameSim): void {
-    const color = sim.player.lives > 0 ? COLORS.player1 : COLORS.dead;
-    this.score.set(`P1: ${sim.player.score}`, color);
-    this.lives.set(`Lives: ${Math.max(sim.player.lives, 0)}`, color);
+    const shared = sim.sharedLives !== null;
+    sim.players.forEach((player, i) => {
+      const out = player.lives <= 0;
+      const color = out ? COLORS.dead : playerColor(i);
+      this.scores[i]?.set(`P${player.playerNumber}: ${player.score}`, color);
+      const lives = this.lives[i];
+      if (!lives) return;
+      lives.setVisible(!shared);
+      lives.set(out && sim.players.length > 1 && !sim.isGameOver ? 'OUT' : `Lives: ${Math.max(player.lives, 0)}`, color);
+    });
     this.clock.set(formatClock(sim.time));
   }
 }
 
 const COMBO_X = SCREEN_WIDTH - 250;
 const COMBO_Y = 100;
+/** In a two-player game the upper right belongs to Player 2's readouts, so the combo sits at the bottom centre. */
+const COMBO_X_COOP = SCREEN_WIDTH / 2;
+const COMBO_Y_COOP = SCREEN_HEIGHT - 120;
 
 /**
  * Python `draw_combo`: from the second kill of a combo, "Nx COMBO" and the multiplier in the upper right, yellow, then
@@ -80,11 +104,13 @@ export class ComboHud {
   private readonly count: CachedText;
   private readonly multiplier: CachedText;
 
-  constructor(scene: Phaser.Scene) {
-    const make = (y: number, size: number): CachedText =>
-      new CachedText(addText(scene, COMBO_X, y, '', { size, color: '#ffff00', originX: 0.5, originY: 0.5 }).setDepth(10), '#ffff00', size);
-    this.count = make(COMBO_Y, 44);
-    this.multiplier = make(COMBO_Y + 46, 20);
+  constructor(scene: Phaser.Scene, twoPlayers = false) {
+    const x = twoPlayers ? COMBO_X_COOP : COMBO_X;
+    const y = twoPlayers ? COMBO_Y_COOP : COMBO_Y;
+    const make = (textY: number, size: number): CachedText =>
+      new CachedText(addText(scene, x, textY, '', { size, color: '#ffff00', originX: 0.5, originY: 0.5 }).setDepth(10), '#ffff00', size);
+    this.count = make(y, 44);
+    this.multiplier = make(y + 46, 20);
   }
 
   update(sim: GameSim): void {
@@ -164,37 +190,52 @@ interface Line {
 
 /**
  * Laser charges, boost state and active power-ups, stacked under the lives counter (Python
- * `draw_powerup_indicator`). While MEGA POWER is on it replaces the individual power-up lines.
+ * `draw_powerup_indicator`). While MEGA POWER is on it replaces the individual power-up lines. One per ship: Player 1's
+ * on the left, Player 2's right-aligned on the right. In a one-player game Slow Motion is listed here; with two players
+ * it is a world effect and shown by the `TeamHud` instead. A ship that is out of lives shows its way back instead.
  */
 export class AbilityHud {
   private readonly lines: CachedText[];
 
-  constructor(scene: Phaser.Scene) {
+  constructor(
+    scene: Phaser.Scene,
+    private readonly index = 0,
+  ) {
+    const right = index === 1;
+    const x = right ? SCREEN_WIDTH - 10 : 10;
     this.lines = Array.from({ length: 6 }, () => {
-      const text = addText(scene, 10, 80, '', { size: 20 }).setDepth(10);
+      const text = addText(scene, x, 80, '', { size: 20, originX: right ? 1 : 0 }).setDepth(10);
       return new CachedText(text, COLORS.white, 20);
     });
   }
 
   update(sim: GameSim, timeMs: number): void {
-    const p = sim.player;
+    const p = sim.players[this.index];
     const rows: Line[] = [];
     const row = (text: string, color: string, size = 20, gap = 30): number => rows.push({ text, color, size, gap });
+    const single = sim.players.length === 1;
 
-    row(`LASER: ${p.laser.shotsRemaining}/${LASER_BEAM_MAX_SHOTS}`, p.laser.shotsRemaining > 0 ? HUD_BLUE : HUD_GREY);
+    if (p && p.lives <= 0 && !single) {
+      if (!sim.isGameOver) {
+        if (sim.reviveOnField) row('REVIVE ON FIELD!', HUD_REVIVE);
+        else if (sim.config.livesMode === 'independent') row('NEEDS A REVIVE', COLORS.dead);
+      }
+    } else if (p) {
+      row(`LASER: ${p.laser.shotsRemaining}/${LASER_BEAM_MAX_SHOTS}`, p.laser.shotsRemaining > 0 ? HUD_BLUE : HUD_GREY);
 
-    if (p.boost.active) row(`BOOST: ${secondsLeft(p.boost.timer)}s`, HUD_BOOST);
-    else if (p.boost.cooldown > 0) row(`BOOST: ${secondsLeft(p.boost.cooldown)}s CD`, HUD_COOLDOWN);
-    else row('BOOST: READY', HUD_GREEN);
+      if (p.boost.active) row(`BOOST: ${secondsLeft(p.boost.timer)}s`, HUD_BOOST);
+      else if (p.boost.cooldown > 0) row(`BOOST: ${secondsLeft(p.boost.cooldown)}s CD`, HUD_COOLDOWN);
+      else row('BOOST: READY', HUD_GREEN);
 
-    if (p.megaPower.active) {
-      // Rainbow text; the hue only moves 10 degrees per second so this re-renders ~10x a second.
-      row(`*** MEGA POWER: ${secondsLeft(p.megaPower.timer)}s ***`, toCss(rainbowColor(timeMs)), 29, 45);
-    } else {
-      if (p.rapidFire.active) row(`RAPID FIRE: ${secondsLeft(p.rapidFire.timer)}s`, HUD_RAPID);
-      if (p.multiShot.active) row(`MULTI-SHOT: ${secondsLeft(p.multiShot.timer)}s`, HUD_MULTI);
-      if (p.shieldActive) row('SHIELD: ACTIVE', HUD_SHIELD);
-      if (sim.slowMotion.active) row(`SLOW MOTION: ${secondsLeft(sim.slowMotion.timer)}s`, HUD_SLOW);
+      if (p.megaPower.active) {
+        // Rainbow text; the hue only moves 10 degrees per second so this re-renders ~10x a second.
+        row(`*** MEGA POWER: ${secondsLeft(p.megaPower.timer)}s ***`, toCss(rainbowColor(timeMs)), 29, 45);
+      } else {
+        if (p.rapidFire.active) row(`RAPID FIRE: ${secondsLeft(p.rapidFire.timer)}s`, HUD_RAPID);
+        if (p.multiShot.active) row(`MULTI-SHOT: ${secondsLeft(p.multiShot.timer)}s`, HUD_MULTI);
+        if (p.shieldActive) row('SHIELD: ACTIVE', HUD_SHIELD);
+        if (single && sim.slowMotion.active) row(`SLOW MOTION: ${secondsLeft(sim.slowMotion.timer)}s`, HUD_SLOW);
+      }
     }
 
     let y = 80;
@@ -206,6 +247,45 @@ export class AbilityHud {
       line.setY(y);
       y += r.gap;
     });
+  }
+}
+
+const HUD_REVIVE = '#00ff64';
+const TOAST_MS = 2200;
+
+/**
+ * Two-player only: what belongs to the whole team. Slow Motion (a world effect) in the top centre, `SHARED LIVES: n` at
+ * the bottom centre in a shared-lives game, and a short "PLAYER n IS BACK!" toast when a Revive works.
+ */
+export class TeamHud {
+  private readonly slow: CachedText;
+  private readonly shared: CachedText;
+  private readonly toast: CachedText;
+  private toastUntil = 0;
+
+  constructor(scene: Phaser.Scene) {
+    const make = (y: number, size: number, color: string): CachedText =>
+      new CachedText(addText(scene, SCREEN_WIDTH / 2, y, '', { size, color, originX: 0.5, originY: 0.5 }).setDepth(10), color, size);
+    // Below the kill-streak banner (which owns y = 40-126 at the top centre) and clear of the bottom-centre combo readout.
+    this.slow = make(150, 20, HUD_SLOW);
+    this.shared = make(SCREEN_HEIGHT - 30, 24, '#64ffff');
+    this.toast = make(184, 30, HUD_REVIVE);
+  }
+
+  /** Shows `text` for a couple of seconds (a newer toast replaces it). */
+  flash(text: string, color: string, nowMs: number): void {
+    this.toast.set(text, color);
+    this.toastUntil = nowMs + TOAST_MS;
+  }
+
+  update(sim: GameSim, nowMs: number): void {
+    const slow = sim.slowMotion.active && !sim.isGameOver;
+    this.slow.setVisible(slow);
+    if (slow) this.slow.set(`SLOW MOTION: ${secondsLeft(sim.slowMotion.timer)}s`);
+    const pool = sim.sharedLives;
+    this.shared.setVisible(pool !== null);
+    if (pool !== null) this.shared.set(`SHARED LIVES: ${Math.max(pool, 0)}`);
+    this.toast.setVisible(nowMs < this.toastUntil && !sim.isGameOver);
   }
 }
 

@@ -2,7 +2,6 @@ import {
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
   UFO_BLINK_INTERVAL,
-  UFO_CONTINUOUS_EFFECTIVE_WAVE,
   UFO_CONTINUOUS_RESPAWN_TIME,
   UFO_CONTINUOUS_SPAWN_TIME,
   UFO_DIRECTION_CHANGE_MAX,
@@ -22,6 +21,7 @@ import {
   UFO_SMALL_POINTS,
   UFO_SMALL_RADIUS,
   UFO_SMALL_SHOOT_ACCURACY,
+  UFO_SMALL_PROGRESSION,
   UFO_SMALL_SHOOT_COOLDOWN,
   UFO_SMALL_SPAWN_CHANCE,
   UFO_SMALL_SPEED,
@@ -81,6 +81,11 @@ export interface Ufo {
   blinkState: boolean;
   /** False once destroyed. */
   alive: boolean;
+  /**
+   * Seconds of grace left per player (index = player number - 1) after a shield absorbed this UFO's body: while that
+   * ship keeps touching the UFO it is not hit again. Reset to 0 as soon as they separate. See `UFO_SHIELD_CONTACT_GRACE`.
+   */
+  contactGrace: [number, number];
 }
 
 /**
@@ -122,6 +127,7 @@ export function createUfo(x: number, y: number, type: UfoType, rng: Rng): Ufo {
     blinkTimer: 0,
     blinkState: false,
     alive: true,
+    contactGrace: [0, 0],
   };
   chooseHeading(ufo, rng);
   ufo.shootTimer = uniform(rng, UFO_FIRST_SHOT_MIN, UFO_FIRST_SHOT_MAX);
@@ -207,9 +213,22 @@ export function createUfoSpawner(enabled: boolean = UFO_ENABLED): UfoSpawnerStat
   return { enabled, nextSpawnTime: UFO_CONTINUOUS_SPAWN_TIME };
 }
 
-/** Python `spawn_ufo`: from `UFO_SMALL_WAVE_START` on, 40 % small; the random draw is skipped before that. */
+/** Python `spawn_ufo` (wave mode): from `UFO_SMALL_WAVE_START` on, 40 % small; the random draw is skipped before that. */
 export function chooseUfoType(wave: number, rng: Rng): UfoType {
   return wave >= UFO_SMALL_WAVE_START && rng() < UFO_SMALL_SPAWN_CHANCE ? 'small' : 'large';
+}
+
+/** Probability that a continuous-mode spawn is a small UFO at this difficulty level (see `UFO_SMALL_PROGRESSION`). */
+export function smallUfoChance(difficultyLevel: number): number {
+  let chance = 0;
+  for (const step of UFO_SMALL_PROGRESSION) if (difficultyLevel >= step.level) chance = step.chance;
+  return chance;
+}
+
+/** Continuous-mode type roll. No random number is drawn while the chance is 0, so early games are unchanged. */
+export function chooseContinuousUfoType(difficultyLevel: number, rng: Rng): UfoType {
+  const chance = smallUfoChance(difficultyLevel);
+  return chance > 0 && rng() < chance ? 'small' : 'large';
 }
 
 /**
@@ -217,14 +236,21 @@ export function chooseUfoType(wave: number, rng: Rng): UfoType {
  * previous attempt was made. An attempt made while `UFO_MAX_ACTIVE` UFOs are alive is simply skipped (not retried).
  * The UFO appears on a random edge, 20-80 % along it, exactly as far outside the screen as an asteroid spawn
  * (Python reuses the asteroid edge table), so it spends a moment wrapping from side to side before it flies in.
- * Neither difficulty scaling nor Slow Motion affects any of this.
+ * Neither difficulty scaling nor Slow Motion affects the timing. The *type* does follow the difficulty level: large UFOs
+ * only at first, small ones from level 4 on and more and more often (`UFO_SMALL_PROGRESSION`).
  */
-export function updateUfoSpawner(state: UfoSpawnerState, gameplayTimer: number, activeUfos: number, rng: Rng): Ufo | null {
+export function updateUfoSpawner(
+  state: UfoSpawnerState,
+  gameplayTimer: number,
+  activeUfos: number,
+  rng: Rng,
+  difficultyLevel = 0,
+): Ufo | null {
   if (!state.enabled || gameplayTimer < state.nextSpawnTime) return null;
   state.nextSpawnTime = gameplayTimer + UFO_CONTINUOUS_RESPAWN_TIME;
   if (activeUfos >= UFO_MAX_ACTIVE) return null;
 
-  const type = chooseUfoType(UFO_CONTINUOUS_EFFECTIVE_WAVE, rng);
+  const type = chooseContinuousUfoType(difficultyLevel, rng);
   const edge = pick(rng, SPAWN_EDGES);
   const at = edge.point(uniform(rng, UFO_SPAWN_EDGE_MIN, UFO_SPAWN_EDGE_MAX));
   return createUfo(at.x, at.y, type, rng);

@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import { getAudio, type AudioDirector } from '../audio/phaserAudio';
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
-import { GameSim } from '../core/game';
-import { NO_INPUT } from '../core/player';
+import { GameSim, type SimEvent } from '../core/game';
+import { NO_INPUT, type PlayerInput } from '../core/player';
+import { getSetup, simConfigOf } from '../gameSetup';
 import { getHeldKeys } from '../input/gameKeys';
 import type { HeldKeys } from '../input/heldKeys';
 import {
@@ -12,9 +13,9 @@ import {
   type MountedDiagnostics,
 } from '../input/keyDiagnostics';
 import { createKeyPressDispatcher } from '../input/keyPress';
-import { readPlayerInput, SOLO_KEYS } from '../input/keyboardControls';
+import { keySchemesFor, readPlayerInput, type KeyScheme } from '../input/keyboardControls';
 import { drawStarfield, drawWorld } from '../render/worldRenderer';
-import { AbilityHud, ComboHud, Hud, KillStreakBanner, Overlay } from '../ui/hud';
+import { AbilityHud, ComboHud, Hud, KillStreakBanner, Overlay, playerColor, TeamHud } from '../ui/hud';
 import { addText, COLORS } from '../ui/text';
 import { VolumePanel } from '../ui/volumePanel';
 import { SCENE_GAME, SCENE_START } from './keys';
@@ -37,7 +38,8 @@ export class GameScene extends Phaser.Scene {
   private starGfx!: Phaser.GameObjects.Graphics;
   private worldGfx!: Phaser.GameObjects.Graphics;
   private hud!: Hud;
-  private abilityHud!: AbilityHud;
+  private abilityHuds: AbilityHud[] = [];
+  private teamHud: TeamHud | null = null;
   private comboHud!: ComboHud;
   private streakBanner!: KillStreakBanner;
   private pauseOverlay!: Overlay;
@@ -53,14 +55,22 @@ export class GameScene extends Phaser.Scene {
   private phaserDiagKeys: Array<[string, Phaser.Input.Keyboard.Key]> = [];
   private audio!: AudioDirector;
   private volumePanel!: VolumePanel;
+  /** Key scheme of each player, in player order (one for a one-player game). */
+  private schemes: readonly KeyScheme[] = [];
 
   constructor() {
     super(SCENE_GAME);
   }
 
   init(): void {
-    // State lives in init(), not the constructor, so every restart begins clean.
-    this.sim = new GameSim();
+    // State lives in init(), not the constructor, so every restart begins clean. The title screen's choices come from the
+    // registry; the simulation (and with it every co-op detail) is always built from scratch.
+    const setup = getSetup(this.registry);
+    const config = simConfigOf(setup);
+    this.sim = new GameSim({ config });
+    this.schemes = keySchemesFor(config.playerCount, setup.p2Keys);
+    this.abilityHuds = [];
+    this.teamHud = null;
     this.paused = false;
     this.lastFrameTime = null;
     this.retryReady = null;
@@ -69,9 +79,11 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.starGfx = this.add.graphics().setDepth(0);
     this.worldGfx = this.add.graphics().setDepth(1);
-    this.hud = new Hud(this);
-    this.abilityHud = new AbilityHud(this);
-    this.comboHud = new ComboHud(this);
+    const players = this.sim.players.length;
+    this.hud = new Hud(this, players);
+    this.abilityHuds = this.sim.players.map((_, i) => new AbilityHud(this, i));
+    this.teamHud = players > 1 ? new TeamHud(this) : null;
+    this.comboHud = new ComboHud(this, players > 1);
     this.streakBanner = new KillStreakBanner(this);
     this.audio = getAudio(this);
     this.audio.startMusicWhenUnlocked();
@@ -84,7 +96,7 @@ export class GameScene extends Phaser.Scene {
     this.volumePanel = new VolumePanel(this, this.audio, CENTER_X, CENTER_Y + 105, 24, 34, 21);
     this.volumePanel.setVisible(false);
 
-    this.gameOverOverlay = new Overlay(this, 0.7, 54, CENTER_Y - 250, 4);
+    this.gameOverOverlay = new Overlay(this, 0.7, 54, CENTER_Y - 250, 6);
     this.gameOverOverlay.setTitle('GAME OVER');
     this.retryButton = this.add
       .rectangle(CENTER_X, CENTER_Y + 100, 220, 60, 0x646464)
@@ -108,34 +120,50 @@ export class GameScene extends Phaser.Scene {
     const dt = this.lastFrameTime === null ? 0 : Math.max(0, (time - this.lastFrameTime) / 1000);
     this.lastFrameTime = time;
 
-    const input = sim.isGameOver ? NO_INPUT : readPlayerInput(this.held, SOLO_KEYS);
+    const inputs = sim.isGameOver ? this.schemes.map(() => NO_INPUT) : this.readInputs();
     if (!this.paused) {
-      const events = sim.step(dt, input);
+      const events = sim.step(dt, inputs[0] ?? NO_INPUT, inputs[1] ?? NO_INPUT);
       this.audio.sfx.handle(events);
+      this.announce(events, time);
       this.applyShake();
     }
+    const [p1, p2] = sim.players;
     this.keyDiag?.update({
       phaserHeld: this.phaserDiagKeys.filter(([, key]) => key.isDown).map(([name]) => name),
       trackerHeld: this.held.snapshot(),
-      input,
-      sim: {
-        rotation: sim.player.rotation,
-        boostActive: sim.player.boost.active,
-        canShoot: sim.player.canShoot,
-        shootTimer: sim.player.shootTimer,
-        shots: sim.shots.length,
-      },
+      input: inputs[0] ?? NO_INPUT,
+      ...(p2 ? { input2: inputs[1] ?? NO_INPUT, sim2: this.diagSnapshot(p2) } : {}),
+      sim: this.diagSnapshot(p1 ?? sim.player),
     });
 
     drawStarfield(this.starGfx, sim.starfield);
     drawWorld(this.worldGfx, sim, time);
     this.hud.update(sim);
-    this.abilityHud.update(sim, time);
+    for (const abilities of this.abilityHuds) abilities.update(sim, time);
+    this.teamHud?.update(sim, time);
     this.comboHud.update(sim);
     this.streakBanner.update(sim);
     this.audio.music.setGamePaused(this.paused);
-    this.audio.music.setMegaPowerActive(sim.player.megaPower.active);
+    this.audio.music.setMegaPowerActive(sim.players.some((p) => p.megaPower.active));
     this.updateOverlays();
+  }
+
+  /** One input per player, each read from that player's own keys. */
+  private readInputs(): PlayerInput[] {
+    return this.schemes.map((scheme) => readPlayerInput(this.held, scheme));
+  }
+
+  private diagSnapshot(p: GameSim['player']): { rotation: number; boostActive: boolean; canShoot: boolean; shootTimer: number; shots: number } {
+    return { rotation: p.rotation, boostActive: p.boost.active, canShoot: p.canShoot, shootTimer: p.shootTimer, shots: this.sim.shots.length };
+  }
+
+  /** Short on-screen messages for the two co-op moments the HUD alone would make easy to miss. */
+  private announce(events: readonly SimEvent[], nowMs: number): void {
+    if (!this.teamHud) return;
+    for (const event of events) {
+      if (event.type === 'player_revived') this.teamHud.flash(`PLAYER ${event.player} IS BACK!`, playerColor(event.player - 1), nowMs);
+      else if (event.type === 'player_eliminated') this.teamHud.flash(`PLAYER ${event.player} IS OUT!`, '#ff6464', nowMs);
+    }
   }
 
   // --- input ----------------------------------------------------------------
@@ -159,13 +187,16 @@ export class GameScene extends Phaser.Scene {
         ArrowRight: () => this.adjustVolumes('ArrowRight'),
         Escape: () => this.toMenu(),
         KeyR: () => this.retry(),
-        Enter: () => this.retry(),
+        // Enter is Player 2's cannon in a two-player game, so it only retries a one-player run.
+        Enter: () => {
+          if (this.sim.players.length === 1) this.retry();
+        },
       }),
     );
     this.retryButton.setInteractive({ useHandCursor: true });
 
     if (keyDiagnosticsEnabled(window.location.search)) {
-      this.keyDiag = mountKeyDiagnostics(window, SOLO_KEYS);
+      this.keyDiag = mountKeyDiagnostics(window, this.schemes[0] as KeyScheme, this.schemes[1] ?? null);
       this.phaserDiagKeys = [...new Set(Object.values(PHASER_KEY_NAMES))].map((name) => [name, keyboard.addKey(name, false)]);
     }
   }
@@ -175,9 +206,11 @@ export class GameScene extends Phaser.Scene {
    * through a retry, or pressed while paused) must not count as a fresh press, so mark it as already used.
    */
   private ignoreHeldAbilityKeys(): void {
-    const input = readPlayerInput(this.held, SOLO_KEYS);
-    this.sim.player.laser.keyHeld = !!input.laser;
-    this.sim.player.boost.keyHeld = !!input.boost;
+    const inputs = this.readInputs();
+    this.sim.players.forEach((player, i) => {
+      player.laser.keyHeld = !!inputs[i]?.laser;
+      player.boost.keyHeld = !!inputs[i]?.boost;
+    });
   }
 
   private togglePause(): void {
@@ -250,7 +283,13 @@ export class GameScene extends Phaser.Scene {
 
     const sim = this.sim;
     const ready = sim.retryDelay <= 0;
+    const coop = sim.players.length > 1;
     this.gameOverOverlay.setLine(0, `Player 1: ${sim.player.score}`, CENTER_Y - 190, COLORS.player1, 30);
+    // Two players: both scores, the team total and why the run ended. (Lines 3-5 stay empty in a one-player game.)
+    this.gameOverOverlay.setLine(3, coop ? `Player 2: ${sim.player2?.score ?? 0}` : '', CENTER_Y - 150, COLORS.player2, 30);
+    this.gameOverOverlay.setLine(4, coop ? `TEAM TOTAL: ${sim.totalScore}` : '', CENTER_Y - 105, COLORS.white, 26);
+    const reason = sim.gameOverReason === 'shared_lives_exhausted' ? 'THE SHARED LIVES ARE ALL USED UP' : 'BOTH PLAYERS ARE ELIMINATED';
+    this.gameOverOverlay.setLine(5, coop ? reason : '', CENTER_Y - 65, COLORS.dim, 22);
     if (ready !== this.retryReady) {
       this.retryReady = ready;
       this.retryButton.setFillStyle(ready ? 0x646464 : 0x3c3c3c).setStrokeStyle(3, ready ? 0xffffff : 0x646464);

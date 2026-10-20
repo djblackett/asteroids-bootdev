@@ -5,6 +5,7 @@ import {
   POWERUP_SPAWN_CHANCE,
   POWERUP_SPEED,
   REVIVE_LIFETIME,
+  REVIVE_SPAWN_CHANCE,
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
 } from './constants';
@@ -14,8 +15,8 @@ import { pick, uniform, type Rng } from './rng';
 export type PowerUpType = 'rapid_fire' | 'shield' | 'multi_shot' | 'slow_motion' | 'mega_power' | 'revive';
 
 /**
- * The four ordinary drops. MEGA POWER has its own, rarer roll, and REVIVE never drops in the Python
- * game (its spawn chance constant is unused); it can only be created explicitly.
+ * The four ordinary drops. MEGA POWER has its own, rarer roll. REVIVE never dropped in the Python game (its spawn chance
+ * constant is unused); here it replaces an ordinary drop only while a player is out of lives (see `chooseOrdinaryDrop`).
  */
 export const ORDINARY_POWERUPS: readonly PowerUpType[] = ['rapid_fire', 'shield', 'multi_shot', 'slow_motion'];
 
@@ -45,10 +46,21 @@ export function createPowerUp(x: number, y: number, type: PowerUpType, rng: Rng,
  * Drop roll for a destroyed asteroid (Python `maybe_spawn_powerup`): first a 1.5 % chance of MEGA POWER,
  * otherwise an 8 % chance of one of the four ordinary power-ups, chosen uniformly (~9.4 % overall).
  */
-export function maybeSpawnPowerUp(x: number, y: number, rng: Rng): PowerUp | null {
+export function maybeSpawnPowerUp(x: number, y: number, rng: Rng, reviveEligible = false): PowerUp | null {
   if (rng() < MEGA_POWER_SPAWN_CHANCE) return createPowerUp(x, y, 'mega_power', rng);
-  if (rng() < POWERUP_SPAWN_CHANCE) return createPowerUp(x, y, pick(rng, ORDINARY_POWERUPS), rng);
+  if (rng() < POWERUP_SPAWN_CHANCE) return createPowerUp(x, y, chooseOrdinaryDrop(rng, reviveEligible), rng);
   return null;
+}
+
+/**
+ * The type of an ordinary drop (an asteroid's 8 % roll, or the guaranteed UFO drop): one of the four ordinary
+ * power-ups, or, while a Revive is useful (`reviveEligible`), a Revive in `REVIVE_SPAWN_CHANCE` of the cases. Nothing
+ * extra is drawn from `rng` when it is not eligible, so single-player games and two-player games with nobody down play
+ * out exactly as before.
+ */
+export function chooseOrdinaryDrop(rng: Rng, reviveEligible: boolean): PowerUpType {
+  const type = pick(rng, ORDINARY_POWERUPS);
+  return reviveEligible && rng() < REVIVE_SPAWN_CHANCE ? 'revive' : type;
 }
 
 /** Drifts, ages, and wraps around the screen edges (unlike asteroids, pickups never leave the playfield). */

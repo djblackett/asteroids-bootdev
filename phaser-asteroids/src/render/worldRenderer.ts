@@ -19,6 +19,12 @@ const BOOST_MAGENTA = 0xff64ff;
 const RAPID_YELLOW = 0xffff00;
 const MULTI_ORANGE = 0xffa500;
 const SHIELD_CYAN = 0x00ffff;
+/** Two-player colours (the same hues as the HUD): ship outline when nothing special is on, centre dot, shots, laser beam. */
+export const PLAYER_BASE_COLOR: readonly number[] = [0x64c8ff, 0xffc864];
+const LASER_COLORS: ReadonlyArray<readonly [glow: number, beam: number]> = [
+  [0x64c8ff, 0xc8f0ff],
+  [0xffa040, 0xffe0b0],
+];
 
 /**
  * Everything is drawn procedurally into two Graphics objects that are cleared and refilled each
@@ -56,23 +62,31 @@ function drawAsteroid(g: Graphics, a: Asteroid): void {
   }
 }
 
-/** Ship colour by state, in the same priority order as the Python `Player.draw`. */
-export function shipColor(p: PlayerState, timeMs: number): number {
+/**
+ * Ship colour by state, in the same priority order as the Python `Player.draw`. `base` replaces the plain white of a
+ * ship with nothing special active, which is how the two ships of a co-op game are told apart.
+ */
+export function shipColor(p: PlayerState, timeMs: number, base = WHITE): number {
   if (p.isRespawning) return Math.floor(timeMs / 100) % 2 === 0 ? RESPAWN_DIM : WHITE;
   if (p.megaPower.active) return rainbowColor(timeMs);
   if (p.boost.active) return BOOST_MAGENTA;
   if (p.rapidFire.active) return RAPID_YELLOW;
   if (p.multiShot.active) return MULTI_ORANGE;
-  return WHITE;
+  return base;
 }
 
-function drawPlayer(g: Graphics, sim: GameSim, timeMs: number): void {
-  const p = sim.player;
+function drawPlayer(g: Graphics, p: PlayerState, timeMs: number, coop: boolean): void {
   if (p.lives <= 0) return;
 
+  const base = coop ? (PLAYER_BASE_COLOR[p.playerNumber - 1] ?? WHITE) : WHITE;
   const [nose, left, right] = shipTriangle(p);
-  g.lineStyle(2, shipColor(p, timeMs), 1);
+  g.lineStyle(2, shipColor(p, timeMs, base), 1);
   g.strokeTriangle(nose.x, nose.y, left.x, left.y, right.x, right.y);
+  if (coop) {
+    // A dot in the player's colour stays visible whatever power-up colour the outline has.
+    g.fillStyle(base, 1);
+    g.fillCircle(p.position.x, p.position.y, 3);
+  }
 
   if (p.boost.active) {
     // Three fading rings trailing behind the ship, and a pulsing warning ring in the last second.
@@ -145,13 +159,14 @@ function drawUfo(g: Graphics, u: Ufo): void {
   }
 }
 
-/** Glow, beam and core, each dimming to black as the beam's 0.3 s life runs out. */
-function drawLaser(g: Graphics, laser: LaserBeam): void {
+/** Glow, beam and core, each dimming to black as the beam's 0.3 s life runs out. In co-op Player 2's beam is orange. */
+function drawLaser(g: Graphics, laser: LaserBeam, coop: boolean): void {
   const fade = Math.max(0, 1 - laser.timer / laser.lifetime);
   const { start, end } = laser;
-  g.lineStyle(9, scaleColor(0x64c8ff, fade), 1);
+  const [glow, beam] = LASER_COLORS[coop ? laser.owner - 1 : 0] ?? (LASER_COLORS[0] as readonly [number, number]);
+  g.lineStyle(9, scaleColor(glow, fade), 1);
   g.lineBetween(start.x, start.y, end.x, end.y);
-  g.lineStyle(3, scaleColor(0xc8f0ff, fade), 1);
+  g.lineStyle(3, scaleColor(beam, fade), 1);
   g.lineBetween(start.x, start.y, end.x, end.y);
   g.lineStyle(1, scaleColor(0xffffff, fade), 1);
   g.lineBetween(start.x, start.y, end.x, end.y);
@@ -167,15 +182,20 @@ export function drawWorld(g: Graphics, sim: GameSim, timeMs: number): void {
     if (p.alive) drawPowerUpIcon(g, p.type, p.position.x, p.position.y, p.radius, timeMs, p.lifetime);
   }
 
-  g.lineStyle(2, WHITE, 1);
-  for (const s of sim.shots) if (s.alive) g.strokeCircle(s.position.x, s.position.y, s.radius);
+  const coop = sim.players.length > 1;
+  // In co-op each ship's shots wear its colour, so friendly fire is easy to read.
+  for (const s of sim.shots) {
+    if (!s.alive) continue;
+    g.lineStyle(2, coop ? (PLAYER_BASE_COLOR[s.owner - 1] ?? WHITE) : WHITE, 1);
+    g.strokeCircle(s.position.x, s.position.y, s.radius);
+  }
 
   for (const u of sim.ufos) if (u.alive) drawUfo(g, u);
   // Enemy shots are bigger and reddish so they cannot be mistaken for the ship's white ones.
   g.lineStyle(2, UFO_SHOT_RED, 1);
   for (const s of sim.ufoShots) if (s.alive) g.strokeCircle(s.position.x, s.position.y, s.radius);
 
-  drawPlayer(g, sim, timeMs);
+  for (const p of sim.players) drawPlayer(g, p, timeMs, coop);
 
   for (const flash of sim.pickupFlashes) {
     const t = flash.age / PICKUP_FLASH_DURATION;
@@ -192,5 +212,5 @@ export function drawWorld(g: Graphics, sim: GameSim, timeMs: number): void {
     g.fillCircle(p.x, p.y, Math.max(1, p.size * fade));
   }
 
-  if (!sim.isGameOver) for (const laser of sim.lasers) drawLaser(g, laser);
+  if (!sim.isGameOver) for (const laser of sim.lasers) drawLaser(g, laser, coop);
 }

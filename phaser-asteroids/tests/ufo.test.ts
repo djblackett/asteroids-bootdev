@@ -384,14 +384,16 @@ describe('UFO spawning', () => {
     expect(more).toBe(1);
   });
 
-  it('continuous mode only ever produces large UFOs (Python never advances the field wave there)', () => {
+  it('continuous mode: only large UFOs for the first two minutes, then small ones join in (see UFO_SMALL_PROGRESSION)', () => {
     const sim = schedulerSim(21);
-    const types = new Set<string>();
+    const early = new Set<string>();
+    const late = new Set<string>();
     for (let i = 0; i < 60 * 600; i++) {
-      for (const e of eventsOfType(sim.step(FRAME), 'ufo_spawned')) types.add(e.ufoType);
+      for (const e of eventsOfType(sim.step(FRAME), 'ufo_spawned')) (sim.time < 120 ? early : late).add(e.ufoType);
       sim.ufos.length = 0;
     }
-    expect([...types]).toEqual(['large']);
+    expect([...early]).toEqual(['large']);
+    expect([...late].sort()).toEqual(['large', 'small']);
   });
 
   it('chooseUfoType: small 40 % of the time from wave 5 on, and the random draw is skipped before that', () => {
@@ -467,7 +469,7 @@ describe('player shots vs UFOs', () => {
     expect(sim.combo.timer).toBe(0);
     expect(sim.streakBanner).toBeNull();
     expect(eventsOfType(events, 'ufo_destroyed')).toEqual([
-      { type: 'ufo_destroyed', ufoType: 'large', points: 200, radius: 30, position: { x: ufo.position.x, y: ufo.position.y } },
+      { type: 'ufo_destroyed', ufoType: 'large', points: 200, radius: 30, position: { x: ufo.position.x, y: ufo.position.y }, player: 1 },
     ]);
     expect(sim.shots.filter((s) => s.alive)).toHaveLength(0);
     expect(sim.particles.activeCount).toBe(10);
@@ -575,12 +577,28 @@ describe('player shots vs UFOs', () => {
   });
 });
 
-describe('Laser Beam vs UFOs (Python: the beam only looks at asteroids)', () => {
-  it('passes through a UFO without hurting it', () => {
-    const sim = quietSim();
+describe('Laser Beam vs UFOs', () => {
+  function beamAtUfo(options: { laserHitsUfos?: boolean } = {}) {
+    const sim = new GameSim({ rng: seededRng(1), startCooldown: 0, ufos: false, ...options });
+    sim.spawner.spawnTimer = -1e9;
     sim.player.rotation = 270;
     sim.player.position = { x: 100, y: 360 };
     const ufo = parkedUfo(sim, 'large', 500, 360);
+    return { sim, ufo };
+  }
+
+  it('kills a UFO on its path (flat points, one guaranteed power-up)', () => {
+    const { sim, ufo } = beamAtUfo();
+    const events = [...sim.step(FRAME, hold({ laser: true })), ...collectEvents(sim, 0.4)];
+    expect(eventsOfType(events, 'laser_fired')).toHaveLength(1);
+    expect(ufo.alive).toBe(false);
+    expect(sim.player.score).toBe(200);
+    expect(eventsOfType(events, 'ufo_destroyed')).toHaveLength(1);
+    expect(sim.powerups).toHaveLength(1);
+  });
+
+  it('passes through when the original behaviour is restored (laserHitsUfos: false / LASER_HITS_UFOS)', () => {
+    const { sim, ufo } = beamAtUfo({ laserHitsUfos: false });
     const events = sim.step(FRAME, hold({ laser: true }));
     runFor(sim, 0.4);
     expect(eventsOfType(events, 'laser_fired')).toHaveLength(1);
@@ -635,10 +653,10 @@ describe('boost ramming and contact with UFOs', () => {
     expect(sim.player.isRespawning).toBe(true);
     expect(ufo.alive).toBe(true);
     expect(sim.player.score).toBe(0);
-    expect(eventsOfType(events, 'player_hit')).toEqual([{ type: 'player_hit', livesLeft: 2, source: 'ufo' }]);
+    expect(eventsOfType(events, 'player_hit')).toEqual([{ type: 'player_hit', livesLeft: 2, source: 'ufo', player: 1 }]);
   });
 
-  it('a shield absorbs one contact but the UFO survives it, so the next frame of contact costs the life (as in Python)', () => {
+  it('a shield absorbs a UFO body, the UFO survives, and staying in that same contact costs nothing at first', () => {
     const sim = quietSim();
     sim.player.shieldActive = true;
     const ufo = parkedUfo(sim, 'large', sim.player.position.x + 20, sim.player.position.y);
@@ -647,8 +665,8 @@ describe('boost ramming and contact with UFOs', () => {
     expect(sim.player.lives).toBe(3);
     expect(eventsOfType(first, 'player_hit')).toHaveLength(0);
     expect(ufo.alive).toBe(true);
-    sim.step(FRAME);
-    expect(sim.player.lives).toBe(2);
+    runFor(sim, 0.5);
+    expect(sim.player.lives).toBe(3);
   });
 
   it('respawn invulnerability absorbs UFO contact for its whole 2 s without being consumed and without hurting the UFO', () => {
@@ -688,7 +706,7 @@ describe('UFO shots', () => {
     expect(shot.alive).toBe(false);
     expect(sim.ufoShots).toHaveLength(0);
     expect(sim.player.position).toEqual({ x: PLAYER_RESPAWN_X, y: PLAYER_RESPAWN_Y });
-    expect(eventsOfType(events, 'player_hit')).toEqual([{ type: 'player_hit', livesLeft: 2, source: 'ufo_shot' }]);
+    expect(eventsOfType(events, 'player_hit')).toEqual([{ type: 'player_hit', livesLeft: 2, source: 'ufo_shot', player: 1 }]);
   });
 
   it('are absorbed by a shield (which is used up) with no life lost and no sound event', () => {

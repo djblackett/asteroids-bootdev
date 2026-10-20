@@ -31,6 +31,15 @@ export const PHASER_KEY_NAMES: Readonly<Record<string, string>> = {
   ArrowDown: 'DOWN',
   ArrowLeft: 'LEFT',
   ArrowRight: 'RIGHT',
+  Enter: 'ENTER',
+  Period: 'PERIOD',
+  Semicolon: 'SEMICOLON',
+  KeyI: 'I',
+  KeyJ: 'J',
+  KeyK: 'K',
+  KeyL: 'L',
+  KeyO: 'O',
+  KeyU: 'U',
 };
 
 export interface RawKeyEvent {
@@ -53,9 +62,13 @@ export interface DiagnosticFrame {
   phaserHeld: readonly string[];
   /** Held keys as `HeldKeys` reports them. */
   trackerHeld: ReadonlySet<string>;
-  /** The input that was handed to `GameSim.step()` this frame. */
+  /** The input that was handed to `GameSim.step()` this frame (Player 1's in a two-player game). */
   input: PlayerInput;
+  /** Player 2's input in a two-player game. */
+  input2?: PlayerInput;
   sim: SimSnapshot;
+  /** Player 2's side of the simulation snapshot in a two-player game. */
+  sim2?: SimSnapshot;
 }
 
 const sorted = (values: Iterable<string>): string[] => [...values].sort();
@@ -76,6 +89,7 @@ export type HistoryEntry =
       rawHeld: string[];
       gameHeld: string[];
       input: PlayerInput;
+      input2?: PlayerInput;
       boostActive: boolean;
       canShoot: boolean;
     };
@@ -108,6 +122,8 @@ export class KeyDiagnostics {
     private readonly maxEntries = HISTORY_MAX_ENTRIES,
     /** Extra header lines for shared reports (capture time, page, browser...), read each time a report is built. */
     private readonly meta: () => readonly string[] = () => [],
+    /** Player 2's key scheme in a two-player game. */
+    private readonly scheme2: KeyScheme | null = null,
   ) {}
 
   get frozen(): boolean {
@@ -154,7 +170,7 @@ export class KeyDiagnostics {
     if (this.frozen) return;
     this.latest = t;
     const gameHeld = sorted(frame.trackerHeld);
-    const signature = `${gameHeld.join(',')}|${sorted(this.raw).join(',')}|${inputText(frame.input)}|${flag(frame.sim.boostActive)}${flag(frame.sim.canShoot)}`;
+    const signature = `${gameHeld.join(',')}|${sorted(this.raw).join(',')}|${inputText(frame.input)}|${frame.input2 ? inputText(frame.input2) : ''}|${flag(frame.sim.boostActive)}${flag(frame.sim.canShoot)}`;
     if (signature !== this.lastSignature) {
       this.lastSignature = signature;
       this.add({
@@ -163,6 +179,7 @@ export class KeyDiagnostics {
         rawHeld: sorted(this.raw),
         gameHeld,
         input: { ...frame.input },
+        ...(frame.input2 ? { input2: { ...frame.input2 } } : {}),
         boostActive: frame.sim.boostActive,
         canShoot: frame.sim.canShoot,
       });
@@ -209,9 +226,15 @@ export class KeyDiagnostics {
     if (lostByTracker.length > 0 || extraInTracker.length > 0) {
       return `STAGE 2 PROBLEM - the game's held set differs from the raw events (missing: ${list(lostByTracker)}; stuck: ${list(extraInTracker)})`;
     }
-    const expected = readPlayerInput({ isAnyDown: (codes) => codes.some((code) => this.raw.has(code)) }, this.scheme);
-    const mismatched = (Object.keys(expected) as (keyof PlayerInput)[]).filter((key) => expected[key] !== frame.input[key]);
-    if (mismatched.length > 0) return `STAGE 3 PROBLEM - input mapping differs from the keys held: ${mismatched.join(', ')}`;
+    const rawHeld = { isAnyDown: (codes: readonly string[]) => codes.some((code) => this.raw.has(code)) };
+    const checks: Array<[string, KeyScheme, PlayerInput | undefined]> = [['', this.scheme, frame.input]];
+    if (this.scheme2) checks.push(['P2 ', this.scheme2, frame.input2]);
+    for (const [who, scheme, actual] of checks) {
+      if (!actual) continue;
+      const expected = readPlayerInput(rawHeld, scheme);
+      const mismatched = (Object.keys(expected) as (keyof PlayerInput)[]).filter((key) => expected[key] !== actual[key]);
+      if (mismatched.length > 0) return `STAGE 3 PROBLEM - ${who}input mapping differs from the keys held: ${mismatched.join(', ')}`;
+    }
     if (frame.input.shoot && frame.sim.boostActive) return 'OK - SPACE is held but the cannon is locked while boosting (as in the Python game)';
     if (frame.input.shoot && !frame.sim.canShoot) return 'OK - SPACE is held but shooting is disabled for the first moments of a run';
     const phaserOnly = diff(frame.phaserHeld, rawNames);
@@ -232,8 +255,12 @@ export class KeyDiagnostics {
       `1 raw browser held : ${list(this.raw)}   (peak at once: ${this.peak})`,
       `2 game held set    : ${list(frame.trackerHeld)}`,
       `  phaser Key held  : ${list(frame.phaserHeld)}`,
-      `3 GameSim input    : ${inputText(input)}`,
-      `4 sim              : rot=${sim.rotation.toFixed(0)} boostActive=${flag(sim.boostActive)} canShoot=${flag(sim.canShoot)} shootTimer=${sim.shootTimer.toFixed(2)} shots=${sim.shots}`,
+      `3 GameSim input${frame.input2 ? ' P1' : '   '}: ${inputText(input)}`,
+      ...(frame.input2 ? [`3 GameSim input P2: ${inputText(frame.input2)}`] : []),
+      `4 sim${frame.input2 ? ' P1' : '   '}          : rot=${sim.rotation.toFixed(0)} boostActive=${flag(sim.boostActive)} canShoot=${flag(sim.canShoot)} shootTimer=${sim.shootTimer.toFixed(2)} shots=${sim.shots}`,
+      ...(frame.sim2
+        ? [`4 sim P2          : rot=${frame.sim2.rotation.toFixed(0)} boostActive=${flag(frame.sim2.boostActive)} canShoot=${flag(frame.sim2.canShoot)} shootTimer=${frame.sim2.shootTimer.toFixed(2)}`]
+        : []),
       `verdict: ${this.verdict(frame)}`,
       'A held key missing from line 1 never reached the page (keyboard / OS limit), not the game.',
       'recent events (newest last):',
@@ -251,7 +278,7 @@ export class KeyDiagnostics {
         return `${when}  ${e.type === 'keydown' ? 'v keydown' : '^ keyup  '} ${e.code.padEnd(11)} repeat=${e.repeat ? 'yes' : 'no '} raw held=[${e.rawHeld.join(' ')}]`;
       }
       if (e.kind === 'note') return `${when}  ! ${e.text}`;
-      return `${when}  INPUT    ${inputText(e.input)}  | raw=[${e.rawHeld.join(' ')}] game=[${e.gameHeld.join(' ')}] boostActive=${flag(e.boostActive)} canShoot=${flag(e.canShoot)}`;
+      return `${when}  INPUT    ${inputText(e.input)}${e.input2 ? `  P2: ${inputText(e.input2)}` : ''}  | raw=[${e.rawHeld.join(' ')}] game=[${e.gameHeld.join(' ')}] boostActive=${flag(e.boostActive)} canShoot=${flag(e.canShoot)}`;
     });
   }
 
@@ -312,10 +339,10 @@ async function copyText(win: Window, text: string): Promise<boolean> {
 const PANEL_REFRESH_MS = 100;
 
 /** Creates the panel and the raw listeners. Call only when `keyDiagnosticsEnabled` is true; `destroy` undoes everything. */
-export function mountKeyDiagnostics(win: Window, scheme: KeyScheme): MountedDiagnostics {
+export function mountKeyDiagnostics(win: Window, scheme: KeyScheme, scheme2: KeyScheme | null = null): MountedDiagnostics {
   const doc = win.document;
   const meta = (): string[] => [`captured: ${new Date().toISOString()}`, `page: ${win.location.href}`, `browser: ${win.navigator.userAgent}`];
-  const diagnostics = new KeyDiagnostics(scheme, 10, HISTORY_WINDOW_MS, HISTORY_MAX_ENTRIES, meta);
+  const diagnostics = new KeyDiagnostics(scheme, 10, HISTORY_WINDOW_MS, HISTORY_MAX_ENTRIES, meta, scheme2);
 
   const root = doc.createElement('div');
   root.setAttribute('data-keydebug', '');

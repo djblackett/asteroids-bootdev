@@ -103,14 +103,14 @@ export interface PlayerUpdateResult {
   boostStarted: boolean;
 }
 
-export function createPlayer(x: number, y: number, playerNumber = 1, speedMultiplier = 1): PlayerState {
+export function createPlayer(x: number, y: number, playerNumber = 1, speedMultiplier = 1, lives = PLAYER_LIVES): PlayerState {
   return {
     playerNumber,
     position: { x, y },
     velocity: { x: 0, y: 0 },
     rotation: 0,
     radius: PLAYER_RADIUS,
-    lives: PLAYER_LIVES,
+    lives,
     score: 0,
     speedMultiplier,
     shootTimer: 0,
@@ -371,6 +371,25 @@ export function respawnPlayer(p: PlayerState, x: number, y: number): void {
   p.megaPower = { active: false, timer: 0 };
   p.shieldActive = false;
   // Boost stops but its cooldown keeps running; laser charges are not refilled.
+  p.boost.active = false;
+  p.boost.timer = 0;
+}
+
+/**
+ * A ship that has lost its last life while its teammate plays on. It stops acting and is not drawn; everything timed is
+ * cleared so no stale shield, boost or power-up shows (or counts) while it is out. Score, laser charges and the boost
+ * cooldown are kept for a possible Revive.
+ */
+export function eliminatePlayer(p: PlayerState): void {
+  p.velocity = { x: 0, y: 0 };
+  p.motion = { x: 0, y: 0 };
+  p.isRespawning = false;
+  p.respawnTimer = 0;
+  p.isMoving = false;
+  p.rapidFire = { active: false, timer: 0 };
+  p.multiShot = { active: false, timer: 0 };
+  p.megaPower = { active: false, timer: 0 };
+  p.shieldActive = false;
   p.boost.active = false;
   p.boost.timer = 0;
 }

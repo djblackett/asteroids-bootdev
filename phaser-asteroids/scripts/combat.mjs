@@ -254,14 +254,27 @@ async function run(browser) {
   st = await sim();
   check('touching a UFO without boosting costs a life; the UFO flies on', st.lives === 2 && st.ufos.length === 1);
 
-  // --- laser passes through a UFO (Python: the beam only hits asteroids) ----------------------------------------------------------------
+  // --- the Laser Beam kills a UFO on its path (Phase 4 refinement; Python's beam ignored UFOs) -------------------------------------------
   await quiet();
   await place(100, 360, 270);
   await addUfo('large', 500, 360);
+  await resetEv();
   await keyTap('KeyE');
-  await sleep(500);
+  await sleep(600); // the beam lasts 0.3 s: long enough to prove it pays only once
   st = await sim();
-  check('the Laser Beam passes through a UFO untouched (as in Python)', st.ufos.length === 1 && st.score === 0, JSON.stringify({ ufos: st.ufos.length, score: st.score }));
+  check('the Laser Beam destroys a UFO on its path: +200 once, one UFO event, one guaranteed drop', st.ufos.length === 0 && st.score === 200 && (await ev()).ufo === 1 && (await ev()).drops === 1 && st.powerups === 1, JSON.stringify({ ufos: st.ufos.length, score: st.score, powerups: st.powerups, ev: await ev() }));
+
+  // --- a shield absorbs a UFO body once; staying in the contact does not hit again at once ---------------------------------------------
+  await quiet();
+  await evalSim(`s.player.shieldActive = true;`);
+  await place(640, 360, 0);
+  await addUfo('large', 660, 360);
+  await sleep(400);
+  st = await sim();
+  check('a shield absorbs the UFO body and the ship is not hit again 0.4 s later in the same contact', st.lives === 3 && !st.shield && st.ufos.length === 1, JSON.stringify({ lives: st.lives, shield: st.shield }));
+  await sleep(1300);
+  st = await sim();
+  check('...but the grace is not lasting immunity: after ~1 s of staying in the UFO the contact costs a life', st.lives === 2, JSON.stringify({ lives: st.lives }));
 
   // --- combo: real gunfire down a line of rocks; HUD ---------------------------------------------------------------------------------------
   await quiet();

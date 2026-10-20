@@ -24,6 +24,7 @@ npm run preview    # serve dist/ at http://localhost:4173
 npm run test:browser  # build, then drive it in headless Chrome (needs Chrome/Edge installed; see below)
 npm run test:input    # build, then real-browser keyboard tests: simultaneous keys, pause / retry / blur with keys held
 npm run test:combat   # build, then real-browser tests of combos, kill-streak banners and UFOs (same Chrome requirement)
+npm run test:coop     # build, then real-browser two-player tests: both players on one keyboard, lives, friendly fire, Revive, HUD
 ```
 
 `npm run test:browser` uses `playwright-core` (dev dependency, no browser download) with a locally installed Chrome,
@@ -57,6 +58,24 @@ and resumes. Nothing is cleared by releasing keys or blurring the window.
 | R, Enter, or click RETRY | Restart after game over (after a 1.5 s delay) |
 | Esc | Back to the title screen (while paused or on the game-over screen) |
 
+### Two players, one keyboard
+
+Press **2** on the title screen (**1** goes back to the classic game). With two players the title screen also offers
+**L** (independent / shared lives), **F** (friendly fire on / off), **K** (Player 2's keys) and **S** / **D**
+(Player 1 / Player 2 speed handicap). Controls, as in the Python game, except Player 2's boost (see below):
+
+| | Player 1 | Player 2 (arrows) | Player 2 (alternative, press K) |
+| --- | --- | --- | --- |
+| Forward / back | W / S | ↑ / ↓ | I / K |
+| Rotate left / right | A / D | ← / → | J / L |
+| Shoot | Space | Enter | ; |
+| Laser Beam | E | Right Shift | U |
+| Boost | Left Shift | . (period) | O |
+
+P pauses, M mutes, R retries after game over (Enter does too, but only in a one-player game, since Enter is Player 2's
+cannon). Python uses Right Ctrl for Player 2's boost; in a browser Ctrl + W closes the tab (Player 1 holds W all the time)
+and a page cannot stop that, so it is `.` here. If the arrow cluster ghosts on your keyboard, press **K** for the I J K L layout.
+
 ## Layout
 
 ```
@@ -68,14 +87,17 @@ src/
     scoring.ts                          combo multiplier / 3 s window, kill-streak milestones and banner animation curves
     ufo.ts                              large and small UFOs: wandering, aiming, shots, spawn schedule
     spawner.ts  particles.ts  starfield.ts
-    game.ts                             GameSim: one run of the game; step(dt, input) -> events
+    game.ts                             GameSim: one run of the game (1 or 2 players); step(dt, input, input2) -> events
+    gameConfig.ts                       players / lives mode / friendly fire / speed handicaps chosen on the title screen
   scenes/    Boot (load audio) -> Start (title) -> Game (glue: input, sim.step, draw, overlays)
   render/    Procedural drawing into two reusable Graphics objects (stars, playfield)
   input/     Held keys (by KeyboardEvent.code) -> PlayerInput; one-shot key dispatcher; ?keydebug diagnostics
   audio/     Pure logic (event -> sound, music state machine, volume settings, mix config) + one Phaser adapter (`AudioDirector`)
   ui/        HUD, pause / game-over overlays, the Music / SFX volume panel
 tests/       Vitest suites for src/core and src/audio (no browser, no audio device)
-scripts/     smoke.mjs: browser smoke test; keyboard.mjs: real-browser keyboard tests; combat.mjs: combo / banner / UFO tests
+  gameSetup.ts  The title screen's choices (kept in the Phaser registry); the game scene builds a fresh GameSim from them
+scripts/     smoke.mjs: browser smoke test; keyboard.mjs: real-browser keyboard tests; combat.mjs: combo / banner / UFO tests;
+             coop.mjs: two-player tests
 docs/        implementation-progress.md
 ```
 

@@ -166,7 +166,7 @@ describe('player damage, respawn and game over', () => {
     expect(sim.player.isRespawning).toBe(true);
     expect(sim.player.score).toBe(0);
     expect(rock.dying).toBe(true);
-    expect(events).toContainEqual({ type: 'player_hit', livesLeft: 2, source: 'asteroid' });
+    expect(events).toContainEqual({ type: 'player_hit', livesLeft: 2, source: 'asteroid', player: 1 });
     expect(sim.phase).toBe('playing');
   });
 
@@ -210,7 +210,7 @@ describe('player damage, respawn and game over', () => {
     expect(sim.player.lives).toBe(0);
     expect(sim.phase).toBe('gameOver');
     expect(sim.isGameOver).toBe(true);
-    expect(events).toContainEqual({ type: 'game_over', score: 340 });
+    expect(events).toContainEqual({ type: 'game_over', score: 340, scores: [340], reason: 'all_eliminated' });
     expect(sim.retryDelay).toBeCloseTo(1.5, 6);
   });
 

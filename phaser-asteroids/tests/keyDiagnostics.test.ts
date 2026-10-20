@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NO_INPUT } from '../src/core/player';
 import { keyDiagnosticsEnabled, KeyDiagnostics, type DiagnosticFrame, type RawKeyEvent } from '../src/input/keyDiagnostics';
-import { SOLO_KEYS } from '../src/input/keyboardControls';
+import { P1_KEYS, P2_KEYS_ARROWS, SOLO_KEYS } from '../src/input/keyboardControls';
 
 const ev = (type: RawKeyEvent['type'], code: string, repeat = false, timeStamp = 100): RawKeyEvent => ({
   type,
@@ -214,5 +214,55 @@ describe('rolling history and freeze', () => {
     expect(text).toContain('browser: test-agent');
     expect(text).toContain('-- state at capture --');
     expect(text).toContain('-- timeline');
+  });
+});
+
+describe('KeyDiagnostics with two players', () => {
+  const sim = { rotation: 0, boostActive: false, canShoot: true, shootTimer: 0, shots: 0 };
+  const make = (): KeyDiagnostics => new KeyDiagnostics(P1_KEYS, 10, 10_000, 1500, () => [], P2_KEYS_ARROWS);
+
+  it('shows the input and the sim of both players', () => {
+    const d = make();
+    d.record(ev('keydown', 'KeyW'));
+    d.record(ev('keydown', 'ArrowUp'));
+    d.record(ev('keydown', 'Enter'));
+    const text = d.report(
+      frame({
+        held: ['KeyW', 'ArrowUp', 'Enter'],
+        input: { rotate: 0, move: 1, shoot: false, laser: false, boost: false },
+        input2: { rotate: 0, move: 1, shoot: true, laser: false, boost: false },
+        sim2: sim,
+      }),
+    );
+    expect(text).toContain('3 GameSim input P1: rotate=0 move=1 shoot=0');
+    expect(text).toContain('3 GameSim input P2: rotate=0 move=1 shoot=1');
+    expect(text).toContain('4 sim P2');
+    expect(text).toContain('verdict: OK');
+  });
+
+  it("flags a mapping problem on Player 2's side and names it", () => {
+    const d = make();
+    d.record(ev('keydown', 'ArrowLeft'));
+    const verdict = d.verdict(frame({ held: ['ArrowLeft'], input: NO_INPUT, input2: NO_INPUT }));
+    expect(verdict).toContain('STAGE 3 PROBLEM');
+    expect(verdict).toContain('P2');
+    expect(verdict).toContain('rotate');
+  });
+
+  it("does not mistake Player 2's keys for Player 1's input", () => {
+    const d = make();
+    d.record(ev('keydown', 'ArrowUp'));
+    expect(d.verdict(frame({ held: ['ArrowUp'], input: NO_INPUT, input2: { ...NO_INPUT, move: 1 } }))).toContain('OK');
+  });
+
+  it('a one-player diagnostics report has no Player 2 lines', () => {
+    const d = new KeyDiagnostics(SOLO_KEYS);
+    expect(d.report(frame())).not.toContain('P2');
+  });
+
+  it('records both inputs in the history so a capture can show who pressed what', () => {
+    const d = make();
+    d.observe(frame({ input2: { ...NO_INPUT, shoot: true }, sim2: sim }), 10);
+    expect(d.timeline(10).join('\n')).toContain('P2: rotate=0 move=0 shoot=1');
   });
 });

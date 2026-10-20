@@ -120,7 +120,7 @@ describe('laser in the simulation', () => {
     const rocks = [rock(300, 360, 60), rock(600, 340, 40), rock(900, 379, 20), rock(1100, 300, 20)];
     sim.asteroids.push(...rocks);
     const events = sim.step(FRAME, hold({ laser: true }));
-    expect(events).toContainEqual({ type: 'laser_fired' });
+    expect(events).toContainEqual({ type: 'laser_fired', player: 1 });
     expect(rocks.slice(0, 3).every((r) => r.dying)).toBe(true);
     expect(rocks[3]?.dying).toBe(false); // 60 px off the beam, radius 20
     expect(sim.player.score).toBe(10 + 30 + 100); // 10 x 1.0, 20 x 1.5, 50 x 2.0 (combo)
