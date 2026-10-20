@@ -260,3 +260,20 @@ describe('lifecycle: nothing is ever left held', () => {
     expect(after).toBe(before);
   });
 });
+
+describe('the context menu', () => {
+  it('a long press does not open the context menu in touch mode', () => {
+    const r = rig();
+    const event = pointer('contextmenu', 0);
+    r.host.dispatchEvent(event);
+    expect(event.prevented).toBe(true);
+  });
+
+  it('outside touch mode (the model is disabled) the desktop right-click menu is left alone', () => {
+    const r = rig();
+    r.model.setEnabled(false);
+    const event = pointer('contextmenu', 0);
+    r.host.dispatchEvent(event);
+    expect(event.prevented).toBe(false);
+  });
+});

@@ -1,8 +1,10 @@
 # Mobile touch controls (Phase 6 prototype, plus D-pad and fullscreen)
 
 A playable, landscape-first, one-player touchscreen version of the Phaser game, on the same page and the same URL as the desktop
-game. It is a **prototype**: it has been exercised in Chromium's touch emulation and in unit tests, **not on a physical phone**. See
-[Manual testing](#manual-testing-on-a-real-phone) for what still has to be checked by a person.
+game. It is exercised in Chromium's touch emulation and in unit tests, and has had **one hands-on test on an Android phone** (Chrome, over the LAN):
+the game loads, touch controls work, the **D-pad felt much better than the joystick** (so it is now the default), and **Android fullscreen works well**.
+Not yet tried on a phone: the keyboard-switch safeguards and the release-readiness fixes below, iPhone Safari, and the HTTPS (GitHub Pages) build.
+See [Manual testing](#manual-testing-on-a-real-phone) and the [final real-phone checklist](#final-real-phone-checklist-before-merging).
 
 Nothing in `src/core/` knows about touch. Touch is one more input source producing the same `PlayerInput` the keyboard and gamepad
 produce; scoring, physics, collisions, difficulty, UFOs, power-ups and audio mixing are untouched.
@@ -10,13 +12,24 @@ produce; scoring, physics, collisions, difficulty, UFOs, power-ups and audio mix
 **Second pass (after a first real-phone test):** analogue steering was awkward for manoeuvring while moving and shooting, so there is now a selectable digital
 **D-pad** next to the original joystick (see [D-pad](#d-pad-the-second-steering-control) and [Choosing the steering control](#choosing-the-steering-control)), and a **Fullscreen**
 button for supported browsers with a Home Screen tip where fullscreen is impossible (see [Fullscreen](#fullscreen)). Both are input / presentation only: `src/core/` is untouched.
-Status: automated checks pass (below); **neither has been tried on a physical phone yet**, and fullscreen has not been tried on HTTPS. The script to do that is
+Status: automated checks pass (below); both were tried on an Android phone (D-pad preferred, fullscreen works); fullscreen has not been tried on HTTPS. The script is
 [Phone test script](#phone-test-script-d-pad-joystick-and-fullscreen).
+
+**Release-readiness pass (Phase 6c):** a review with extra browser probes found four input-safety gaps, all fixed with small changes (no layout, gameplay or audio change):
+
+1. Two fingers (or a palm) landing together on **CONTROLS: TOUCH (tap for keyboard)**, or a thumb bouncing on it, counted as the two confirming taps and switched to
+   the keyboard screen. A second touch less than **300 ms** after the first now counts as the same touch (`CONFIRM_MIN_GAP_MS`, `src/ui/confirmTap.ts`).
+2. Two fingers landing together on the keyboard screen's **TOUCH CONTROLS: OFF** button switched to touch and straight back (it stayed on the keyboard screen). The switch
+   now happens once per screen (`StartScene.switchInputMode`).
+3. The pause screen's **MAIN MENU** sits where the D-pad was during play. After an automatic pause (rotation, focus loss) one habitual tap on the pad's Up arm
+   abandoned the run (seen at 667 x 375 and 740 x 360). MAIN MENU on the **touch pause screen** now takes two taps, like the keyboard switch ("TAP AGAIN TO QUIT TO THE MAIN
+   MENU", lapses after 3 s, cleared on resume). Game over's MAIN MENU and the desktop pause screen are unchanged.
+4. The touch layer suppressed the browser's right-click menu on the **desktop** game too. It now only blocks the long-press menu in touch mode.
 
 ## What the player sees
 
 **Title screen (touch mode):** a short how-to, the five power-ups, a big **TAP TO PLAY** button, Music / SFX volume with `-` / `+`
-buttons and a music on / off button, the **STEERING: JOYSTICK | D-PAD** choice, a **CONTROLS: TOUCH (tap for keyboard)** button (it takes **two taps**: the first only asks "TAP AGAIN TO SWITCH TO KEYBOARD CONTROLS", and the question lapses after 3 s), and a small **FULLSCREEN** button at the top right. There is deliberately no "tap anywhere to
+buttons and a music on / off button, the **STEERING: JOYSTICK | D-PAD** choice, a **CONTROLS: TOUCH (tap for keyboard)** button (it takes **two taps**: the first only asks "TAP AGAIN TO SWITCH TO KEYBOARD CONTROLS", the question lapses after 3 s, and a touch within 300 ms of the first one, such as a second finger or a bounce, does not count), and a small **FULLSCREEN** button at the top right. There is deliberately no "tap anywhere to
 start": a stray touch must not begin a run.
 
 **During play (landscape):**
@@ -39,7 +52,7 @@ start": a stray touch must not begin a run.
 | **BOOST** | above FIRE (about 70 CSS px) | Boost, one activation per press. Shows READY, or the seconds left while active / cooling down. |
 | **PAUSE** | top right (52 CSS px) | Pauses. It fires on *release* of a tap, so brushing it does nothing. |
 
-**Pause screen:** RESUME, MAIN MENU, the STEERING choice, Music and SFX `-` / `+`, music on / off, and the FULLSCREEN button. **Game over:** RETRY (disabled for the short delay
+**Pause screen:** RESUME, MAIN MENU (two taps: the first asks "TAP AGAIN TO QUIT TO THE MAIN MENU"), the STEERING choice, Music and SFX `-` / `+`, music on / off, and the FULLSCREEN button. **Game over:** RETRY (disabled for the short delay
 after the ship is lost, as with the R key) and MAIN MENU. The on-screen controls are only drawn while a run is actually being
 played, so the canvas gets every tap in menus. The HUD at the top left is drawn 1.4x larger in touch mode (`TOUCH_HUD_SCALE`) so it is
 readable at phone size; desktop is unchanged.
@@ -172,7 +185,9 @@ The title screen offers the CONTROLS button always in touch mode, and on any dev
 keyboard screen: a big green **TOUCH CONTROLS: OFF / TAP TO TURN ON** button at the top right (full thumb size, at least 44 CSS px tall; it used to be 16 px text that fingers
 missed). A desktop without touch never sees it. **On a phone (primary pointer is a finger) a tap on empty space does not start a game from the keyboard title screen**, because that
 mode has no touch controls to steer with; Space or a controller starts it, and the prompt says "Press SPACE to start". A stray thumb therefore cannot put the phone on a screen with no
-touch controls (the switch to the keyboard takes two taps) and cannot start a run nobody can steer; if it happens anyway, the big button is the way back, and `?touch=1` also works. In touch mode the
+touch controls (the switch to the keyboard takes two separate taps) and cannot start a run nobody can steer; if it happens anyway, the big button is the way back (one tap, and two
+fingers landing on it together still switch exactly once), and `?touch=1` also works. A `?touch=` override applies to that visit only and saves nothing; tapping the CONTROLS button while
+one is in the URL applies at once and is saved as usual, but the URL wins again on the next load. In touch mode the
 keyboard still works (Space starts, M mutes, held keys drive the ship); a controller has to be assigned on the keyboard / controller
 screen, so a phone with a Bluetooth controller should switch CONTROLS to keyboard. Touch mode is always one player; the title screen forces
 `playerCount` to 1 so a two-player choice made earlier cannot leak into a run that cannot drive a second ship.
@@ -253,12 +268,15 @@ event type at the moment of the call and asserts both.
     configuration; p95 flipped between 33 and 50 ms at random in all three. **No measurable cost from the overlay**, but also no proof about real phones: **"performance under
     intense combat" is on the manual checklist.** If a device struggles, the obvious, independent knobs are `TOUCH_HUD_SCALE` (HUD text re-rasterisation)
     and the star count in `core/starfield.ts`; neither has been needed here.
+- Re-checked in the release-readiness pass, **D-pad mode** (844 x 390, DPR 3, software WebGL, forced spawning, 72-81 asteroids and a UFO on the field, pad and FIRE held):
+  avg 16.7 ms, p95 16.7-16.8 ms over 8 s, two runs; the desktop game under the same stress (1280 x 720, 84-85 asteroids) measured the same. The page has 50 DOM nodes in
+  touch mode. Still emulation on a desktop CPU, not a phone GPU.
 
 ## Browser limits and known issues
 
 - **iOS Safari (iPhone)** has no Fullscreen API for pages: there is no Fullscreen button there, only a tip about Add to Home Screen. Whether a Home Screen launch really hides
-  the bar depends on the iOS version and on the standalone configuration that is *not* added yet ([standalone-web-app.md](standalone-web-app.md)). **Android Chrome** can go
-  fullscreen through the new button, **not yet tried on a phone**.
+  the bar depends on the iOS version and on the standalone configuration that is *not* added yet ([standalone-web-app.md](standalone-web-app.md)). **Android Chrome** goes
+  fullscreen through the button (tried on a phone over the LAN; not yet on the HTTPS Pages build).
 - Audio needs a real touch: the first tap (TAP TO PLAY) unlocks it, via Phaser's own touchend unlock. Verified in Chromium; **iOS Safari is the browser most likely to behave differently, and the silent switch / ringer mode can mute Web Audio there.**
 - Mobile browsers may reserve edge swipes (back / forward gestures, notification shade). FIRE sits 18 px (plus safe area) from the right edge to stay clear; a system gesture
   cancels the touch, which the game treats as a release.
@@ -269,22 +287,27 @@ event type at the moment of the call and asserts both.
 - The Fullscreen button is only offered on the title and pause screens, not during play; there is no automatic fullscreen and no orientation lock.
 - The two-player and controller-assignment screens are not reachable in touch mode (switch CONTROLS to keyboard).
 - The HUD's top-right corner can be close to the PAUSE button on 16:9 screens (the combo readout sits at x ~ 1030 +/- 120 game px, y 78-150).
+- **The pause screen's lower-left buttons sit where the steering thumb was during play.** MAIN MENU now needs two taps, so one habitual press cannot lose the run, but
+  *repeated deliberate* presses more than 300 ms apart would still confirm it (the yellow "TAP AGAIN TO QUIT" is the warning). The **JOYSTICK** steering button is also under the
+  D-pad's lower-left on every phone size, so a habitual press there switches the steering to the joystick (visible on the pause screen and one tap to undo; it cannot lose the run).
+  Moving the pause buttons clear of both thumbs is a layout change left for later (see Suggested next steps).
+- In keyboard mode on a phone, the green **TOUCH CONTROLS: OFF / TAP TO TURN ON** button is large, but its caption is small (about 11 CSS px on a 390 px tall screen).
 
 ## Tests
 
 | What | Command | Result |
 | --- | --- | --- |
 | Touch model: dead zone edges, proportional / diagonal / both directions, FIRE, LASER, BOOST, simultaneous input, pointer identity, cancel, disable | `npm test` (`tests/touchModel.test.ts`) | 26 tests |
-| Binding: multi-touch, sliding between buttons, release outside, cancel, lost capture, pause tap, blur, hidden tab, pagehide, rotation, plain resize, destroy, bounded listeners | `tests/touchBinding.test.ts` | 22 tests |
+| Binding: multi-touch, sliding between buttons, release outside, cancel, lost capture, pause tap, blur, hidden tab, pagehide, rotation, plain resize, destroy, bounded listeners, long-press menu blocked only in touch mode | `tests/touchBinding.test.ts` | 24 tests |
 | Facade: mode / layer, portrait prompt and pause, pause forwarding, cleanup, ability labels | `tests/touchControls.test.ts` | 19 tests |
 | Mode policy: automatic choice, URL override, stored choice, blocked storage, toggle offered | `tests/inputMode.test.ts` | 29 tests |
 | Touch + keyboard + pad merging, and a real `GameSim` driven by touch (steer, fly, FIRE, once-per-press LASER / BOOST, pause, game over) | `tests/touchInput.test.ts` | 16 tests |
 | D-pad: direction maths (eight sectors, boundaries, dead zone, hysteresis, sweeps), digital output, one finger, sliding, sliding outside, release / cancel, FIRE / LASER / BOOST together, mode switching, a real `GameSim` driven by it (identical to the keys) | `tests/touchDpad.test.ts` | 47 tests |
 | D-pad through the binding and facade: taps, slides, cancel, lost capture, blur / hidden / pagehide, rotation, resize, fullscreen change, pause / restart, switching mode mid-hold, listener cleanup | `tests/touchDpadControls.test.ts` | 32 tests |
 | Steering choice: D-pad default, a saved joystick / D-pad choice is never overridden, persistence, junk and blocked storage, listeners | `tests/steeringMode.test.ts` | 8 tests |
-| Tap-again confirmation for the keyboard switch (arms, confirms inside 3 s, lapses, clock going backwards) | `tests/confirmTap.test.ts` | 5 tests |
+| Tap-again confirmation for the keyboard switch and the pause screen's MAIN MENU (arms, confirms inside 3 s, lapses, a second touch within 300 ms is not a confirmation, clock going backwards) | `tests/confirmTap.test.ts` | 8 tests |
 | Fullscreen: support detection (incl. iPhone-like, webkit names, standalone), request accepted / rejected / throws / `fullscreenerror`, enter, exit, system exit, button wording, cleanup | `tests/fullscreen.test.ts` | 29 tests |
-| Real browser, genuine multi-touch (CDP `Input.dispatchTouchEvent`, 4 fingers at once), mobile emulation DPR 2: everything above on real touches, plus D-pad / fullscreen sections | `npm run test:touch` | 208 checks (101 before the D-pad pass) |
+| Real browser, genuine multi-touch (CDP `Input.dispatchTouchEvent`, 4 fingers at once), mobile emulation DPR 2: everything above on real touches, plus D-pad / fullscreen sections | `npm run test:touch` | 219 checks (208 before the release-readiness pass, 101 before the D-pad pass) |
 
 The browser suite covers: load, touch-only start, audio unlock by touch, overlay in landscape, layout and 44 px targets on six phone / tablet
 sizes, HUD visible, steering changes the simulation input, FIRE held while steering, LASER and BOOST with other fingers down,
@@ -298,7 +321,26 @@ The D-pad and fullscreen sections add: the steering choice on the title and paus
 
 Not covered by any test: a real phone, iOS Safari, a real GPU, thumb ergonomics, hardware multi-touch limits, the notch / safe-area
 insets (they are `0` in emulation), and a touch laptop (this Chromium reports a coarse pointer whenever touch is emulated, so
-that case is covered by the policy's unit tests only).
+that case is covered by the policy's unit tests only). Firefox and WebKit are not run: the suites drive Chromium through `playwright-core` and the
+installed Chrome, and genuine multi-touch uses Chromium's CDP `Input.dispatchTouchEvent`, which has no Firefox equivalent there. Every touch in these suites is
+**simulated**; none of it is a physical touchscreen.
+
+### Known test flakiness
+
+Measured on the development machine (Windows, headless Chrome 155, software WebGL), October 2026:
+
+- **`touch.mjs`: one timeout in about 15 runs** (1 of 1 full runs, then 0 of 14 targeted reruns up to the same point). It was a `waitForFunction` waiting for the forced game over in
+  section 5 (an asteroid placed on a one-life ship, right after a focus loss and RESUME). Instrumented reruns showed RESUME always resumed and the game over always came, so the
+  cause is **not explained**. The step now asserts that RESUME resumed, and the wait (`waitGameOver`) prints the sim state and saves
+  `scripts/.smoke-output/touch-diag-no-game-over-*.png` if it times out again. Before this pass, that timeout aborted the whole suite, losing the D-pad and fullscreen sections.
+- **`smoke.mjs`, "Down + Right x2 raises SFX to 100 % and plays a sample shot at that level":** fails now and then (3 of 17 runs on pristine `main` in an earlier A/B,
+  about the same rate on this branch). It reads the audio state straight after the last key press. The file is unchanged by the mobile work; not fixed here.
+- The rotation check reported as intermittent earlier ("turning to portrait ... paused, released") passed in every run of this pass, including rapid
+  landscape / portrait sequences with fingers on the pad and FIRE, rotation while paused and rotation on the title screen. No orientation race was found in the code: the release
+  and the pause both happen synchronously in the `resize` handler, and the binding only treats a real width / height flip as a rotation. If it fails again, the screenshot
+  `touch-05-portrait-prompt.png` and the check's own fields (prompt, paused, command, overlay) say which part failed.
+
+Rerun a suite alone (nothing else using the CPU) before investigating a single red check.
 
 ## Manual testing on a real phone
 
@@ -394,9 +436,25 @@ before. Switch back and forth a couple of times from the pause screen: nothing s
 
 Report: phone and browser versions, which scheme you preferred and why, anything that felt twitchy, and any screenshot of the layout in fullscreen.
 
+## Final real-phone checklist (before merging)
+
+The pieces added after the Android test, which only a person on a phone can confirm. Android Chrome, landscape, ideally once over the LAN and once on HTTPS.
+
+1. **Fresh visit:** in a private / incognito tab (no saved settings) the title screen says CONTROLS: TOUCH and **D-PAD** is lit; the first run shows the pad.
+2. **Keyboard switch is hard to hit by accident:** tap **CONTROLS: TOUCH** once: it only asks "TAP AGAIN ...", and goes back by itself after 3 s. Rest your palm or two fingers on it: still only asks.
+   Tap it twice on purpose (a normal pause between the taps): the keyboard screen appears.
+3. **The way back:** on the keyboard screen, tapping empty space does **not** start a game. The big green **TOUCH CONTROLS: OFF** button brings the touch screen back with one tap. Reload: the last choice is kept.
+4. **Pause safety:** in a run, rotate to portrait and back (or pull the notification shade down and up). The game is paused. Put your thumb back on the pad as you would to play:
+   MAIN MENU only asks "TAP AGAIN TO QUIT"; RESUME continues the same run. Check whether your thumb also lands on JOYSTICK (see Known issues).
+5. **Thumb held through a rotation:** hold the pad and FIRE, rotate to portrait and back, lift: nothing turns or fires on its own; RESUME works.
+6. **Fullscreen + rotation:** enter FULLSCREEN, rotate twice, exit with a back swipe: same run, paused when expected, music still playing once (not doubled).
+7. **D-pad sliding off:** while turning, drift the thumb off the pad: it keeps turning until you lift. Say if that ever surprised you.
+8. **HTTPS:** on the published site (after merging), music starts on the first tap and fullscreen works.
+
 ## Suggested next steps (not done)
 
 Based on what usually goes wrong with on-screen controls, in rough order: (1) tune stick radius and dead zone on a real thumb; (2) a left-handed
 mirror and a button-size setting; (3) an auto-fire option, only if holding FIRE is tiring (it is not the default, as specified); (4) (done:
 fullscreen button; still to verify on Android and iPhone); (5) a haptic tick on LASER / BOOST via `navigator.vibrate` (Android only); (6) an in-game one-time control hint
-over the first seconds of play; (7) a preview deployment for pull requests so phones can test without a tunnel.
+over the first seconds of play; (7) a preview deployment for pull requests so phones can test without a tunnel; (8) a pause-screen layout that keeps MAIN MENU and the
+STEERING buttons clear of where the steering thumb rests (see Known issues).

@@ -295,9 +295,13 @@ export class StartScene extends Phaser.Scene {
     }
   }
 
-  /** Flips between touch and keyboard / controller controls and rebuilds this screen for the new mode. */
+  /**
+   * Flips between touch and keyboard / controller controls and rebuilds this screen for the new mode. Once per screen: a second
+   * finger landing on the button in the same touch would otherwise flip it straight back (and nothing else may start meanwhile).
+   */
   private switchInputMode(inputMode: InputModeController): void {
     if (this.starting) return;
+    this.starting = true;
     inputMode.toggle();
     this.scene.restart();
   }

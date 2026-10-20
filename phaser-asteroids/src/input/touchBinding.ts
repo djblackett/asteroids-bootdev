@@ -152,7 +152,10 @@ export function bindTouchControls(options: TouchBindingOptions): TouchBinding {
   };
   on(doc, 'fullscreenchange', onFullscreenChange);
   on(doc, 'webkitfullscreenchange', onFullscreenChange);
-  on(host, 'contextmenu', ((event: PointerLike) => event.preventDefault()));
+  // A long press would open the context menu under a thumb. Only in touch mode: the desktop game keeps its right-click menu.
+  on(host, 'contextmenu', ((event: PointerLike) => {
+    if (model.isEnabled) event.preventDefault();
+  }));
 
   const onViewport = (): void => {
     const now = isPortrait();

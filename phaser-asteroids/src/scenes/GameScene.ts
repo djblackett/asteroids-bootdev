@@ -397,7 +397,7 @@ export class GameScene extends Phaser.Scene {
         this.touchPauseShown = showPause;
         this.touchPause?.setVisible(showPause);
       }
-      if (showPause) this.touchPause?.update();
+      if (showPause) this.touchPause?.update(this.time.now);
     } else if (showPause) {
       this.pauseOverlay.setLine(0, padActive ? 'Press P or START to Resume' : 'Press P to Resume', CENTER_Y + 10, COLORS.hint, 28);
       this.pauseOverlay.setLine(2, padActive ? 'Press ESC or BACK for Main Menu' : 'Press ESC for Main Menu', CENTER_Y + 240, COLORS.dim, 22);

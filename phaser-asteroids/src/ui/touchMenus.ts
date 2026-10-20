@@ -3,6 +3,7 @@ import { formatPercent, type VolumeChannel } from '../audio/audioSettings';
 import type { AudioDirector } from '../audio/phaserAudio';
 import type { SteeringController } from '../input/steeringMode';
 import type { SteeringMode } from '../input/touchModel';
+import { ConfirmTap } from './confirmTap';
 import { CachedText } from './hud';
 import { addText, COLORS } from './text';
 
@@ -84,6 +85,67 @@ export class TouchButton {
 
   get isVisible(): boolean {
     return this.visible;
+  }
+}
+
+/**
+ * A `TouchButton` for an action that is costly to do by accident (hiding every touch control, abandoning a run): the first tap only
+ * changes the label to `armedText`, a second deliberate tap within the window does it (see `ConfirmTap`), and the question lapses
+ * by itself. `update` must be called every frame so the label goes back when it lapses.
+ */
+export class ConfirmTouchButton {
+  private readonly button: TouchButton;
+  private readonly confirm = new ConfirmTap();
+  private readonly color: string;
+  private armed = false;
+
+  constructor(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    private readonly text: string,
+    private readonly armedText: string,
+    onConfirm: () => void,
+    style: TouchButtonStyle = {},
+  ) {
+    this.color = style.color ?? COLORS.white;
+    this.button = new TouchButton(
+      scene,
+      x,
+      y,
+      w,
+      h,
+      text,
+      () => {
+        const now = scene.time.now;
+        if (this.confirm.tap(now)) {
+          this.show(false);
+          onConfirm();
+        } else this.show(this.confirm.isArmed(now));
+      },
+      style,
+    );
+  }
+
+  update(now: number): void {
+    if (this.armed && !this.confirm.isArmed(now)) this.show(false);
+  }
+
+  /** Hiding the button also drops a pending question, so it never carries over to the next time the button is shown. */
+  setVisible(visible: boolean): void {
+    if (!visible) {
+      this.confirm.disarm();
+      this.show(false);
+    }
+    this.button.setVisible(visible);
+  }
+
+  private show(armed: boolean): void {
+    if (armed === this.armed) return;
+    this.armed = armed;
+    this.button.setText(armed ? this.armedText : this.text, armed ? COLORS.heading : this.color);
   }
 }
 
@@ -189,16 +251,20 @@ export interface TouchPauseCallbacks {
   menu: () => void;
 }
 
-/** The pause screen's buttons: RESUME and MAIN MENU on the left, the volume block on the right. The dimmed backdrop and title are the shared `Overlay`. */
+/**
+ * The pause screen's buttons: RESUME and MAIN MENU on the left, the volume block on the right. The dimmed backdrop and title are the
+ * shared `Overlay`. MAIN MENU throws the run away and sits where the D-pad / joystick thumb was during play (the game pauses itself on
+ * rotation and focus loss, and the next habitual tap lands there), so it takes two taps.
+ */
 export class TouchPauseMenu {
   private readonly resume: TouchButton;
-  private readonly menu: TouchButton;
+  private readonly menu: ConfirmTouchButton;
   private readonly volume: TouchVolumeBlock;
   private readonly steering: SteeringSelector;
 
   constructor(scene: Phaser.Scene, audio: AudioDirector, steering: SteeringController, callbacks: TouchPauseCallbacks) {
     this.resume = new TouchButton(scene, 340, 300, 480, 130, 'RESUME', callbacks.resume, { size: 44, fill: 0x1d6b3a });
-    this.menu = new TouchButton(scene, 340, 460, 480, 110, 'MAIN MENU', callbacks.menu, { size: 34 });
+    this.menu = new ConfirmTouchButton(scene, 340, 460, 480, 110, 'MAIN MENU', 'TAP AGAIN TO QUIT\nTO THE MAIN MENU', callbacks.menu, { size: 34 });
     this.volume = new TouchVolumeBlock(scene, audio, 940, 250, 23);
     this.steering = new SteeringSelector(scene, steering, 340, 610, 480, 23);
     this.setVisible(false);
@@ -211,7 +277,8 @@ export class TouchPauseMenu {
     this.steering.setVisible(visible);
   }
 
-  update(): void {
+  update(now: number): void {
+    this.menu.update(now);
     this.volume.update();
   }
 }

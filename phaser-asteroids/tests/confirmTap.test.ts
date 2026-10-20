@@ -33,6 +33,31 @@ describe('ConfirmTap (tap again to confirm)', () => {
     expect(c.tap(10)).toBe(false);
   });
 
+  it('a second touch straight after the first (two fingers, a palm, a bounce) does not confirm, and leaves it armed', () => {
+    const c = new ConfirmTap(3000, 300);
+    c.tap(1000);
+    expect(c.tap(1000)).toBe(false); // same frame: two fingers in one touchstart
+    expect(c.tap(1040)).toBe(false);
+    expect(c.tap(1299)).toBe(false);
+    expect(c.isArmed(1299)).toBe(true);
+    expect(c.tap(1300)).toBe(true); // a deliberate tap after the question was shown
+  });
+
+  it('too-soon touches do not extend the window: it still lapses from the first tap', () => {
+    const c = new ConfirmTap(3000, 300);
+    c.tap(1000);
+    c.tap(1100);
+    expect(c.isArmed(3999)).toBe(true);
+    expect(c.isArmed(4000)).toBe(false);
+  });
+
+  it('the default gap is 300 ms', () => {
+    const c = new ConfirmTap();
+    c.tap(0);
+    expect(c.tap(250)).toBe(false);
+    expect(c.tap(400)).toBe(true);
+  });
+
   it('a clock that goes backwards (a scene restart) never confirms by accident', () => {
     const c = new ConfirmTap(3000);
     c.tap(10_000);

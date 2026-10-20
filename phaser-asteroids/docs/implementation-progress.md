@@ -12,7 +12,7 @@ browser tests). Last updated 2026-10-20 (Phase 6).
 | 3 | Combo scoring, kill-streak banners, large and small UFOs (AI, shots, collisions, drops), integrated combat tests | Done (see "Phase 3") |
 | 4 | Two-player local co-op (independent / shared lives, friendly fire, speed handicaps, Revive, co-op HUD and menu), Laser Beam kills UFOs, gradual small UFOs, shield-vs-UFO fix | Done (see "Phase 4") |
 | 5 | Gamepad support: Python mapping recovered, keyboard + controller co-op (Player 1 keyboard, Player 2 pad), hot-plug, assignment UI, `?keydebug` pad section | Done and tested with a simulated gamepad; **real-hardware test pending** (see "Phase 5") |
-| 6 | Mobile touchscreen prototype: floating joystick + FIRE / LASER / BOOST / PAUSE, landscape-first, portrait prompt, touch menus, input-mode selection | Built on branch `feature/mobile-touch-controls`, **not merged or deployed**; tested in touch emulation only, **real-phone test pending** (see "Phase 6") |
+| 6 | Mobile touchscreen prototype: floating joystick + FIRE / LASER / BOOST / PAUSE, landscape-first, portrait prompt, touch menus, input-mode selection | Built on branch `feature/mobile-touch-controls`, **not merged or deployed**; D-pad (default) and Android fullscreen tried on one Android phone; release-readiness pass done (Phase 6c); the keyboard-switch safeguards and iPhone are **not yet tried on a phone** (see "Phase 6") |
 
 ## Phase 2: what was added
 
@@ -518,6 +518,25 @@ configuration: [standalone-web-app.md](standalone-web-app.md). Summary:
 - **Not verified:** a real phone (either steering scheme, thumb comfort, the pad's size), real fullscreen on Android, anything on iPhone (the absence of the button, the tip, the Home Screen launch), safe-area insets in fullscreen
   or on a notched device, and everything fullscreen-related over HTTPS (the GitHub Pages build). The test machine's headless Chromium does engage real fullscreen from a real touch, but its window does not grow, so it cannot show the address bar disappearing.
 - **Known limitations:** fixed pad position and size (no left-handed mirror), no haptics, no orientation lock, no PWA / manifest / service worker (documented separately), the iPhone Home Screen launch may still open in Safari on older iOS until the standalone configuration exists.
+
+### Phase 6c: mobile release readiness (2026-10-20)
+
+An independent review before the pull request. Baseline was taken first (everything committed at `895e01f`, tree clean): typecheck clean, unit 966/966, build OK, keyboard 49/49,
+combat 39/39, co-op 65/65, gamepad 82/82, Pages 17/17; smoke 71/72 (the known SFX sample-shot flake); touch **aborted** by one timeout (see "Known test flakiness" in mobile-touch.md).
+
+- **Confirmed by probes and fixed** (each with a browser check that fails on the old code and passes now; 11 new touch checks, 5 new unit tests):
+  1. Two fingers or a palm landing together on CONTROLS (tap for keyboard), or a bounce, counted as the confirming second tap. `ConfirmTap` now ignores a second touch
+     within 300 ms of the first.
+  2. Two fingers together on the keyboard screen's TOUCH CONTROLS: OFF switched touch on and straight back off. `StartScene.switchInputMode` now runs once per screen.
+  3. The touch pause screen's MAIN MENU lies under the D-pad. After an automatic pause, one tap on the pad's Up arm quit the run at 667 x 375 and 740 x 360. It now takes
+     two taps (`ConfirmTouchButton` in `touchMenus.ts`, shared with the keyboard switch).
+  4. The desktop game had lost its right-click menu (the touch layer prevented `contextmenu` in every mode); now only in touch mode.
+- **Verified unchanged / fine:** fresh visitor gets touch + D-pad with nothing stored; saved joystick kept; `?touch=0/1/auto` predictable and never stored; rapid
+  landscape / portrait flips with thumbs on the pad and FIRE leave the run paused, neutral and coherent; rotation while paused and on the title screen; desktop D-pad-mode
+  frame time 16.7 ms avg under forced heavy spawning (same as desktop). Audio gains, gameplay, layouts and `src/core/` untouched.
+- **Final run:** see the Phase 6c results in the pull request description and mobile-touch.md (unit 971/971, touch 219/219, smoke 72/72, keyboard, combat, co-op, gamepad and Pages all green).
+- **Left as known limitations:** the pause screen's JOYSTICK button is also under the pad (switches steering, cannot lose the run); repeated deliberate presses can still confirm
+  MAIN MENU; the keyboard-mode recovery button's caption is small. Not verified on a phone: everything in this entry, and iPhone.
 
 ## Verification, Phase 3 (2026-10-19)
 
