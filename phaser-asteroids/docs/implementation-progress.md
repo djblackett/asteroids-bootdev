@@ -479,6 +479,34 @@ Full description, layout, mapping, mode policy, limits and the phone test proced
   while unit tests ran concurrently). Isolated reruns pass. Treat a single red timing check as a rerun, not as a regression, and investigate only if it repeats.
 - **Not verified:** anything on a physical phone, iOS Safari, Android Chrome, a real GPU, safe-area insets on a notched device, thumb ergonomics.
 
+## Phase 6b: D-pad and fullscreen (2026-10-20)
+
+Prompted by a first test on a real phone: analogue steering made it easy to lose control (start spinning) while moving and shooting. Full description, layout, test
+script for a phone: [mobile-touch.md](mobile-touch.md) (sections "D-pad", "Choosing the steering control", "Fullscreen", "Phone test script"); the possible future installed-web-app
+configuration: [standalone-web-app.md](standalone-web-app.md). Summary:
+
+- **Added.** A digital **D-pad** (a single round touch target, eight 45 degree sectors, centre dead zone, a little hysteresis, so one thumb holds Up + Left; output is -1 / 0 / 1 exactly
+  like W / A / S / D) as a second steering control next to the unchanged joystick; a **STEERING: JOYSTICK | D-PAD** choice on the title and pause screens, saved in `localStorage`
+  (`asteroids.touchSteering`, default joystick); a **FULLSCREEN** button (title and pause screens) using the standard Fullscreen API on the root `<html>` element, called synchronously inside
+  a real touch `pointerup`, with enter / exit tracking, a visible "blocked" state, and, where fullscreen is impossible (iPhone Safari), no Fullscreen button but a **HIDE ADDRESS BAR** tip about
+  Add to Home Screen. Nothing is shown when already running as an installed web app.
+- **Where it lives.** `touchModel.ts` (`dpadDirection`, the D-pad state, `SteeringMode`, one live steering control), `touchBinding.ts` (reads the pad's rectangle on press / move / resize; releases on
+  `fullscreenchange`), `touchControls.ts` (`setSteering`, new `menu` layer), `steeringMode.ts` (persisted choice), `fullscreen.ts` (pure controller + button wording), `systemOverlay.ts` (DOM Fullscreen
+  button and tip), `touchOverlay.ts` / `touch.css` (the pad, mode visibility, system layer), `touchMenus.ts` / `touchStartMenu.ts` (STEERING selector, right column re-packed), `gameTouch.ts` (installs the controllers,
+  re-fits the canvas after fullscreen changes), `StartScene` / `GameScene` (layer + selector wiring). **`src/core/`, keyboard, gamepad, audio and the deployment workflow are unchanged.**
+- **Layout changes to existing screens.** The touch title's right column is packed tighter (PLAY 480 x 100 at y 105, volume rows 96 apart) to fit the steering row; the pause screen gains the STEERING row under MAIN MENU.
+  Existing browser checks still pass unchanged apart from the PLAY tap coordinate.
+- **Decisions to confirm on a phone.** Default is the joystick (no behaviour change for anyone who never chose); a thumb that slides off the pad keeps its direction by angle until it lifts; the Fullscreen
+  button is not offered during play.
+- **Unit tests:** 959 in 38 files (845 before; +114: `touchDpad` 47, `touchDpadControls` 32, `fullscreen` 29, `steeringMode` 6). **Browser:** `npm run test:touch` 196 checks (101 before), incl. real four-finger multi-touch on the pad,
+  a scripted Fullscreen API, the iPhone-like and standalone cases, canvas re-fit, pause state kept, six phone sizes with screenshots (`scripts/.smoke-output/touch-dpad-*.png`, `touch-fullscreen-*.png`).
+- **Regression pass on the final build (all green on the first run):** typecheck clean; unit 959/959; production build OK; smoke 72/72; keyboard 49/49; combat 39/39; co-op 65/65; gamepad 82/82;
+  Pages validation 17/17 (at `/asteroids-bootdev/` and `/`); touch 196/196. Known unrelated flakiness is unchanged and did not show this time (timing-sensitive smoke / keyboard checks fail
+  intermittently on this machine with and without these changes; rerun before investigating).
+- **Not verified:** a real phone (either steering scheme, thumb comfort, the pad's size), real fullscreen on Android, anything on iPhone (the absence of the button, the tip, the Home Screen launch), safe-area insets in fullscreen
+  or on a notched device, and everything fullscreen-related over HTTPS (the GitHub Pages build). The test machine's headless Chromium does engage real fullscreen from a real touch, but its window does not grow, so it cannot show the address bar disappearing.
+- **Known limitations:** fixed pad position and size (no left-handed mirror), no haptics, no orientation lock, no PWA / manifest / service worker (documented separately), the iPhone Home Screen launch may still open in Safari on older iOS until the standalone configuration exists.
+
 ## Verification, Phase 3 (2026-10-19)
 
 - Baseline before the pass: typecheck clean, **367 unit tests**, smoke **72/72**, keyboard **49/49** (the 2026-10-18 figures below are older).

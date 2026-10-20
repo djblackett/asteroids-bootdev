@@ -14,6 +14,9 @@ import { stickRadiusFor, TOUCH_CONTROLS, type TouchControl, type TouchModel } fr
  *  - `preventDefault()` on `pointerdown` stops the browser synthesising compatibility mouse events and a click afterwards, which
  *    would otherwise reach the Phaser canvas under a control that has just disappeared (a ghost tap on RESUME after tapping PAUSE).
  *  - Pause is a *tap*: it fires on release only if the finger is still on the button, so a sliding thumb cannot pause by accident.
+ *  - The D-pad's finger is measured against the pad's *current* rectangle (read on press, on every move, and when the viewport
+ *    changes), so a plain resize under a held thumb (a browser toolbar sliding away) re-aims it instead of leaving a stale direction.
+ *  - Entering or leaving fullscreen lets go of every finger, like a rotation: the layout is about to move under them.
  */
 
 /** Handlers receive the browser's own event objects; the real DOM types are looser than anything a structural fake can state. */
@@ -73,7 +76,7 @@ export interface TouchBindingOptions {
   onPauseTap: () => void;
   /** Called after any resize / rotation, once the model has been told what to do about it. */
   onViewport?: (change: ViewportChange) => void;
-  /** Called whenever the binding let go of every held control for a lifecycle reason ('blur', 'hidden', 'pagehide', 'orientation'). */
+  /** Called whenever the binding let go of every held control for a lifecycle reason ('blur', 'hidden', 'pagehide', 'orientation', 'fullscreen'). */
   onLifecycleRelease?: (reason: string) => void;
 }
 
@@ -92,6 +95,11 @@ export function bindTouchControls(options: TouchBindingOptions): TouchBinding {
     cleanups.push(() => target.removeEventListener(type, listener));
   };
 
+  const syncDpad = (): void => {
+    const r = elements.dpad.getBoundingClientRect();
+    model.setDpadGeometry((r.left + r.right) / 2, (r.top + r.bottom) / 2, Math.min(r.right - r.left, r.bottom - r.top) / 2);
+  };
+
   const isPortrait = (): boolean => host.innerHeight > host.innerWidth;
   let portrait = isPortrait();
 
@@ -102,6 +110,7 @@ export function bindTouchControls(options: TouchBindingOptions): TouchBinding {
     if (!model.isEnabled) return;
     event.preventDefault();
     if (control === 'stick') model.setStickRadius(stickRadiusFor(host.innerWidth, host.innerHeight));
+    if (control === 'dpad') syncDpad();
     if (!model.press(event.pointerId, control, event.clientX, event.clientY)) return;
     try {
       elements[control].setPointerCapture?.(event.pointerId);
@@ -112,7 +121,9 @@ export function bindTouchControls(options: TouchBindingOptions): TouchBinding {
   for (const control of TOUCH_CONTROLS) on(elements[control], 'pointerdown', onDown(control));
 
   on(host, 'pointermove', ((event: PointerLike) => {
-    if (model.has(event.pointerId)) model.move(event.pointerId, event.clientX, event.clientY);
+    if (!model.has(event.pointerId)) return;
+    if (model.controlOf(event.pointerId) === 'dpad') syncDpad();
+    model.move(event.pointerId, event.clientX, event.clientY);
   }));
 
   on(host, 'pointerup', ((event: PointerLike) => {
@@ -134,6 +145,13 @@ export function bindTouchControls(options: TouchBindingOptions): TouchBinding {
   on(doc, 'visibilitychange', (() => {
     if (doc.hidden) lifecycleRelease('hidden');
   }));
+  // Fullscreen on / off (standard and webkit-prefixed event names) moves every control; the new size arrives with the resize that follows.
+  const onFullscreenChange = (): void => {
+    lifecycleRelease('fullscreen');
+    options.onViewport?.({ width: host.innerWidth, height: host.innerHeight, portrait: isPortrait(), orientationChanged: false });
+  };
+  on(doc, 'fullscreenchange', onFullscreenChange);
+  on(doc, 'webkitfullscreenchange', onFullscreenChange);
   on(host, 'contextmenu', ((event: PointerLike) => event.preventDefault()));
 
   const onViewport = (): void => {
@@ -142,6 +160,7 @@ export function bindTouchControls(options: TouchBindingOptions): TouchBinding {
     portrait = now;
     // Fingers are only let go when the orientation really flips: browser chrome sliding in and out fires plain resizes.
     if (orientationChanged) lifecycleRelease('orientation');
+    if (model.holds('dpad')) syncDpad();
     options.onViewport?.({ width: host.innerWidth, height: host.innerHeight, portrait: now, orientationChanged });
   };
   on(host, 'resize', onViewport);

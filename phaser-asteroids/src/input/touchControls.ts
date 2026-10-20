@@ -7,7 +7,7 @@ import {
   type TouchBinding,
   type ViewportChange,
 } from './touchBinding';
-import { stickRadiusFor, TouchModel, type StickView, type TouchControl } from './touchModel';
+import { stickRadiusFor, TouchModel, type DpadView, type SteeringMode, type StickView, type TouchControl } from './touchModel';
 
 /** What the buttons show about the ship's abilities (the HUD text at the top left says the same; a thumb should not have to look there). */
 export interface AbilityLabels {
@@ -18,8 +18,11 @@ export interface AbilityLabels {
   boostReady: boolean;
 }
 
-/** `play`: the controls are on screen and take touches. `off`: nothing is drawn and the canvas gets every touch (menus, pause, game over). */
-export type TouchLayer = 'off' | 'play';
+/**
+ * `play`: the game controls are on screen and take touches. `menu`: only the small system controls (Fullscreen) are on screen, over
+ * the title and pause screens. `off`: nothing is drawn and the canvas gets every touch (game over, between scenes).
+ */
+export type TouchLayer = 'off' | 'play' | 'menu';
 
 /** The drawing side. The DOM implementation is `ui/touchOverlay.ts`; tests pass a recording fake. Implementations only touch the DOM when a value changed. */
 export interface TouchView {
@@ -28,7 +31,10 @@ export interface TouchView {
   setActive(active: boolean): void;
   setLayer(layer: TouchLayer): void;
   setPortrait(portrait: boolean): void;
+  /** Which steering control is on screen: the joystick's zone or the D-pad; the other is removed. */
+  setSteering(mode: SteeringMode): void;
   renderStick(stick: StickView): void;
+  renderDpad(dpad: DpadView): void;
   setPressed(control: TouchControl, pressed: boolean): void;
   setAbilities(labels: AbilityLabels): void;
   destroy(): void;
@@ -41,7 +47,8 @@ const PRESSABLE: readonly TouchControl[] = ['fire', 'laser', 'boost', 'pause'];
  * the registry). It owns the `TouchModel` and its DOM listeners, and everything a scene needs is on it:
  *
  *   command()          this frame's `PlayerInput` from the fingers (neutral when touch mode is off or nothing is touched)
- *   setLayer()         'play' while a run is being played, 'off' for pause / game over / menus
+ *   setLayer()         'play' while a run is being played, 'menu' on the title and pause screens, 'off' otherwise
+ *   setSteering()      joystick or D-pad: the other one disappears and everything held is let go
  *   releaseAll()       every finger forgotten at once
  *   onPauseTap()       the PAUSE button was tapped
  *   onPortrait()       the phone was turned upright
@@ -75,6 +82,7 @@ export class TouchControls {
     this.stopModelEvents = this.model.onChange(() => this.render());
     this.model.setEnabled(false);
     this.view.setPortrait(false);
+    this.view.setSteering(this.model.steeringMode);
     this.render();
   }
 
@@ -106,11 +114,21 @@ export class TouchControls {
     this.applyLayer();
   }
 
-  /** The layer is only shown in touch mode, and never while the rotate prompt covers the screen. Leaving it lets every finger go. */
+  /** The steering control in use. Switching lets go of every finger, so nothing from the old control can stay held. */
+  setSteering(mode: SteeringMode): void {
+    this.model.setSteering(mode);
+    this.view.setSteering(mode);
+  }
+
+  get steering(): SteeringMode {
+    return this.model.steeringMode;
+  }
+
+  /** The layer is only shown in touch mode, and never while the rotate prompt covers the screen. Leaving 'play' lets every finger go. */
   private applyLayer(): void {
-    const shown = this.active && this.layer === 'play' && !this.portrait;
-    this.view.setLayer(shown ? 'play' : 'off');
-    if (!shown) this.model.releaseAll();
+    const shown: TouchLayer = this.active && !this.portrait ? this.layer : 'off';
+    this.view.setLayer(shown);
+    if (shown !== 'play') this.model.releaseAll();
   }
 
   /** This frame's command. A neutral command when touch mode is off, so it can always be merged in. */
@@ -156,6 +174,7 @@ export class TouchControls {
 
   private render(): void {
     this.view.renderStick(this.model.stickView());
+    this.view.renderDpad(this.model.dpadView());
     for (const control of PRESSABLE) this.view.setPressed(control, this.model.holds(control));
   }
 

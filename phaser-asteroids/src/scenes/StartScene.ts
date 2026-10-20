@@ -8,7 +8,7 @@ import { getSetup, setSetup, type GameSetup } from '../gameSetup';
 import { toCss } from '../render/colors';
 import { drawPowerUpIcon, POWERUP_COLOR } from '../render/powerupIcons';
 import { getGamepadHub } from '../input/gameGamepads';
-import { getInputMode } from '../input/gameTouch';
+import { getInputMode, getSteering, getTouchControls } from '../input/gameTouch';
 import type { GamepadHub } from '../input/gamepadHub';
 import type { InputModeController } from '../input/inputMode';
 import { createKeyPressDispatcher } from '../input/keyPress';
@@ -192,6 +192,7 @@ export class StartScene extends Phaser.Scene {
   override update(time: number): void {
     if (this.touchMenu) {
       this.touchMenu.update(time);
+      getTouchControls(this).setLayer(this.starting ? 'off' : 'menu');
       // Controller presses are not used on the touch screen; do not let them pile up for the next scene.
       this.pads.discardPresses();
       return;
@@ -269,10 +270,14 @@ export class StartScene extends Phaser.Scene {
       this.setup = { ...this.setup, game: { ...this.setup.game, playerCount: 1 } };
       setSetup(this.registry, this.setup);
     }
-    this.touchMenu = new TouchStartMenu(this, this.audio, inputMode, {
+    this.touchMenu = new TouchStartMenu(this, this.audio, inputMode, getSteering(this), {
       start: () => this.start(),
       switchMode: () => this.switchInputMode(inputMode),
     });
+    // The title screen shows the system controls (Fullscreen) and none of the game controls; leaving the scene takes them away again.
+    const touch = getTouchControls(this);
+    touch.setLayer('menu');
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => touch.setLayer('off'));
     const keyboard = this.input.keyboard;
     if (keyboard) {
       keyboard.addCapture('SPACE');

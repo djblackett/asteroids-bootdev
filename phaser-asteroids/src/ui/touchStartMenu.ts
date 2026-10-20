@@ -3,10 +3,13 @@ import type { AudioDirector } from '../audio/phaserAudio';
 import { POWERUP_RADIUS } from '../core/constants';
 import type { PowerUpType } from '../core/powerup';
 import type { InputModeController } from '../input/inputMode';
+import type { SteeringController } from '../input/steeringMode';
+import type { SteeringMode } from '../input/touchModel';
 import { toCss } from '../render/colors';
 import { drawPowerUpIcon, POWERUP_COLOR } from '../render/powerupIcons';
+import { CachedText } from './hud';
 import { addText, COLORS } from './text';
-import { MIN_TARGET, TouchButton, TouchVolumeBlock } from './touchMenus';
+import { MIN_TARGET, SteeringSelector, TouchButton, TouchVolumeBlock } from './touchMenus';
 
 const LEFT_X = 40;
 const RIGHT_X = 940;
@@ -21,13 +24,12 @@ const POWERUPS: ReadonlyArray<readonly [PowerUpType, string, string]> = [
 ];
 const ICON_POS = (i: number): { x: number; y: number } => ({ x: LEFT_X + 24 + (i % 2) * 300, y: 462 + Math.floor(i / 2) * 66 });
 
-const HOW_TO_PLAY = [
-  'LEFT SIDE: drag to steer and fly',
-  '  (left / right turns, up = forward)',
-  'FIRE: hold it down to shoot',
-  'LASER and BOOST: tap',
-  'PAUSE: top right corner',
-];
+/** The first two lines depend on the steering control; they are rewritten when it changes. */
+const STEERING_HELP: Record<SteeringMode, readonly [string, string]> = {
+  joystick: ['LEFT SIDE: drag to steer and fly', '  (left / right turns, up = forward)'],
+  dpad: ['D-PAD: UP = forward, DOWN = back', '  LEFT / RIGHT turn; corners do both'],
+};
+const HOW_TO_PLAY = ['', '', 'FIRE: hold it down to shoot', 'LASER and BOOST: tap', 'PAUSE: top right corner'];
 
 export interface TouchStartCallbacks {
   start: () => void;
@@ -42,14 +44,23 @@ export interface TouchStartCallbacks {
 export class TouchStartMenu {
   private readonly icons: Phaser.GameObjects.Graphics;
   private readonly volume: TouchVolumeBlock;
+  private readonly help: [CachedText, CachedText];
+  private helpMode: SteeringMode | null = null;
 
-  constructor(scene: Phaser.Scene, audio: AudioDirector, mode: InputModeController, callbacks: TouchStartCallbacks) {
+  constructor(
+    scene: Phaser.Scene,
+    audio: AudioDirector,
+    mode: InputModeController,
+    private readonly steering: SteeringController,
+    callbacks: TouchStartCallbacks,
+  ) {
     this.icons = scene.add.graphics().setDepth(2);
 
     addText(scene, LEFT_X + 280, 128, 'HOW TO PLAY', { size: 30, color: COLORS.heading, originX: 0.5, originY: 0.5 });
-    HOW_TO_PLAY.forEach((line, i) => {
-      addText(scene, LEFT_X, 172 + i * 40, line, { size: 25, color: i === 1 ? COLORS.dim : COLORS.hint, originY: 0.5, bold: i !== 1 });
-    });
+    const lines = HOW_TO_PLAY.map((line, i) =>
+      addText(scene, LEFT_X, 172 + i * 40, line, { size: 25, color: i === 1 ? COLORS.dim : COLORS.hint, originY: 0.5, bold: i !== 1 }),
+    );
+    this.help = [new CachedText(lines[0] as Phaser.GameObjects.Text, COLORS.hint, 25), new CachedText(lines[1] as Phaser.GameObjects.Text, COLORS.dim, 25)];
 
     addText(scene, LEFT_X + 280, 402, 'POWER-UPS', { size: 28, color: COLORS.heading, originX: 0.5, originY: 0.5 });
     POWERUPS.forEach(([type, name, description], i) => {
@@ -59,14 +70,23 @@ export class TouchStartMenu {
       addText(scene, x + 34, y + 13, description, { size: 17, color: COLORS.hint, originY: 0.5, bold: false });
     });
 
-    new TouchButton(scene, RIGHT_X, 190, 540, 140, 'TAP TO PLAY', callbacks.start, { size: 48, fill: 0x1d6b3a, depth: 5 });
-    this.volume = new TouchVolumeBlock(scene, audio, RIGHT_X, 330, 5);
-    new TouchButton(scene, RIGHT_X, 640, 560, MIN_TARGET, '', callbacks.switchMode, { size: 24, depth: 5 }).setText(
+    // The right column is packed tight (every target is still a full MIN_TARGET tall): PLAY, volume, steering, then the keyboard switch.
+    // PLAY starts at y 105 and stops short of the right edge so the DOM Fullscreen pill (top right, 44 CSS px tall) never covers it.
+    new TouchButton(scene, RIGHT_X, 155, 480, 100, 'TAP TO PLAY', callbacks.start, { size: 48, fill: 0x1d6b3a, depth: 5 });
+    this.volume = new TouchVolumeBlock(scene, audio, RIGHT_X, 258, 5, 96);
+    new SteeringSelector(scene, steering, RIGHT_X, 568, 560, 5);
+    new TouchButton(scene, RIGHT_X, 664, 560, MIN_TARGET, '', callbacks.switchMode, { size: 24, depth: 5 }).setText(
       mode.isTouch ? 'CONTROLS: TOUCH  (tap for keyboard)' : 'CONTROLS: KEYBOARD  (tap for touch)',
     );
   }
 
   update(time: number): void {
+    if (this.helpMode !== this.steering.mode) {
+      this.helpMode = this.steering.mode;
+      const [first, second] = STEERING_HELP[this.helpMode];
+      this.help[0].set(first);
+      this.help[1].set(second);
+    }
     this.icons.clear();
     POWERUPS.forEach(([type], i) => {
       const { x, y } = ICON_POS(i);

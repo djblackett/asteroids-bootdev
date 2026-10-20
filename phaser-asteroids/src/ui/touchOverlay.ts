@@ -1,6 +1,7 @@
 import type { ControlElement } from '../input/touchBinding';
 import type { AbilityLabels, TouchLayer, TouchView } from '../input/touchControls';
-import type { StickView, TouchControl } from '../input/touchModel';
+import type { DpadView, SteeringMode, StickView, TouchControl } from '../input/touchModel';
+import type { SystemOverlay } from './systemOverlay';
 import './touch.css';
 
 /**
@@ -28,7 +29,8 @@ export class TouchOverlay implements TouchView {
   private readonly base: Part;
   private readonly knob: Part;
   private readonly hint: Part;
-  private readonly buttons: Readonly<Record<Exclude<TouchControl, 'stick'>, Part>>;
+  private readonly buttons: Readonly<Record<Exclude<TouchControl, 'stick' | 'dpad'>, Part>>;
+  private readonly lobes: Readonly<Record<'up' | 'down' | 'left' | 'right', Part>>;
   private readonly laserCount: Part;
   private readonly boostState: Part;
 
@@ -39,9 +41,15 @@ export class TouchOverlay implements TouchView {
   private stickKey = '';
   private radius = 0;
   private pressed: Record<string, boolean> = {};
+  private steering: SteeringMode | null = null;
+  private dpadKey = '';
   private abilityKey = '';
 
-  constructor(private readonly doc: Document = document) {
+  /** `system` (the Fullscreen button and its tip) is shown with the 'menu' layer and removed with the overlay. */
+  constructor(
+    private readonly doc: Document = document,
+    private readonly system: Pick<SystemOverlay, 'setShown' | 'destroy'> | null = null,
+  ) {
     const body = doc.body;
 
     this.root = make(doc, body, 'tc-root');
@@ -53,6 +61,17 @@ export class TouchOverlay implements TouchView {
     make(doc, this.hint, 'tc-hint-text', 'STEER');
     this.base = make(doc, this.root, 'tc-base');
     this.knob = make(doc, this.base, 'tc-knob');
+
+    // The D-pad: a round touch target (the whole disc is one control, so a thumb between two arms is a diagonal) with four arms
+    // that light up. The arms and hub are for the eye only; the direction is worked out from where the thumb is, see touchModel.ts.
+    const dpad = make(doc, this.root, 'tc-dpad');
+    this.lobes = {
+      up: make(doc, dpad, 'tc-lobe tc-lobe-up'),
+      down: make(doc, dpad, 'tc-lobe tc-lobe-down'),
+      left: make(doc, dpad, 'tc-lobe tc-lobe-left'),
+      right: make(doc, dpad, 'tc-lobe tc-lobe-right'),
+    };
+    make(doc, dpad, 'tc-hub');
 
     const fire = make(doc, this.root, 'tc-btn tc-fire');
     make(doc, fire, 'tc-label', 'FIRE');
@@ -68,7 +87,7 @@ export class TouchOverlay implements TouchView {
     make(doc, pause, 'tc-bar');
 
     this.buttons = { fire, laser, boost, pause };
-    this.elements = { stick: zone, fire, laser, boost, pause };
+    this.elements = { stick: zone, dpad, fire, laser, boost, pause };
 
     // Phaser also listens for touches on the window and processes every one whose target is not the canvas, unless the event is
     // already default-prevented. `preventDefault()` on a pointer event does not do that to the touch event, so without this a
@@ -103,6 +122,21 @@ export class TouchOverlay implements TouchView {
     if (layer === this.layer) return;
     this.layer = layer;
     this.root.classList.toggle('tc-play', layer === 'play');
+    this.system?.setShown(layer === 'menu');
+  }
+
+  setSteering(mode: SteeringMode): void {
+    if (mode === this.steering) return;
+    this.steering = mode;
+    this.root.classList.toggle('tc-steer-dpad', mode === 'dpad');
+    this.root.classList.toggle('tc-steer-joystick', mode === 'joystick');
+  }
+
+  renderDpad(dpad: DpadView): void {
+    const key = `${dpad.up ? 'u' : ''}${dpad.down ? 'd' : ''}${dpad.left ? 'l' : ''}${dpad.right ? 'r' : ''}`;
+    if (key === this.dpadKey) return;
+    this.dpadKey = key;
+    for (const side of ['up', 'down', 'left', 'right'] as const) this.lobes[side].classList.toggle('tc-on', dpad[side]);
   }
 
   setPortrait(portrait: boolean): void {
@@ -127,7 +161,7 @@ export class TouchOverlay implements TouchView {
   }
 
   setPressed(control: TouchControl, pressed: boolean): void {
-    if (control === 'stick' || this.pressed[control] === pressed) return;
+    if (control === 'stick' || control === 'dpad' || this.pressed[control] === pressed) return;
     this.pressed[control] = pressed;
     this.buttons[control].classList.toggle('tc-down', pressed);
   }
@@ -145,6 +179,7 @@ export class TouchOverlay implements TouchView {
   destroy(): void {
     this.root.remove();
     this.rotate.remove();
+    this.system?.destroy();
     this.doc.body.classList.remove('tc-active', 'tc-portrait');
   }
 }

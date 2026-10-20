@@ -1,6 +1,8 @@
 import type Phaser from 'phaser';
 import { formatPercent, type VolumeChannel } from '../audio/audioSettings';
 import type { AudioDirector } from '../audio/phaserAudio';
+import type { SteeringController } from '../input/steeringMode';
+import type { SteeringMode } from '../input/touchModel';
 import { CachedText } from './hud';
 import { addText, COLORS } from './text';
 
@@ -25,6 +27,9 @@ export class TouchButton {
   private readonly label: CachedText;
   private readonly fill: number;
   private readonly stroke: number;
+  private readonly color: string;
+  private caption = '';
+  private selected = false;
   private visible = true;
   private enabled = true;
 
@@ -40,17 +45,28 @@ export class TouchButton {
   ) {
     this.fill = fill;
     this.stroke = stroke;
+    this.color = color;
     this.rect = scene.add.rectangle(x, y, w, Math.max(h, MIN_TARGET), fill).setStrokeStyle(3, stroke).setDepth(depth);
     this.rect.setInteractive();
     this.rect.on('pointerdown', () => {
       if (this.visible && this.enabled) this.onTap();
     });
     this.label = new CachedText(addText(scene, x, y, text, { size, color, originX: 0.5, originY: 0.5 }).setDepth(depth + 1), color, size);
+    this.caption = text;
     this.label.set(text);
   }
 
   setText(text: string, color?: string): void {
+    this.caption = text;
     this.label.set(text, color);
+  }
+
+  /** Marks this button as the chosen one of a group (green fill, gold outline and label). */
+  setSelected(selected: boolean): void {
+    if (selected === this.selected) return;
+    this.selected = selected;
+    this.rect.setFillStyle(selected ? 0x1d6b3a : this.fill).setStrokeStyle(selected ? 5 : 3, selected ? 0xffc800 : this.stroke);
+    this.label.set(this.caption, selected ? COLORS.heading : this.color);
   }
 
   setVisible(visible: boolean): void {
@@ -90,20 +106,22 @@ export class TouchVolumeBlock {
     x: number,
     y: number,
     depth: number,
+    rowStep: number = ROW_STEP,
   ) {
     const rows: ReadonlyArray<readonly [VolumeChannel, string]> = [
       ['music', 'MUSIC'],
       ['sfx', 'SFX'],
     ];
     rows.forEach(([channel, name], i) => {
-      const rowY = y + i * ROW_STEP;
+      const rowY = y + i * rowStep;
       this.labels.push(addText(scene, x - 270, rowY, name, { size: 30, color: COLORS.hint, originY: 0.5 }).setDepth(depth + 1));
       this.parts.push(new TouchButton(scene, x + 30, rowY, 96, MIN_TARGET, '-', () => this.audio.adjustVolume(channel, -1), { size: 44, depth }));
       const value = new CachedText(addText(scene, x + 135, rowY, '', { size: 32, originX: 0.5, originY: 0.5 }).setDepth(depth + 1), COLORS.white, 32);
       this.values.push([channel, value]);
       this.parts.push(new TouchButton(scene, x + 240, rowY, 96, MIN_TARGET, '+', () => this.audio.adjustVolume(channel, 1), { size: 44, depth }));
     });
-    this.mute = new TouchButton(scene, x, y + 2 * ROW_STEP - 6, 560, MIN_TARGET, '', () => this.audio.music.toggleMuted(), { size: 28, depth });
+    // The mute button sits one 90 px button and an 8 px gap below the SFX row, however tight the rows are packed.
+    this.mute = new TouchButton(scene, x, y + rowStep + MIN_TARGET + 8, 560, MIN_TARGET, '', () => this.audio.music.toggleMuted(), { size: 28, depth });
     this.parts.push(this.mute);
     this.update();
   }
@@ -128,6 +146,44 @@ export class TouchVolumeBlock {
   }
 }
 
+const SELECTOR_GAP = 8;
+
+/**
+ * STEERING: JOYSTICK | D-PAD as two side-by-side buttons with the chosen one lit, so both options are always visible and a switch is
+ * one tap. It writes straight to the (persisted) steering controller and follows it, so the title and pause screens agree.
+ * `width` is the whole control; the caption sits just above it.
+ */
+export class SteeringSelector {
+  private readonly buttons: Record<SteeringMode, TouchButton>;
+  private readonly caption: Phaser.GameObjects.Text;
+  private readonly stop: () => void;
+
+  constructor(scene: Phaser.Scene, private readonly steering: SteeringController, x: number, y: number, width: number, depth: number) {
+    const half = (width - SELECTOR_GAP) / 2;
+    this.caption = addText(scene, x, y - MIN_TARGET / 2 - 14, 'STEERING', { size: 22, color: COLORS.hint, originX: 0.5, originY: 0.5 }).setDepth(depth + 1);
+    const make = (mode: SteeringMode, dx: number, text: string): TouchButton =>
+      new TouchButton(scene, x + dx, y, half, MIN_TARGET, text, () => this.steering.set(mode), { size: 28, depth });
+    this.buttons = {
+      joystick: make('joystick', -(half + SELECTOR_GAP) / 2, 'JOYSTICK'),
+      dpad: make('dpad', (half + SELECTOR_GAP) / 2, 'D-PAD'),
+    };
+    this.update(steering.mode);
+    this.stop = steering.onChange((mode) => this.update(mode));
+    scene.events.once('shutdown', this.stop);
+  }
+
+  private update(mode: SteeringMode): void {
+    this.buttons.joystick.setSelected(mode === 'joystick');
+    this.buttons.dpad.setSelected(mode === 'dpad');
+  }
+
+  setVisible(visible: boolean): void {
+    this.caption.setVisible(visible);
+    this.buttons.joystick.setVisible(visible);
+    this.buttons.dpad.setVisible(visible);
+  }
+}
+
 export interface TouchPauseCallbacks {
   resume: () => void;
   menu: () => void;
@@ -138,11 +194,13 @@ export class TouchPauseMenu {
   private readonly resume: TouchButton;
   private readonly menu: TouchButton;
   private readonly volume: TouchVolumeBlock;
+  private readonly steering: SteeringSelector;
 
-  constructor(scene: Phaser.Scene, audio: AudioDirector, callbacks: TouchPauseCallbacks) {
+  constructor(scene: Phaser.Scene, audio: AudioDirector, steering: SteeringController, callbacks: TouchPauseCallbacks) {
     this.resume = new TouchButton(scene, 340, 300, 480, 130, 'RESUME', callbacks.resume, { size: 44, fill: 0x1d6b3a });
     this.menu = new TouchButton(scene, 340, 460, 480, 110, 'MAIN MENU', callbacks.menu, { size: 34 });
     this.volume = new TouchVolumeBlock(scene, audio, 940, 250, 23);
+    this.steering = new SteeringSelector(scene, steering, 340, 610, 480, 23);
     this.setVisible(false);
   }
 
@@ -150,6 +208,7 @@ export class TouchPauseMenu {
     this.resume.setVisible(visible);
     this.menu.setVisible(visible);
     this.volume.setVisible(visible);
+    this.steering.setVisible(visible);
   }
 
   update(): void {

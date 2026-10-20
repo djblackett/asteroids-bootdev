@@ -28,7 +28,7 @@ npm run test:input    # build, then real-browser keyboard tests: simultaneous ke
 npm run test:combat   # build, then real-browser tests of combos, kill-streak banners and UFOs (same Chrome requirement)
 npm run test:coop     # build, then real-browser two-player tests: both players on one keyboard, lives, friendly fire, Revive, HUD
 npm run test:gamepad  # build, then real-browser tests with a SIMULATED gamepad (keyboard + controller co-op, hot-plug, focus, pause, restart)
-npm run test:touch    # build, then real-browser touch tests: genuine multi-touch (4 fingers), mobile viewports, portrait prompt, pause / retry, input-mode switch
+npm run test:touch    # build, then real-browser touch tests: genuine multi-touch (4 fingers), joystick and D-pad, fullscreen (scripted API + real), mobile viewports, portrait prompt, pause / retry, input-mode switch
 npm run test:pages    # build, then check the production build at the Pages URL path and at / (the deployment gate)
 ```
 
@@ -117,12 +117,14 @@ recovered Python mapping are in `docs/implementation-progress.md` (Phase 5).
 ### Touchscreen (phone / tablet prototype, one player, landscape)
 
 On a device whose primary pointer is a finger the game starts in touch mode (`?touch=1` / `?touch=0` forces it; the CONTROLS button on the
-title screen switches and remembers). Left side: a floating joystick (drag anywhere; left / right rotates, up / down flies, proportional
-with the controller's dead zone). Right side: **FIRE** (hold; works while steering), **LASER** (tap) and **BOOST** (tap); **PAUSE** top right.
+title screen switches and remembers). Left side: your choice of a floating joystick (drag anywhere; left / right rotates, up / down flies, proportional
+with the controller's dead zone) or a digital **D-pad** (up = forward, down = back, left / right turn, corners do both with one thumb); pick it with the
+**STEERING: JOYSTICK | D-PAD** buttons on the title and pause screens (remembered). A **FULLSCREEN** button (title and pause screens) hides the browser's
+address bar where the browser allows it; on iPhone Safari, which does not, it offers a short Add-to-Home-Screen tip instead. Right side: **FIRE** (hold; works while steering), **LASER** (tap) and **BOOST** (tap); **PAUSE** top right.
 Menus, pause, volume and game over all work by touch. In portrait a "Rotate your phone to play." prompt covers the game and pauses it.
 Desktop keyboard, controller and two-player play are unchanged. It has been tested in Chromium's touch emulation only: layout, input
 mapping, lifecycle rules, browser tests, what to check by hand on Android Chrome and iPhone Safari, and the known issues are in
-[docs/mobile-touch.md](docs/mobile-touch.md).
+[docs/mobile-touch.md](docs/mobile-touch.md); a possible future installed-web-app configuration is sketched in [docs/standalone-web-app.md](docs/standalone-web-app.md).
 
 ## Layout
 
@@ -139,14 +141,14 @@ src/
     gameConfig.ts                       players / lives mode / friendly fire / speed handicaps chosen on the title screen
   scenes/    Boot (load audio) -> Start (title) -> Game (glue: input, sim.step, draw, overlays)
   render/    Procedural drawing into two reusable Graphics objects (stars, playfield)
-  input/     Held keys (by KeyboardEvent.code), gamepads (GamepadHub, gamepadMapping) and touch (touchModel, touchBinding, touchControls, inputMode) -> the same PlayerInput; one-shot key dispatcher; ?keydebug diagnostics
+  input/     Held keys (by KeyboardEvent.code), gamepads (GamepadHub, gamepadMapping) and touch (touchModel, touchBinding, touchControls, inputMode, steeringMode, fullscreen) -> the same PlayerInput; one-shot key dispatcher; ?keydebug diagnostics
   audio/     Pure logic (event -> sound, music state machine, volume settings, mix config) + one Phaser adapter (`AudioDirector`)
-  ui/        HUD, pause / game-over overlays, the Music / SFX volume panel, the title screen's controller status; touch: DOM overlay (touchOverlay.ts, touch.css) and touch menus
+  ui/        HUD, pause / game-over overlays, the Music / SFX volume panel, the title screen's controller status; touch: DOM overlay (touchOverlay.ts, systemOverlay.ts, touch.css) and touch menus
 tests/       Vitest suites for src/core and src/audio (no browser, no audio device)
   gameSetup.ts  The title screen's choices (kept in the Phaser registry); the game scene builds a fresh GameSim from them
 scripts/     smoke.mjs: browser smoke test; keyboard.mjs: real-browser keyboard tests; combat.mjs: combo / banner / UFO tests;
              coop.mjs: two-player tests; gamepad.mjs: keyboard + simulated-gamepad co-op tests; touch.mjs: multi-touch / mobile-viewport tests
-docs/        implementation-progress.md, deployment.md, mobile-touch.md
+docs/        implementation-progress.md, deployment.md, mobile-touch.md, standalone-web-app.md
 ```
 
 Design rule: gameplay lives in `src/core` and is driven only by `GameSim.step(dt, input)`; Phaser is used for

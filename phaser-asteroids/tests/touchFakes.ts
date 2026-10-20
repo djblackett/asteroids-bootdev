@@ -1,6 +1,6 @@
 import type { BindingDocument, BindingHost, ControlElement, RectLike } from '../src/input/touchBinding';
 import type { AbilityLabels, TouchLayer, TouchView } from '../src/input/touchControls';
-import type { StickView, TouchControl } from '../src/input/touchModel';
+import type { DpadView, SteeringMode, StickView, TouchControl } from '../src/input/touchModel';
 import { TOUCH_CONTROLS } from '../src/input/touchModel';
 
 /** An EventTarget that also counts its listeners, so "everything was removed" can be asserted. */
@@ -76,6 +76,8 @@ export function pointer(type: string, id: number, x = 0, y = 0, options: Pointer
 /** Where each control sits on the fake 844 x 390 landscape screen (a rough match of the real layout). */
 export const LAYOUT: Readonly<Record<TouchControl, RectLike>> = {
   stick: { left: 0, top: 0, right: 388, bottom: 390 },
+  // The D-pad: a 170 px disc, bottom left (centre 105, 275). It shares the left side with the (hidden) stick zone, as on the real screen.
+  dpad: { left: 20, top: 190, right: 190, bottom: 360 },
   fire: { left: 700, top: 240, right: 810, bottom: 350 },
   laser: { left: 610, top: 276, right: 680, bottom: 346 },
   boost: { left: 718, top: 150, right: 792, bottom: 224 },
@@ -97,6 +99,8 @@ export class FakeView implements TouchView {
   layer: TouchLayer = 'off';
   portrait = false;
   stick: StickView | null = null;
+  dpad: DpadView | null = null;
+  steering: SteeringMode | null = null;
   pressed: Partial<Record<TouchControl, boolean>> = {};
   abilities: AbilityLabels | null = null;
   destroyed = false;
@@ -111,6 +115,12 @@ export class FakeView implements TouchView {
   }
   renderStick(stick: StickView): void {
     this.stick = stick;
+  }
+  renderDpad(dpad: DpadView): void {
+    this.dpad = dpad;
+  }
+  setSteering(mode: SteeringMode): void {
+    this.steering = mode;
   }
   setPressed(control: TouchControl, pressed: boolean): void {
     this.pressed[control] = pressed;

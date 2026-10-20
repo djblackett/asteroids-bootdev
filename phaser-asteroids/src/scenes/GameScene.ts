@@ -6,7 +6,7 @@ import { NO_INPUT, type PlayerInput } from '../core/player';
 import { getSetup, simConfigOf } from '../gameSetup';
 import { getGamepadHub } from '../input/gameGamepads';
 import { getHeldKeys } from '../input/gameKeys';
-import { getTouchControls } from '../input/gameTouch';
+import { getSteering, getTouchControls } from '../input/gameTouch';
 import type { GamepadHub } from '../input/gamepadHub';
 import type { HeldKeys } from '../input/heldKeys';
 import type { TouchControls } from '../input/touchControls';
@@ -134,7 +134,7 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false);
 
     if (this.touchUi) {
-      this.touchPause = new TouchPauseMenu(this, this.audio, { resume: () => this.togglePause(), menu: () => this.toMenu() });
+      this.touchPause = new TouchPauseMenu(this, this.audio, getSteering(this), { resume: () => this.togglePause(), menu: () => this.toMenu() });
       this.touchOver = new TouchGameOverButtons(this, { retry: () => this.retry(), menu: () => this.toMenu() });
     }
 
@@ -186,11 +186,12 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * The on-screen controls are shown only while the run is being played; pausing, game over and leaving the scene take them away
-   * (and with them every finger that was on them), so nothing is held into a menu and the canvas gets the menu's taps.
+   * (and with them every finger that was on them), so nothing is held into a menu and the canvas gets the menu's taps. The pause
+   * screen also shows the system controls (Fullscreen).
    */
   private updateTouchControls(): void {
     const playing = !this.paused && !this.sim.isGameOver;
-    this.touch.setLayer(playing ? 'play' : 'off');
+    this.touch.setLayer(playing ? 'play' : this.paused && !this.sim.isGameOver ? 'menu' : 'off');
     if (playing) this.touch.setAbilities(abilityLabels(this.sim.player));
   }
 
