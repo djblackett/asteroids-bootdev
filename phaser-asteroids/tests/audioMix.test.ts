@@ -87,7 +87,9 @@ class TimedBackend implements SfxBackend {
 function newParts(storage = new FakeStorage()) {
   const track = new FakeTrack();
   const backend = new FakeBackend();
-  const parts = createAudioParts(storage, track, backend, seededRng(3));
+  // These tests are about the volumes, so the soundtrack is pinned to Original (the level the volume maths below assumes);
+  // the default soundtrack choice has its own tests in musicTracks.test.ts.
+  const parts = createAudioParts(storage, track, backend, seededRng(3), { choice: 'original', track: 'original' });
   return { storage, track, backend, ...parts, parts };
 }
 

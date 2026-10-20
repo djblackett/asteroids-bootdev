@@ -91,8 +91,11 @@ process.exit(failures ? 1 : 0);
 
 // ---------------------------------------------------------------------------------------------------------
 
-/** A page with its console / network recorded. `touch` gives mobile emulation; `pad` a scripted Gamepad API. */
-async function open({ query = '?debug', touch = false, size, pad = false, seed = null } = {}) {
+/**
+ * A page with its console / network recorded. `touch` gives mobile emulation; `pad` a scripted Gamepad API. `seed`: what is in localStorage
+ * before the first load; by default the soundtrack is Original so the steps below are predictable (`null` = a brand-new visitor, who gets Random).
+ */
+async function open({ query = '?debug', touch = false, size, pad = false, seed = { [STORE]: 'original' } } = {}) {
   const viewport = size ?? (touch ? { width: 844, height: 390 } : { width: 1280, height: 720 });
   const context = await browser.newContext({ viewport, deviceScaleFactor: touch ? 2 : 1, isMobile: touch, hasTouch: touch });
   if (seed) {
@@ -268,14 +271,40 @@ async function open({ query = '?debug', touch = false, size, pad = false, seed =
 
 async function run() {
   // =====================================================================================================
-  // 1. A first visit: Original, and only Original is downloaded before the title appears
+  // 1. A first visit: the default is Random, and only the first game's track is downloaded before the title appears
   // =====================================================================================================
-  console.log('\n--- first visit ---');
+  console.log('\n--- first visit (the default is Random) ---');
+  const fresh = await open({ seed: null });
+  await fresh.goto();
+  let s = await fresh.audio();
+  check('a new visitor has nothing saved and gets Random', s.stored === null && s.choice === 'random' && ['original', 'megaman', 'gatekeeper'].includes(s.current), JSON.stringify({ stored: s.stored, choice: s.choice, current: s.current }));
+  const wantFile = { original: 'retro-bgmusic.ogg', megaman: 'megaman.mp3', gatekeeper: 'gatekeeper.mp3' }[s.current];
+  check("only the first game's track was downloaded to show the title screen", fresh.musicRequests.length === 1 && fresh.musicRequests[0] === wantFile, JSON.stringify({ req: fresh.musicRequests, current: s.current }));
+  check('the audio is locked and nothing plays before the first key press', s.locked === true && s.count === 0 && s.state === 'stopped', JSON.stringify({ locked: s.locked, count: s.count }));
+  check('the title screen shows the Track row with Random', (await fresh.texts('StartScene')).some((x) => /Track\s*<\s*Random\s*>/.test(x)));
+  await fresh.key('Shift');
+  s = await fresh.playing(KEY_OF[s.current]);
+  check('the first key press plays that track once, looping, at its level', !s.locked && s.count === 1 && s.sounds[0]?.playing && s.sounds[0]?.loop === true && near(s.sounds[0]?.volume, GAIN[s.sounds[0]?.key], 1e-6), JSON.stringify(s.sounds));
+  await fresh.start();
+  s = await fresh.settled();
+  check('starting the game keeps that track (no switch at the first game)', s.count === 1 && s.sounds[0]?.key === KEY_OF[s.current], JSON.stringify(s.sounds));
+  check('console clean on a first visit', fresh.problems.length === 0, fresh.problems.join(' | '));
+  await fresh.context.close();
+  // Separate visits get different tracks: the pick is random on every page load.
+  const seenFirst = new Set();
+  for (let i = 0; i < 8; i++) {
+    const v = await open({ seed: null });
+    await v.goto();
+    seenFirst.add((await v.audio()).current);
+    await v.context.close();
+  }
+  check('separate visits get different tracks (at least two of the three over 8 visits)', seenFirst.size >= 2, JSON.stringify([...seenFirst]));
+
+  console.log('\n--- first visit: Original selected ---');
   const a = await open();
   await a.goto();
-  let s = await a.audio();
-  check('a new player has no saved soundtrack and gets Original', s.stored === null && s.choice === 'original' && s.current === 'original', JSON.stringify({ stored: s.stored, choice: s.choice }));
-  check('only the Original music file was downloaded to show the title screen', a.musicRequests.length === 1 && a.musicRequests[0] === 'retro-bgmusic.ogg', JSON.stringify(a.musicRequests));
+  s = await a.audio();
+  check('with Original saved, only the Original music file is downloaded to show the title screen', s.choice === 'original' && a.musicRequests.length === 1 && a.musicRequests[0] === 'retro-bgmusic.ogg', JSON.stringify(a.musicRequests));
   check('the audio is locked and nothing plays before the first key press', s.locked === true && s.count === 0 && s.state === 'stopped', JSON.stringify({ locked: s.locked, count: s.count }));
   const titleTexts = await a.texts('StartScene');
   check('the title screen shows the Track row with Original', titleTexts.some((x) => /Track\s*<\s*Original\s*>/.test(x)), JSON.stringify(titleTexts.filter((x) => /Track|Music|SFX/.test(x))));
@@ -451,7 +480,7 @@ async function run() {
     const p = await open({ seed: { [STORE]: stale } });
     await p.goto();
     s = await p.audio();
-    check(`an invalid saved value (${JSON.stringify(stale)}) is ignored: Original`, s.choice === 'original' && s.current === 'original' && p.problems.length === 0);
+    check(`an invalid saved value (${JSON.stringify(stale)}) is ignored: the default, Random`, s.choice === 'random' && ['original', 'megaman', 'gatekeeper'].includes(s.current) && p.problems.length === 0);
     await p.context.close();
   }
 

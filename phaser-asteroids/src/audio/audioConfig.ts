@@ -52,7 +52,8 @@ export const MUSIC_TRACKS: readonly MusicTrackDef[] = [
 ];
 
 export const DEFAULT_MUSIC_TRACK: MusicTrackId = 'original';
-export const DEFAULT_MUSIC_CHOICE: MusicChoice = DEFAULT_MUSIC_TRACK;
+/** What a player with no saved choice gets: a different track each game. (`DEFAULT_MUSIC_TRACK` is the fall-back when a track cannot be loaded.) */
+export const DEFAULT_MUSIC_CHOICE: MusicChoice = 'random';
 
 /** Decoded music is large (about 0.4 MB per second). Only this many decoded tracks stay in memory: the playing one and the last one. */
 export const MAX_DECODED_MUSIC_TRACKS = 2;

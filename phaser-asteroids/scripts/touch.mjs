@@ -795,6 +795,14 @@ async function mobilePage(width, height, { query = '?debug', mobile = true, touc
       }
     }, steering);
   }
+  // A new visitor's soundtrack is Random now; this suite's checks are about the Original track's level and key, so it starts on Original (the music suite covers the default).
+  await context.addInitScript(() => {
+    try {
+      if (localStorage.getItem('asteroids.musicTrack') === null) localStorage.setItem('asteroids.musicTrack', 'original');
+    } catch {
+      // storage blocked: nothing to seed
+    }
+  });
   const page = await context.newPage();
   const problems = [];
   const requests = [];

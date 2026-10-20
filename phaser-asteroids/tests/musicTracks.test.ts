@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AUDIO_ASSETS,
   DEFAULT_MUSIC_CHOICE,
+  DEFAULT_MUSIC_TRACK,
   DEFAULT_MUSIC_VOLUME,
   MUSIC_KEY,
   MUSIC_MAX_GAIN,
@@ -115,10 +116,17 @@ describe('validation, stepping and persistence', () => {
     for (const bad of ['', 'Original', 'RANDOM', 'mega man', 'shuffle', null, undefined, 3, {}]) expect(isMusicChoice(bad)).toBe(false);
   });
 
-  it('defaults to Original for a new player', () => {
-    expect(DEFAULT_MUSIC_CHOICE).toBe('original');
-    expect(loadMusicChoice(new FakeStorage())).toBe('original');
-    expect(loadMusicChoice(null)).toBe('original');
+  it('defaults to Random for a new player (a different track each game); Original is the fall-back track', () => {
+    expect(DEFAULT_MUSIC_CHOICE).toBe('random');
+    expect(DEFAULT_MUSIC_TRACK).toBe('original');
+    expect(loadMusicChoice(new FakeStorage())).toBe('random');
+    expect(loadMusicChoice(null)).toBe('random');
+  });
+
+  it('keeps a saved Original: choosing it explicitly is not overridden by the Random default', () => {
+    const storage = new FakeStorage();
+    saveMusicChoice(storage, 'original');
+    expect(loadMusicChoice(storage)).toBe('original');
   });
 
   it('cycles forward and backward through the choices and wraps', () => {
@@ -139,18 +147,18 @@ describe('validation, stepping and persistence', () => {
     }
   });
 
-  it('ignores invalid or stale stored values and falls back to Original', () => {
+  it('ignores invalid or stale stored values and falls back to the default (Random)', () => {
     for (const stale of ['', 'retro-bgmusic.ogg', 'music', 'megaman.mp3', 'true', '2', 'Random', '{"track":"megaman"}']) {
       const storage = new FakeStorage();
       storage.data.set(MUSIC_TRACK_STORAGE_KEY, stale);
-      expect(loadMusicChoice(storage)).toBe('original');
+      expect(loadMusicChoice(storage)).toBe(DEFAULT_MUSIC_CHOICE);
     }
   });
 
   it('survives blocked storage in both directions', () => {
     const storage = new FakeStorage();
     storage.broken = true;
-    expect(loadMusicChoice(storage)).toBe('original');
+    expect(loadMusicChoice(storage)).toBe(DEFAULT_MUSIC_CHOICE);
     expect(() => saveMusicChoice(storage, 'megaman')).not.toThrow();
   });
 
@@ -214,6 +222,10 @@ describe('Random selection', () => {
 
   it('start-up resolves Random to a real track and an explicit choice to itself', () => {
     const storage = new FakeStorage();
+    const fresh = resolveStartupMusic(storage, seededRng(1));
+    expect(fresh.choice).toBe('random');
+    expect(MUSIC_TRACKS.map((t) => t.id)).toContain(fresh.track);
+    storage.data.set(MUSIC_TRACK_STORAGE_KEY, 'original');
     expect(resolveStartupMusic(storage, seededRng(1))).toEqual({ choice: 'original', track: 'original' });
     storage.data.set(MUSIC_TRACK_STORAGE_KEY, 'gatekeeper');
     expect(resolveStartupMusic(storage, seededRng(1))).toEqual({ choice: 'gatekeeper', track: 'gatekeeper' });

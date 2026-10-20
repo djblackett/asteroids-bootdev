@@ -39,7 +39,7 @@ standard 90 game-px height (at least 44 CSS px on every tested phone) and never 
 
 ## Behaviour
 
-* **Default** (no saved value, or a stale / invalid one): Original. The choice is saved in `localStorage` under
+* **Default** (no saved value, or a stale / invalid one): **Random**, so a new visitor hears a different track on each visit. Original is only the fall-back track (when another cannot be loaded) and the choice of anyone who picks it. The choice is saved in `localStorage` under
   `asteroids.musicTrack` as `original`, `megaman`, `gatekeeper` or `random` (Random is saved as a mode, never as a file name). Nothing
   else (volumes, mute, steering, input mode) is read or written by the selector.
 * **An explicit track** switches at once, from its beginning, if the music is audible; if the game is paused, muted or the window is
@@ -57,8 +57,8 @@ standard 90 game-px height (at least 44 CSS px on every tested phone) and never 
 
 ## Loading and memory
 
-* The boot screen loads the effects and **one** music file: the saved track (Original on a first visit; for Random the track picked for
-  the first game). The other two files are not requested until somebody picks them (checked in `scripts/music.mjs` and
+* The boot screen loads the effects and **one** music file: the saved track (for Random, which is also what a new visitor gets, the track picked for
+  the first game: any of the three, so a first visit may download 1.5, 3.0 or 3.9 MB of music). The other two files are not requested until somebody picks them (checked in `scripts/music.mjs` and
   `scripts/pages-check.mjs`).
 * A track that is not decoded yet is fetched with a relative URL (`audio/music/megaman.mp3`, which works from the GitHub Pages project
   path and a custom domain alike), decoded with the Web Audio context and put in Phaser's audio cache under `music-megaman` /
@@ -118,7 +118,7 @@ These prove the wiring and the lifecycle. They do not prove how anything sounds.
 
 Desktop (speakers, then headphones) and the Android phone:
 
-1. Fresh profile (or clear site data): title screen says `Track < Original >`; press a key: the original music, same loudness as before this change.
+1. Fresh profile (or clear site data): title screen says `Track < Random >`; press a key: one of the three tracks plays; reload a few times and different ones come up. Pick Original and check it is the same loudness as before this change.
 2. Pick Mega Man, then Gatekeeper: each starts within a second or two (a little longer on mobile data the first time), **no click or pop** at the switch, no overlap of two songs.
 3. Compare the three at the same Music setting against a burst of shooting and an explosion: are they about equally loud? If not, nudge `gain` in `MUSIC_TRACKS`.
 4. Check each track at Music 100 % and at 30 %: no distortion, still audible.

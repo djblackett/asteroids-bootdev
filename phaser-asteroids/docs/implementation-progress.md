@@ -544,7 +544,7 @@ combat 39/39, co-op 65/65, gamepad 82/82, Pages 17/17; smoke 71/72 (the known SF
 Full write-up: [music-tracks.md](music-tracks.md) (files, behaviour, loudness measurements, memory, tests, listening checklist).
 
 - **Feature:** a Track row (Original, Mega Man, Gatekeeper, Random) on the title and pause screens, with keyboard, mouse, gamepad and
-  touch controls; saved as `asteroids.musicTrack`; Original by default. Random picks per new game (never the previous track) and holds
+  touch controls; saved as `asteroids.musicTrack`; **Random by default** (Original is the fall-back track). Random picks per new game (never the previous track) and holds
   through pause, focus, mute, orientation and scene changes.
 - **Audio lifecycle:** `MusicController` gained the soundtrack choice (`setChoice`, `beginRun`, `reportUnavailable`) and its player
   interface gained `stop` / `setSource`; `PhaserMusicTrack` downloads and decodes a track on demand, fades the old sound out in 40 ms,

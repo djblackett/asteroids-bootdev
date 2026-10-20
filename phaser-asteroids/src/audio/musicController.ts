@@ -1,6 +1,5 @@
 import type { Rng } from '../core/rng';
 import {
-  DEFAULT_MUSIC_CHOICE,
   DEFAULT_MUSIC_TRACK,
   DEFAULT_MUSIC_VOLUME,
   MEGA_POWER_MUSIC_SPEED,
@@ -37,7 +36,7 @@ export interface MusicControllerOptions {
   volume?: number;
   megaPowerSpeedup?: boolean;
   megaPowerSpeed?: number;
-  /** The soundtrack setting (saved by the owner); default Original. */
+  /** The soundtrack setting (saved by the owner). The controller itself defaults to Original; the game's default for new players is `DEFAULT_MUSIC_CHOICE` (Random), applied where settings are loaded. */
   choice?: MusicChoice;
   /** The track the first game plays when that was already decided (Random picked early, so the right file could be loaded). */
   track?: MusicTrackId;
@@ -96,7 +95,7 @@ export class MusicController {
     this.warn = options.warn ?? ((message) => console.warn(`[asteroids] ${message}`));
     this.rng = options.rng ?? Math.random;
     this.volume = clampVolume(options.volume ?? DEFAULT_MUSIC_VOLUME, DEFAULT_MUSIC_VOLUME);
-    this.soundtrack = isMusicChoice(options.choice) ? options.choice : DEFAULT_MUSIC_CHOICE;
+    this.soundtrack = isMusicChoice(options.choice) ? options.choice : DEFAULT_MUSIC_TRACK;
     this.current = options.track ?? (this.soundtrack === 'random' ? pickRandomTrack(this.rng) : this.soundtrack);
     this.freshPick = this.soundtrack === 'random';
     this.track.setSource(this.current);
