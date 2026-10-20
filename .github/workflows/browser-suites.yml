@@ -1,0 +1,58 @@
+name: Phaser browser suites
+
+# The full real-browser suites (smoke, keyboard, combat, co-op, gamepad). Slower than the checks that gate deployment,
+# so they run only when started by hand (Actions tab -> "Phaser browser suites" -> Run workflow) and never block a
+# deploy. Each suite reports separately; a failure in one does not hide the others.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  suites:
+    name: Browser suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: phaser-asteroids
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: phaser-asteroids/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: |
+          npm run build
+          google-chrome --version
+
+      - name: Smoke
+        if: ${{ !cancelled() }}
+        run: node scripts/smoke.mjs
+
+      - name: Keyboard
+        if: ${{ !cancelled() }}
+        run: node scripts/keyboard.mjs
+
+      - name: Combat
+        if: ${{ !cancelled() }}
+        run: node scripts/combat.mjs
+
+      - name: Co-op
+        if: ${{ !cancelled() }}
+        run: node scripts/coop.mjs
+
+      - name: Gamepad (simulated controller)
+        if: ${{ !cancelled() }}
+        run: node scripts/gamepad.mjs

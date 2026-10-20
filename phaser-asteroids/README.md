@@ -26,6 +26,7 @@ npm run test:input    # build, then real-browser keyboard tests: simultaneous ke
 npm run test:combat   # build, then real-browser tests of combos, kill-streak banners and UFOs (same Chrome requirement)
 npm run test:coop     # build, then real-browser two-player tests: both players on one keyboard, lives, friendly fire, Revive, HUD
 npm run test:gamepad  # build, then real-browser tests with a SIMULATED gamepad (keyboard + controller co-op, hot-plug, focus, pause, restart)
+npm run test:pages    # build, then check the production build at the GitHub Pages subpath and at / (the deployment gate)
 ```
 
 `npm run test:browser` uses `playwright-core` (dev dependency, no browser download) with a locally installed Chrome,
@@ -44,6 +45,13 @@ The panel keeps a rolling ~10 s history (timestamped raw keydown / keyup events,
 screenshots; **Copy Diagnostic Report** copies a text report (the frozen one if frozen); **Clear Capture** discards it
 and resumes. Nothing is cleared by releasing keys or blurring the window. With a controller connected the same panel also lists each
 controller's mapping, raw axes / buttons, the normalised command and which player receives it (bounded: 4 pads, a few lines each).
+
+## Deployment
+
+Pushes to `main` publish the game to GitHub Pages at <https://djblackett.github.io/asteroids-bootdev/phaser/> via
+GitHub Actions. `npm run test:pages` builds and checks the production build under the Pages subpath and at `/`. Setup,
+what blocks a deploy, troubleshooting, rollback, gamepad checks and the custom-domain steps are in
+[docs/deployment.md](docs/deployment.md).
 
 ## Controls
 
