@@ -1,25 +1,20 @@
 name: Deploy to GitHub Pages
 
-# A repository has exactly one GitHub Pages site, and every deployment replaces it completely. This single workflow
-# therefore assembles the whole site and publishes it once:
+# Publishes the Phaser 4 port in phaser-asteroids/ as the whole GitHub Pages site, at the repository root:
+# https://djblackett.github.io/asteroids-bootdev/
 #
-#   /          the pygbag (browser) build of the original Python game, exactly as before (best effort, see `python`)
-#   /phaser/   the Phaser 4 port in phaser-asteroids/   https://djblackett.github.io/asteroids-bootdev/phaser/
-#
-# Pull requests only run the Phaser validation job. Nothing is deployed unless the run is on `main`; a manual run
-# from another branch validates but never publishes.
-# See phaser-asteroids/docs/deployment.md.
+# Pull requests only run the validation job. Nothing is deployed unless the run is on `main`; a manual run from
+# another branch validates but never publishes. See phaser-asteroids/docs/deployment.md.
 
 on:
   push:
     branches:
       - main
-    # The Python game is part of the site too, so only changes that cannot affect either build are ignored.
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - "tests/**"
-      - ".claude/**"
+    # Only the Phaser app (and this workflow) can change the site. The original Python game lives in the repository
+    # root and is not published, so changes to it never trigger a deployment.
+    paths:
+      - "phaser-asteroids/**"
+      - ".github/workflows/deploy-gh-pages.yml"
   # No path filter on purpose: a path-filtered workflow that is a required status check leaves PRs that touch
   # other paths waiting forever. The validation job takes about two minutes.
   pull_request:
@@ -33,7 +28,7 @@ permissions:
 
 jobs:
   # Blocks deployment: typecheck, unit tests, production build, and a real-browser check of that build served
-  # under the Pages subpath and at "/". The larger browser suites run separately (browser-suites.yml).
+  # at the Pages URL path (/asteroids-bootdev/) and at "/". The larger browser suites run separately (browser-suites.yml).
   phaser:
     name: Phaser - validate and build
     runs-on: ubuntu-latest
@@ -80,58 +75,9 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # The original Python game. This job is unchanged in what it builds; it is best effort because it has been failing
-  # since May 2026 (the live Python site is the 2026-01-25 build). If it fails, the deploy job publishes a root page
-  # that links to /phaser/ instead, so a broken pygbag build can no longer block the Phaser game.
-  python:
-    name: Python (pygbag) - build
-    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    outputs:
-      built: ${{ steps.build.outcome == 'success' }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pygbag
-
-      - name: Build game with pygbag
-        id: build
-        continue-on-error: true
-        run: |
-          # --no_opt keeps our WAV references untouched on Linux runners
-          pygbag --no_opt --build main.py
-
-      # Disabled: debug console hidden for cleaner production experience
-      # - name: Keep pygbag debug console visible
-      #   run: |
-      #     python scripts/force_debug_console.py build/web/index.html
-
-      - name: Upload Python site
-        if: ${{ steps.build.outcome == 'success' }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: python-site
-          path: build/web
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Report a failed pygbag build
-        if: ${{ steps.build.outcome != 'success' }}
-        run: echo "::warning title=pygbag build failed::The Python game is not part of this deployment. The site root will link to /phaser/ instead."
-
   deploy:
     name: Deploy to GitHub Pages
-    needs: [phaser, python]
+    needs: phaser
     if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -146,41 +92,17 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Download Phaser build
+      - name: Download the build
         uses: actions/download-artifact@v8
         with:
           name: phaser-site
-          path: site/phaser
-
-      - name: Download Python site
-        if: ${{ needs.python.outputs.built == 'true' }}
-        uses: actions/download-artifact@v8
-        with:
-          name: python-site
           path: site
-
-      - name: Write a root page that links to the Phaser game
-        if: ${{ needs.python.outputs.built != 'true' }}
-        run: |
-          cat > site/index.html <<'EOF'
-          <!doctype html>
-          <html lang="en">
-            <head>
-              <meta charset="UTF-8" />
-              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-              <meta http-equiv="refresh" content="0; url=phaser/" />
-              <title>Asteroids</title>
-              <style>body{background:#000;color:#ccc;font:20px sans-serif;text-align:center;padding-top:20vh}a{color:#7cf}</style>
-            </head>
-            <body><p><a href="phaser/">Play Asteroids</a></p></body>
-          </html>
-          EOF
 
       - name: Check the assembled site
         run: |
           test -f site/index.html
-          test -f site/phaser/index.html
-          test -f site/phaser/audio/music/retro-bgmusic.ogg
+          test -f site/audio/music/retro-bgmusic.ogg
+          test -d site/assets
           find site -maxdepth 2 | sort
 
       - name: Configure Pages

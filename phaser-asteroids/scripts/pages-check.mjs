@@ -1,12 +1,12 @@
-// Deployment check: serves the production build from dist/ the way GitHub Pages will and loads it in a real
+// Deployment check: serves the production build from dist/ as the root of the deployed site, the way GitHub Pages will and loads it in a real
 // (headless) Chrome. It exists to catch base-path mistakes that `vite preview` at "/" hides.
 //
 //   npm run test:pages          (builds first)
 //   node scripts/pages-check.mjs               (reuse an existing build in dist/)
 //
 // The build is mounted at each of these URL prefixes, one after the other:
-//   /asteroids-bootdev/phaser/   the GitHub Pages project URL (override: PAGES_BASE_PATH=/other/path/)
-//   /                            a custom domain such as asteroids.davidandrea.ca
+//   /asteroids-bootdev/   the deployed site: https://djblackett.github.io/asteroids-bootdev/ (override: PAGES_BASE_PATH=/other/)
+//   /                     a custom domain such as asteroids.davidandrea.ca
 // The server answers 404 for anything outside the mount, so a root-absolute asset URL that only works at "/" fails here.
 // Like Pages, it redirects the mount without a trailing slash to the one with it.
 //
@@ -20,7 +20,7 @@ import { chromium } from 'playwright-core';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dist = path.join(root, 'dist');
-const projectMount = (process.env.PAGES_BASE_PATH ?? '/asteroids-bootdev/phaser/').replace(/^\/?/, '/').replace(/\/?$/, '/');
+const projectMount = (process.env.PAGES_BASE_PATH ?? '/asteroids-bootdev/').replace(/^\/?/, '/').replace(/\/?$/, '/');
 const MOUNTS = [...new Set([projectMount, '/'])];
 
 const CONTENT_TYPES = {

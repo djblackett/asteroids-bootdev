@@ -1,37 +1,33 @@
 # Deploying to GitHub Pages
 
 The Phaser game is a static site (`npm run build` → `phaser-asteroids/dist/`): no server, no backend, nothing to
-install for players. GitHub Actions builds it and publishes it to GitHub Pages.
+install for players. GitHub Actions builds it and publishes it as the repository's GitHub Pages site.
 
-**URL:** <https://djblackett.github.io/asteroids-bootdev/phaser/>
+**URL:** <https://djblackett.github.io/asteroids-bootdev/>
 
-## What gets published
-
-A repository has one Pages site and every deployment replaces all of it, so
-[`.github/workflows/deploy-gh-pages.yml`](../../.github/workflows/deploy-gh-pages.yml) assembles the whole site:
-
-| Path | Content |
-| --- | --- |
-| `/phaser/` | This game (the `phaser` job's `dist/`). |
-| `/` | The pygbag build of the original Python game, as before. If that build fails, a small page that links to `/phaser/`. |
-
-The Python game's workflow had been failing since 2026-05-07 (the live Python site is the 2026-01-25 build). Its job is now
-best effort: a pygbag failure produces a warning and the link page, and never blocks the Phaser deployment. Fixing
-pygbag is separate from this work.
+The Pages site is exactly the contents of `phaser-asteroids/dist/`. The original Python/Pygame game stays in the repository
+root as source code but is no longer built or published (its pygbag web build was retired when Phaser became the primary
+game; `BUILD_WEB.md` and `pygbag` still work locally if you want it).
 
 ## The workflow
 
+[`.github/workflows/deploy-gh-pages.yml`](../../.github/workflows/deploy-gh-pages.yml) is the only workflow that publishes to Pages.
+
 | Trigger | What runs |
 | --- | --- |
-| Push to `main` (except changes only to `*.md`, `docs/`, `tests/`, `.claude/`) | Validate, then deploy |
+| Push to `main` that changes `phaser-asteroids/**` or the workflow file | Validate, then deploy |
 | Pull request to `main` | Validate only. No Pages permissions are used, nothing is published. |
 | Manual run (**Actions → Deploy to GitHub Pages → Run workflow**) | Validate; deploys only when run on `main` |
 
+Changes to the Python game or to root docs do not deploy.
+
 **These block deployment** (job `phaser`, Node 22, Ubuntu): `npm ci` → `npm run typecheck` → `npm test` (Vitest unit tests) →
-`npm run build` → `node scripts/pages-check.mjs`. The last step loads the production build in real headless Chrome served
-under `/asteroids-bootdev/phaser/` **and** `/`, and checks: no console/page errors, no HTTP errors, all 10 audio files load
-from the base path, nothing is requested outside it, the title screen renders in WebGL, a one-player game starts with the
-music playing, `?keydebug` loads, and the Gamepad API is available. It fails (it is never skipped) if Chrome is missing.
+`npm run build` → `node scripts/pages-check.mjs`. The last step loads the production build in real headless Chrome, served
+as the site root at `/asteroids-bootdev/` (the Pages URL path) **and** at `/` (a custom domain), and checks: no console or
+page errors, no HTTP errors, all 10 audio files load from under that path, nothing is requested outside it, the title screen
+renders in WebGL, a one-player game starts with the music playing, `?keydebug` loads, and the Gamepad API is available.
+It fails (it is never skipped) if Chrome is missing. The deploy job then publishes that same `dist/` (it is passed on as an
+artifact, not rebuilt).
 
 **Do not block deployment:** the larger browser suites (smoke, keyboard, combat, co-op, simulated-gamepad). Run them
 from **Actions → Phaser browser suites → Run workflow**, or locally (`npm run test:browser`, `test:input`, `test:combat`,
@@ -48,7 +44,9 @@ deployment, so overlapping pushes are serialised. Only that job has `pages: writ
 1. **Settings → Pages → Build and deployment → Source: GitHub Actions.** (The repository already publishes from an
    Actions workflow, so this is probably set; confirm it.)
 2. **Settings → Environments → github-pages**: if *Deployment branches* is restricted, `main` must be allowed.
-3. Merge or push to `main`, or run the workflow manually on `main`.
+3. Push to `main` (touching `phaser-asteroids/**` or the workflow), or run the workflow manually on `main`.
+
+The first successful deployment **replaces** the existing Python (pygbag) site completely.
 
 ## Finding the deployment URL
 
@@ -58,35 +56,33 @@ The `Deploy to GitHub Pages` job summary and the run's **github-pages** environm
 ## Troubleshooting a failed deployment
 
 - **Which job failed?** `Phaser - validate and build`: a real problem; run the same commands locally (`npm ci`,
-  `npm run typecheck`, `npm test`, `npm run test:pages`). `Deploy`: see below.
+  `npm run typecheck`, `npm test`, `npm run test:pages`). `Deploy to GitHub Pages`: see below.
 - **`Get Pages site failed` / `HttpError: Not Found` in Configure Pages:** Pages isn't enabled with Source set to GitHub Actions.
 - **`Deployment request failed … 404` or environment protection rules:** *Settings → Environments → github-pages* doesn't allow the branch.
 - **Browser check fails only in CI:** open the step log; the failing check names the URL. A Chrome start-up error
   means the runner image changed; `google-chrome --version` is printed just before.
-- **Warning "pygbag build failed":** expected while the Python web build is broken. The game itself still deploys.
-- **Blank page after deploying:** check the browser's network tab for 404s. Everything must be under `/asteroids-bootdev/phaser/`.
-  Run `npm run test:pages` locally; it reproduces this.
+- **Blank page after deploying:** check the browser's network tab for 404s. Run `npm run test:pages` locally; it reproduces
+  base-path mistakes.
 - A new version can take a minute or two to appear; the CDN caches pages for up to 10 minutes (hard refresh).
 
-## Asset paths: project URL vs custom domain
+## Asset paths: Pages URL vs custom domain
 
 `vite.config.ts` sets `base: './'`: all built URLs and the runtime audio paths (`audio/…` in `src/audio/audioConfig.ts`)
-are relative to the page. So **the identical build works** at `https://djblackett.github.io/asteroids-bootdev/phaser/`
-and at the root of a custom domain. There is no `/asteroids-bootdev/` string anywhere in the app, and nothing to change
-for a custom domain. Do not set an absolute base (`'/'`): it would break the project URL (`npm run test:pages` catches this).
+are relative to the page. So **the identical build works** at `https://djblackett.github.io/asteroids-bootdev/` and at the
+root of a custom domain. There is no `/asteroids-bootdev/` string anywhere in the app, and nothing to change for a custom
+domain. Do not set an absolute base (`'/'`): it would break the `/asteroids-bootdev/` URL (`npm run test:pages` catches this).
 The game has no client-side routes, so no `404.html` fallback is needed.
 
 Local development is unchanged: `npm run dev` → <http://localhost:5173/>, `npm run preview` → <http://localhost:4173/>.
 
 ## Later: `asteroids.davidandrea.ca` (not configured)
 
-Nothing has been changed for this: no DNS, no `CNAME` file, no GitHub domain setting.
+Nothing has been changed for this: no DNS, no `CNAME` file, no GitHub domain setting. No build or workflow change is needed.
 
 1. In the GitHub account settings, **verify** `davidandrea.ca` (Pages → Add a domain) so no one else can claim subdomains.
 2. DNS: add a `CNAME` record `asteroids` → `djblackett.github.io`. If the zone is on Cloudflare, start with the proxy off (DNS only) so GitHub can issue the certificate.
 3. **Settings → Pages → Custom domain** = `asteroids.davidandrea.ca`, wait for the DNS check, tick **Enforce HTTPS**. With Actions deployment no `CNAME` file is needed.
-4. Decide what lives at the domain root. As deployed, `https://asteroids.davidandrea.ca/` would be the Python game / link page and the game would be at `/phaser/`. To serve the Phaser game at the root, in the `deploy` job of `deploy-gh-pages.yml` download `phaser-site` to `path: site` (not `site/phaser`), and remove the `python` job, the *Download Python site* step, the link-page step and `python` from `needs`, and the `test -f site/phaser/…` lines (use `site/…`).
-5. Redeploy. No build change is needed; `npm run test:pages` already checks the build mounted at `/`.
+4. Once it works, `https://djblackett.github.io/asteroids-bootdev/` redirects to the custom domain.
 
 ## Verifying gamepad input on the published site
 
