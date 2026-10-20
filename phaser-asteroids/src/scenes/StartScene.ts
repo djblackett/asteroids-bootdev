@@ -16,6 +16,7 @@ import { ControllerPanel } from '../ui/controllerPanel';
 import { drawStarfield } from '../render/worldRenderer';
 import { CachedText } from '../ui/hud';
 import { addText, COLORS } from '../ui/text';
+import { TouchButton } from '../ui/touchMenus';
 import { TouchStartMenu } from '../ui/touchStartMenu';
 import { VolumePanel } from '../ui/volumePanel';
 import { SCENE_GAME, SCENE_START } from './keys';
@@ -80,6 +81,8 @@ export class StartScene extends Phaser.Scene {
   private pads!: GamepadHub;
   private padPanel!: ControllerPanel;
   private prompt!: Phaser.GameObjects.Text;
+  /** A tap / click on empty space starts the game, except where the primary pointer is a finger (see create). */
+  private clickStarts = true;
   /** Only in touch mode: the touch title screen replaces everything the keyboard / controller screen builds. */
   private touchMenu: TouchStartMenu | null = null;
 
@@ -121,7 +124,8 @@ export class StartScene extends Phaser.Scene {
     this.buildSoloPage();
     this.buildCoopPage();
 
-    this.prompt = addText(this, CENTER_X, 630, 'Press SPACE or click to start', { size: 32, originX: 0.5, originY: 0.5 });
+    this.clickStarts = !inputMode.env.coarsePrimaryPointer;
+    this.prompt = addText(this, CENTER_X, 630, this.clickStarts ? 'Press SPACE or click to start' : 'Press SPACE to start', { size: 32, originX: 0.5, originY: 0.5 });
     this.tweens.add({ targets: this.prompt, alpha: 0.35, duration: 700, yoyo: true, repeat: -1 });
 
     // Presses meant for the scene we came from (the BACK that opened this menu, a RETRY that was refused) are not ours.
@@ -141,11 +145,14 @@ export class StartScene extends Phaser.Scene {
     );
 
     this.volumePanel = new VolumePanel(this, this.audio, CENTER_X, 664, 18, 22, 2);
-    // A device that can touch gets a way to turn the touch controls on (desktops without a touch screen never see this).
+    // A device that can touch gets a way to turn the touch controls on (desktops without a touch screen never see this). It is a big,
+    // green, full-size button (at least 44 CSS px on a phone), not small text: on a phone in keyboard mode it is the only way back.
     if (inputMode.canToggle) {
-      addText(this, SCREEN_WIDTH - 14, 12, 'TOUCH CONTROLS: OFF  (tap to turn on)', { size: 16, color: COLORS.dim, originX: 1, bold: false })
-        .setInteractive({ useHandCursor: true })
-        .on('pointerdown', () => this.switchInputMode(inputMode));
+      new TouchButton(this, SCREEN_WIDTH - 190, 48, 300, 90, 'TOUCH CONTROLS: OFF\nTAP TO TURN ON', () => this.switchInputMode(inputMode), {
+        size: 21,
+        fill: 0x1d6b3a,
+        depth: 5,
+      });
     }
 
     const keyboard = this.input.keyboard;
@@ -182,9 +189,11 @@ export class StartScene extends Phaser.Scene {
         }),
       );
     }
-    // A click anywhere starts the game, except on the clickable options themselves.
-    this.input.on('pointerdown', (_pointer: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
-      if (over.length === 0) this.start();
+    // A click anywhere starts the game, except on the clickable options themselves. On a phone (primary pointer is a finger) a touch
+    // does not: keyboard mode there has no touch controls, so a stray tap would start a run nobody can steer. Space or a controller still start it.
+    const fingerFirst = inputMode.env.coarsePrimaryPointer;
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer, over: Phaser.GameObjects.GameObject[]) => {
+      if (over.length === 0 && !(fingerFirst && pointer.wasTouch)) this.start();
     });
     this.refresh();
   }
@@ -216,7 +225,8 @@ export class StartScene extends Phaser.Scene {
     this.headings.p1?.setText(withPad('PLAYER 1', 0));
     this.headings.p2?.setText(withPad('PLAYER 2', 1));
     const padReady = this.pads.padFor(0, this.setup.game.playerCount) !== null || this.pads.padFor(1, this.setup.game.playerCount) !== null;
-    this.prompt.setText(padReady ? 'Press SPACE, click or A to start' : 'Press SPACE or click to start');
+    const click = this.clickStarts ? ', click' : '';
+    this.prompt.setText(padReady ? `Press SPACE${click} or A to start` : this.clickStarts ? 'Press SPACE or click to start' : 'Press SPACE to start');
   }
 
   /**

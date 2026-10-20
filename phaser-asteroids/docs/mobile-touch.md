@@ -16,7 +16,7 @@ Status: automated checks pass (below); **neither has been tried on a physical ph
 ## What the player sees
 
 **Title screen (touch mode):** a short how-to, the five power-ups, a big **TAP TO PLAY** button, Music / SFX volume with `-` / `+`
-buttons and a music on / off button, the **STEERING: JOYSTICK | D-PAD** choice, a **CONTROLS: TOUCH (tap for keyboard)** button, and a small **FULLSCREEN** button at the top right. There is deliberately no "tap anywhere to
+buttons and a music on / off button, the **STEERING: JOYSTICK | D-PAD** choice, a **CONTROLS: TOUCH (tap for keyboard)** button (it takes **two taps**: the first only asks "TAP AGAIN TO SWITCH TO KEYBOARD CONTROLS", and the question lapses after 3 s), and a small **FULLSCREEN** button at the top right. There is deliberately no "tap anywhere to
 start": a stray touch must not begin a run.
 
 **During play (landscape):**
@@ -169,7 +169,10 @@ Not used on purpose: user-agent sniffing; "the browser supports touch events" (t
 touch device, a narrow desktop window is not); a connected gamepad (switching mode by itself mid-run would be confusing).
 
 The title screen offers the CONTROLS button always in touch mode, and on any device that reports touch support even while it shows the
-keyboard screen ("TOUCH CONTROLS: OFF (tap to turn on)", small, top right). A desktop without touch never sees it. In touch mode the
+keyboard screen: a big green **TOUCH CONTROLS: OFF / TAP TO TURN ON** button at the top right (full thumb size, at least 44 CSS px tall; it used to be 16 px text that fingers
+missed). A desktop without touch never sees it. **On a phone (primary pointer is a finger) a tap on empty space does not start a game from the keyboard title screen**, because that
+mode has no touch controls to steer with; Space or a controller starts it, and the prompt says "Press SPACE to start". A stray thumb therefore cannot put the phone on a screen with no
+touch controls (the switch to the keyboard takes two taps) and cannot start a run nobody can steer; if it happens anyway, the big button is the way back, and `?touch=1` also works. In touch mode the
 keyboard still works (Space starts, M mutes, held keys drive the ship); a controller has to be assigned on the keyboard / controller
 screen, so a phone with a Bluetooth controller should switch CONTROLS to keyboard. Touch mode is always one player; the title screen forces
 `playerCount` to 1 so a two-player choice made earlier cannot leak into a run that cannot drive a second ship.
@@ -279,8 +282,9 @@ event type at the moment of the call and asserts both.
 | D-pad: direction maths (eight sectors, boundaries, dead zone, hysteresis, sweeps), digital output, one finger, sliding, sliding outside, release / cancel, FIRE / LASER / BOOST together, mode switching, a real `GameSim` driven by it (identical to the keys) | `tests/touchDpad.test.ts` | 47 tests |
 | D-pad through the binding and facade: taps, slides, cancel, lost capture, blur / hidden / pagehide, rotation, resize, fullscreen change, pause / restart, switching mode mid-hold, listener cleanup | `tests/touchDpadControls.test.ts` | 32 tests |
 | Steering choice: D-pad default, a saved joystick / D-pad choice is never overridden, persistence, junk and blocked storage, listeners | `tests/steeringMode.test.ts` | 8 tests |
+| Tap-again confirmation for the keyboard switch (arms, confirms inside 3 s, lapses, clock going backwards) | `tests/confirmTap.test.ts` | 5 tests |
 | Fullscreen: support detection (incl. iPhone-like, webkit names, standalone), request accepted / rejected / throws / `fullscreenerror`, enter, exit, system exit, button wording, cleanup | `tests/fullscreen.test.ts` | 29 tests |
-| Real browser, genuine multi-touch (CDP `Input.dispatchTouchEvent`, 4 fingers at once), mobile emulation DPR 2: everything above on real touches, plus D-pad / fullscreen sections | `npm run test:touch` | 202 checks (101 before the D-pad pass) |
+| Real browser, genuine multi-touch (CDP `Input.dispatchTouchEvent`, 4 fingers at once), mobile emulation DPR 2: everything above on real touches, plus D-pad / fullscreen sections | `npm run test:touch` | 208 checks (101 before the D-pad pass) |
 
 The browser suite covers: load, touch-only start, audio unlock by touch, overlay in landscape, layout and 44 px targets on six phone / tablet
 sizes, HUD visible, steering changes the simulation input, FIRE held while steering, LASER and BOOST with other fingers down,
@@ -340,7 +344,7 @@ What to check on **Android Chrome** and **iPhone Safari** (landscape):
 - [ ] **Page behaviour:** no scrolling, pull-to-refresh, zoom on double-tap, text selection or long-press menu while playing; the address bar does not jump around.
 - [ ] **Performance under intense combat:** let a few minutes of asteroids build up, use Mega Power: any stutter, heat, or slow-motion feel?
 - [ ] **Audio:** music and effects balance as on desktop; volume buttons on the pause screen work; mute works; no double music after rotating or retrying.
-- [ ] **Mode switch:** on the title screen CONTROLS switches to the keyboard screen and back; the choice survives a reload.
+- [ ] **Mode switch:** on the title screen CONTROLS asks "TAP AGAIN" first, and a second tap switches to the keyboard screen; there the big green TOUCH CONTROLS button brings touch back, tapping elsewhere does not start a game; the choice survives a reload.
 
 Please report: phone model, browser and version, what felt wrong, and (if you can) a screenshot.
 

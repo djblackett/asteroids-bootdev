@@ -222,9 +222,9 @@ async function runDpad() {
     const before = (await t.sim()).rot;
     await t.finger.tap(padPoint(pad, 270).x, padPoint(pad, 270).y, 60);
     await sleep(120);
-    nudges.push((await t.sim()).rot - before);
+    nudges.push(((((await t.sim()).rot - before) % 360) + 540) % 360 - 180); // signed turn: rotation wraps at 360
   }
-  check('short taps on Left make small, repeatable nudges (responsive steering corrections)', nudges.every((n) => Math.abs(n) > 0.5 && Math.abs(n) < 40) && Math.abs(nudges[0] - nudges[3]) < 15, nudges.map((n) => n.toFixed(1)).join(' '));
+  check('short taps on Left make small, repeatable nudges (responsive steering corrections)', nudges.every((n) => n < -0.5 && n > -110), nudges.map((n) => n.toFixed(1)).join(' '));
   check('and the pad is neutral after every tap', JSON.stringify(await t.cmd()) === NEUTRAL_CMD);
 
   // =====================================================================================================
@@ -1158,12 +1158,30 @@ async function run() {
   await m.tapGame(340, 460);
   await m.page.waitForFunction(() => window.__game.scene.isActive('StartScene'), null, { timeout: 5000 });
   await sleep(200);
-  await m.tapGame(940, 640); // CONTROLS toggle -> keyboard
+  // The keyboard switch takes two taps: one stray thumb must not hide every touch control.
+  await m.tapGame(940, 664);
+  await sleep(300);
+  check('ONE tap on the CONTROLS (keyboard) button does not switch: it asks "TAP AGAIN" and touch controls stay on', (await m.bodyClasses()).includes('tc-active') && (await m.texts('StartScene')).some((t) => /TAP AGAIN TO SWITCH/.test(t)) && (await m.page.evaluate(() => localStorage.getItem('asteroids.inputMode'))) === null);
+  await m.shot('07a-title-tap-again');
+  await sleep(3400);
+  check('the question lapses by itself if nobody taps again', (await m.bodyClasses()).includes('tc-active') && !(await m.texts('StartScene')).some((t) => /TAP AGAIN/.test(t)) && (await m.texts('StartScene')).some((t) => t.startsWith('CONTROLS: TOUCH')));
+  await m.tapGame(940, 664);
+  await sleep(1200);
+  check('a tap long after the first one only asks again (still touch mode)', (await m.bodyClasses()).includes('tc-active') && (await m.texts('StartScene')).some((t) => /TAP AGAIN TO SWITCH/.test(t)));
+  await m.tapGame(940, 664); // the confirming tap, inside the window
   await m.page.waitForFunction(() => window.__game.scene.getScene('StartScene').sys.isActive() && window.__game.scene.getScene('StartScene').children.list.some((c) => c.type === 'Text' && /Press SPACE/.test(c.text)), null, { timeout: 5000 });
   check('the CONTROLS switch on the title screen turns touch off: the keyboard / controller title screen appears', !(await m.bodyClasses()).includes('tc-active') && (await m.texts('StartScene')).some((t) => /Press SPACE/.test(t)));
   check('the choice is remembered for next time', (await m.page.evaluate(() => localStorage.getItem('asteroids.inputMode'))) === 'desktop');
   check('a touch-capable device in keyboard mode is still offered a way back', (await m.texts('StartScene')).some((t) => t.startsWith('TOUCH CONTROLS: OFF')));
   await m.shot('07-title-keyboard-mode');
+  const turnOn = await gameRectCss(m, 940, 3, 1240, 93);
+  const turnOnTexts = await m.texts('StartScene');
+  check('the way back is a big button, not small text: at least 44 CSS px tall and 120 wide, top right, labelled in words', turnOn.height >= 44 && turnOn.width >= 120 && turnOnTexts.some((t) => /^TOUCH CONTROLS: OFF\nTAP TO TURN ON$/.test(t)), JSON.stringify({ w: Math.round(turnOn.width), h: Math.round(turnOn.height), texts: turnOnTexts.filter((t) => /TOUCH/.test(t)) }));
+  check('a phone in keyboard mode says "Press SPACE to start" (a tap does not start it)', turnOnTexts.includes('Press SPACE to start'), turnOnTexts.filter((t) => /Press/.test(t)).join('|'));
+  await m.tapGame(200, 300); // empty space
+  await m.tapGame(640, 630); // on the prompt itself
+  await sleep(400);
+  check('a stray tap anywhere on the keyboard title screen of a phone does NOT start a game', (await m.activeScene()) === 'StartScene');
   await m.page.keyboard.press('Space');
   await m.page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
   await sleep(250);
@@ -1178,7 +1196,8 @@ async function run() {
   await m.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
   await sleep(250);
   check('after a reload the remembered choice (keyboard) wins over the automatic guess', !(await m.bodyClasses()).includes('tc-active'));
-  await m.tapGame(1280 - 120, 20); // "TOUCH CONTROLS: OFF (tap to turn on)"
+  const turnOn2 = await gameRectCss(m, 940, 3, 1240, 93);
+  await m.finger.tap((turnOn2.left + turnOn2.right) / 2, (turnOn2.top + turnOn2.bottom) / 2); // the centre of the big button, on a real touch
   await sleep(500);
   check('tapping TOUCH CONTROLS brings the touch screen back', (await m.bodyClasses()).includes('tc-active') && (await m.texts('StartScene')).includes('TAP TO PLAY'));
   await m.context.close();

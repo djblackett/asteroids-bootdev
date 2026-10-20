@@ -7,6 +7,7 @@ import type { SteeringController } from '../input/steeringMode';
 import type { SteeringMode } from '../input/touchModel';
 import { toCss } from '../render/colors';
 import { drawPowerUpIcon, POWERUP_COLOR } from '../render/powerupIcons';
+import { ConfirmTap } from './confirmTap';
 import { CachedText } from './hud';
 import { addText, COLORS } from './text';
 import { MIN_TARGET, SteeringSelector, TouchButton, TouchVolumeBlock } from './touchMenus';
@@ -46,6 +47,10 @@ export class TouchStartMenu {
   private readonly volume: TouchVolumeBlock;
   private readonly help: [CachedText, CachedText];
   private helpMode: SteeringMode | null = null;
+  private readonly keyboardButton: TouchButton;
+  private readonly keyboardLabel: string;
+  private readonly confirmKeyboard = new ConfirmTap();
+  private keyboardArmed = false;
 
   constructor(
     scene: Phaser.Scene,
@@ -75,12 +80,36 @@ export class TouchStartMenu {
     new TouchButton(scene, RIGHT_X, 155, 480, 100, 'TAP TO PLAY', callbacks.start, { size: 48, fill: 0x1d6b3a, depth: 5 });
     this.volume = new TouchVolumeBlock(scene, audio, RIGHT_X, 258, 5, 96);
     new SteeringSelector(scene, steering, RIGHT_X, 568, 560, 5);
-    new TouchButton(scene, RIGHT_X, 664, 560, MIN_TARGET, '', callbacks.switchMode, { size: 24, depth: 5 }).setText(
-      mode.isTouch ? 'CONTROLS: TOUCH  (tap for keyboard)' : 'CONTROLS: KEYBOARD  (tap for touch)',
+    // Switching to the keyboard screen hides every touch control, so it takes two taps: the first one only asks "tap again".
+    // (Nobody can then land on a screen with no way to play by one stray thumb, which happened on a real phone.)
+    this.keyboardLabel = mode.isTouch ? 'CONTROLS: TOUCH  (tap for keyboard)' : 'CONTROLS: KEYBOARD  (tap for touch)';
+    this.keyboardButton = new TouchButton(
+      scene,
+      RIGHT_X,
+      664,
+      560,
+      MIN_TARGET,
+      '',
+      () => {
+        if (this.confirmKeyboard.tap(scene.time.now)) callbacks.switchMode();
+        else this.showKeyboardPrompt(scene.time.now);
+      },
+      { size: 24, depth: 5 },
     );
+    this.keyboardButton.setText(this.keyboardLabel);
+  }
+
+  /** Shows (or, once the window has lapsed, clears) the "tap again" question on the keyboard-switch button. */
+  private showKeyboardPrompt(now: number): void {
+    const armed = this.confirmKeyboard.isArmed(now);
+    if (armed === this.keyboardArmed) return;
+    this.keyboardArmed = armed;
+    if (armed) this.keyboardButton.setText('TAP AGAIN TO SWITCH\nTO KEYBOARD CONTROLS', COLORS.heading);
+    else this.keyboardButton.setText(this.keyboardLabel, COLORS.white);
   }
 
   update(time: number): void {
+    if (this.keyboardArmed) this.showKeyboardPrompt(time);
     if (this.helpMode !== this.steering.mode) {
       this.helpMode = this.steering.mode;
       const [first, second] = STEERING_HELP[this.helpMode];

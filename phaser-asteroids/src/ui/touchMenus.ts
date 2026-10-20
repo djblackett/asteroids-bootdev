@@ -51,7 +51,7 @@ export class TouchButton {
     this.rect.on('pointerdown', () => {
       if (this.visible && this.enabled) this.onTap();
     });
-    this.label = new CachedText(addText(scene, x, y, text, { size, color, originX: 0.5, originY: 0.5 }).setDepth(depth + 1), color, size);
+    this.label = new CachedText(addText(scene, x, y, text, { size, color, originX: 0.5, originY: 0.5 }).setAlign('center').setDepth(depth + 1), color, size);
     this.caption = text;
     this.label.set(text);
   }
