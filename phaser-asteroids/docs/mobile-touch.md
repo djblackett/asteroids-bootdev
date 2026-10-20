@@ -127,8 +127,10 @@ lower left inside the safe-area inset, clear of the HUD text, FIRE, LASER, BOOST
 - **Where:** the **STEERING: JOYSTICK | D-PAD** row on the title screen (below the volume controls) and on the pause screen (below MAIN MENU). Both
   options are always visible, the chosen one is lit green with a gold outline, and a switch is one tap that applies at once.
 - **Remembered:** `localStorage` key `asteroids.touchSteering` (`joystick` or `dpad`). Anything else in storage is ignored. With storage blocked (a private window)
-  the choice still applies for the visit and is just not remembered. **The default is the joystick** (the original control, so nothing changes for anyone who has
-  never chosen); to make the D-pad the default, change `DEFAULT_STEERING` in `src/input/steeringMode.ts`.
+  the choice still applies for the visit and is just not remembered. **The default is the D-pad** (`DEFAULT_STEERING` in `src/input/steeringMode.ts`; after a phone test it
+  gave much better control than the joystick): a first-time visitor gets it, and nothing is written to storage until someone actually taps a choice. **A saved choice always wins**:
+  anyone who picked the joystick (saved as `joystick`) keeps it, and an unreadable or unknown stored value falls back to the D-pad. The joystick stays one tap away on the title and
+  pause screens (a unit test and the browser suite both check that a saved `joystick` is not overridden).
 - **Switching** lets go of every finger and removes the inactive control from the screen: the joystick zone and its STEER ring are `display: none` in D-pad
   mode, the pad is `display: none` in joystick mode, and the model refuses a press on the control that is not live. The title screen's how-to text follows
   the choice.
@@ -276,9 +278,9 @@ event type at the moment of the call and asserts both.
 | Touch + keyboard + pad merging, and a real `GameSim` driven by touch (steer, fly, FIRE, once-per-press LASER / BOOST, pause, game over) | `tests/touchInput.test.ts` | 16 tests |
 | D-pad: direction maths (eight sectors, boundaries, dead zone, hysteresis, sweeps), digital output, one finger, sliding, sliding outside, release / cancel, FIRE / LASER / BOOST together, mode switching, a real `GameSim` driven by it (identical to the keys) | `tests/touchDpad.test.ts` | 47 tests |
 | D-pad through the binding and facade: taps, slides, cancel, lost capture, blur / hidden / pagehide, rotation, resize, fullscreen change, pause / restart, switching mode mid-hold, listener cleanup | `tests/touchDpadControls.test.ts` | 32 tests |
-| Steering choice: default, persistence, junk and blocked storage, listeners | `tests/steeringMode.test.ts` | 6 tests |
+| Steering choice: D-pad default, a saved joystick / D-pad choice is never overridden, persistence, junk and blocked storage, listeners | `tests/steeringMode.test.ts` | 8 tests |
 | Fullscreen: support detection (incl. iPhone-like, webkit names, standalone), request accepted / rejected / throws / `fullscreenerror`, enter, exit, system exit, button wording, cleanup | `tests/fullscreen.test.ts` | 29 tests |
-| Real browser, genuine multi-touch (CDP `Input.dispatchTouchEvent`, 4 fingers at once), mobile emulation DPR 2: everything above on real touches, plus D-pad / fullscreen sections | `npm run test:touch` | 196 checks (101 before the D-pad pass) |
+| Real browser, genuine multi-touch (CDP `Input.dispatchTouchEvent`, 4 fingers at once), mobile emulation DPR 2: everything above on real touches, plus D-pad / fullscreen sections | `npm run test:touch` | 202 checks (101 before the D-pad pass) |
 
 The browser suite covers: load, touch-only start, audio unlock by touch, overlay in landscape, layout and 44 px targets on six phone / tablet
 sizes, HUD visible, steering changes the simulation input, FIRE held while steering, LASER and BOOST with other fingers down,
@@ -349,8 +351,9 @@ Serve the build to the phone exactly as in [Manual testing](#manual-testing-on-a
 
 **A. D-pad (5 minutes)**
 
-1. On the title screen find **STEERING** (below the volume controls). Tap **D-PAD**. It lights green with a gold outline and the how-to text on the left changes to
-   "D-PAD: UP = forward ...". Reload the page: D-PAD should still be lit.
+1. On the title screen find **STEERING** (below the volume controls). **D-PAD is lit by default** (green with a gold outline; the how-to text on the left says
+   "D-PAD: UP = forward ..."), unless you saved the joystick earlier: your saved choice is kept. Tap **JOYSTICK** and back to **D-PAD** to see it switch; reload the
+   page and the last one you tapped should still be lit.
 2. Tap **TAP TO PLAY**. The lower left shows a round pad with four arms; there is no STEER ring.
 3. *Directions.* Tap and hold **Up**: the ship flies forward. Tap **Left** / **Right**: it turns. While it faces some other way, hold Up again: it must fly the way
    it is *facing*, not toward your thumb.
@@ -365,7 +368,7 @@ Serve the build to the phone exactly as in [Manual testing](#manual-testing-on-a
 8. *Sizing.* Is the pad big enough / too big? Does it cover anything you need (asteroids at the lower left, the HUD)? Do your thumbs reach FIRE and the pad without shifting your grip?
 9. *Let go.* Lift the thumb mid-turn: turning stops immediately, nothing stays held.
 
-**B. Joystick (unchanged, 2 minutes)** Pause (top right), tap **JOYSTICK** under MAIN MENU, **RESUME**. The STEER ring is back; drag as before. It should feel exactly as it did
+**B. Joystick (still available, unchanged, 2 minutes)** Pause (top right), tap **JOYSTICK** under MAIN MENU, **RESUME**. The STEER ring is back; drag as before. It should feel exactly as it did
 before. Switch back and forth a couple of times from the pause screen: nothing should stay held, and each switch should hide the other control.
 
 **C. Fullscreen (Android Chrome)**

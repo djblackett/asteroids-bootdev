@@ -11,8 +11,11 @@ import type { SteeringMode } from './touchModel';
 
 export const STEERING_STORAGE_KEY = 'asteroids.touchSteering';
 
-/** What a player who has never chosen gets. The joystick is the original control; the D-pad is one tap away on the title and pause screens. */
-export const DEFAULT_STEERING: SteeringMode = 'joystick';
+/**
+ * What a player who has never chosen gets: the D-pad (after a phone test it gave much better control than the analogue joystick). A saved choice always wins,
+ * so anyone who explicitly picked the joystick keeps it; the joystick is one tap away on the title and pause screens.
+ */
+export const DEFAULT_STEERING: SteeringMode = 'dpad';
 
 export function parseStoredSteering(raw: string | null | undefined): SteeringMode | null {
   return raw === 'joystick' || raw === 'dpad' ? raw : null;

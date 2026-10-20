@@ -117,9 +117,9 @@ recovered Python mapping are in `docs/implementation-progress.md` (Phase 5).
 ### Touchscreen (phone / tablet prototype, one player, landscape)
 
 On a device whose primary pointer is a finger the game starts in touch mode (`?touch=1` / `?touch=0` forces it; the CONTROLS button on the
-title screen switches and remembers). Left side: your choice of a floating joystick (drag anywhere; left / right rotates, up / down flies, proportional
-with the controller's dead zone) or a digital **D-pad** (up = forward, down = back, left / right turn, corners do both with one thumb); pick it with the
-**STEERING: JOYSTICK | D-PAD** buttons on the title and pause screens (remembered). A **FULLSCREEN** button (title and pause screens) hides the browser's
+title screen switches and remembers). Left side: a digital **D-pad** by default (up = forward, down = back, left / right turn, corners do both with one thumb) or, if you
+prefer, a floating joystick (drag anywhere; left / right rotates, up / down flies, proportional with the controller's dead zone); pick with the
+**STEERING: JOYSTICK | D-PAD** buttons on the title and pause screens (your choice is remembered and never overridden). A **FULLSCREEN** button (title and pause screens) hides the browser's
 address bar where the browser allows it; on iPhone Safari, which does not, it offers a short Add-to-Home-Screen tip instead. Right side: **FIRE** (hold; works while steering), **LASER** (tap) and **BOOST** (tap); **PAUSE** top right.
 Menus, pause, volume and game over all work by touch. In portrait a "Rotate your phone to play." prompt covers the game and pauses it.
 Desktop keyboard, controller and two-player play are unchanged. It has been tested in Chromium's touch emulation only: layout, input

@@ -108,7 +108,7 @@ body.tc-active {
   will-change: transform;
 }
 
-/* Exactly one steering control is on screen. The joystick is the default (and the state before the mode is first written). */
+/* Exactly one steering control is on screen. The mode is written by the game at start-up (the D-pad unless the player chose the joystick); the joystick is only the pre-start state. */
 .tc-root:not(.tc-steer-dpad) .tc-dpad {
   display: none;
 }

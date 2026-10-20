@@ -89,11 +89,11 @@ async function runDpad() {
   // =====================================================================================================
   // D1. Title screen: the choice, the Fullscreen pill, layout
   // =====================================================================================================
-  const t = await mobilePage(844, 390);
+  const t = await mobilePage(844, 390, { steering: null }); // a first-time visitor
   await t.start();
   let texts = await t.texts('StartScene');
   check('the title screen offers STEERING: JOYSTICK | D-PAD', texts.includes('STEERING') && texts.includes('JOYSTICK') && texts.includes('D-PAD'), texts.join(' | ').slice(0, 200));
-  check('a player who never chose gets the joystick (the original control)', (await steeringOf(t)) === 'joystick');
+  check('a player who never chose gets the D-pad (the default), with nothing saved yet', (await steeringOf(t)) === 'dpad' && (await t.page.evaluate(() => localStorage.getItem('asteroids.touchSteering'))) === null && (await t.texts('StartScene')).some((x) => x.startsWith('D-PAD: UP')));
   const pill = await t.rect('.tc-sys-btn');
   const pillText = await t.page.evaluate(() => document.querySelector('.tc-sys-btn').textContent);
   check('the title screen shows the Fullscreen control, at least 44 CSS px tall, inside the screen, top right', (await t.rect('.tc-system')).display === 'block' && pillText === 'FULLSCREEN' && pill.height >= 44 && pill.right <= 844 && pill.top >= 0 && pill.left > 422 && pill.top < 30, `${pillText} ${Math.round(pill.width)}x${Math.round(pill.height)} at ${Math.round(pill.left)},${Math.round(pill.top)}`);
@@ -103,10 +103,14 @@ async function runDpad() {
   check('both steering buttons are at least 44 CSS px tall and 100 wide (thumb-sized)', selectorButtons.every((r) => r.height >= 44 && r.width >= 100), selectorButtons.map((r) => `${Math.round(r.width)}x${Math.round(r.height)}`).join(' '));
   await t.shot('dpad-title');
 
-  // choose the D-pad by touch
+  // the joystick is one tap away, and applies at once
+  await t.tapGame(798, 568);
+  await sleep(250);
+  check('tapping JOYSTICK selects it, applies it at once, saves it and the how-to text says what the joystick does', (await steeringOf(t)) === 'joystick' && (await t.page.evaluate(() => localStorage.getItem('asteroids.touchSteering'))) === 'joystick' && (await t.texts('StartScene')).some((x) => x.startsWith('LEFT SIDE')));
+  await t.shot('dpad-title-joystick-selected');
   await t.tapGame(1082, 568);
   await sleep(250);
-  check('tapping D-PAD selects it, applies it at once and the how-to text says what the D-pad does', (await steeringOf(t)) === 'dpad' && (await t.texts('StartScene')).some((x) => x.startsWith('D-PAD: UP')), (await t.texts('StartScene')).filter((x) => /LEFT SIDE|D-PAD:/.test(x)).join('|'));
+  check('tapping D-PAD selects it again, applies it at once and the how-to text says what the D-pad does', (await steeringOf(t)) === 'dpad' && (await t.texts('StartScene')).some((x) => x.startsWith('D-PAD: UP')), (await t.texts('StartScene')).filter((x) => /LEFT SIDE|D-PAD:/.test(x)).join('|'));
   check('the choice is saved in localStorage', (await t.page.evaluate(() => localStorage.getItem('asteroids.touchSteering'))) === 'dpad');
   await t.shot('dpad-title-dpad-selected');
   await t.page.reload();
@@ -369,8 +373,21 @@ async function runDpad() {
   // =====================================================================================================
   // D7. Persistence across sessions, in both directions, on a fresh page
   // =====================================================================================================
-  const fresh = await mobilePage(844, 390);
+  const first = await mobilePage(844, 390, { steering: null });
+  await first.start();
+  await first.play();
+  check('a first-time visitor starts their first run with the D-pad (the pad is shown, no joystick zone)', (await first.rect('.tc-dpad')).display !== 'none' && (await first.rect('.tc-zone')).display === 'none' && (await first.rect('.tc-hint')).display === 'none');
+  await first.context.close();
+
+  const fresh = await mobilePage(844, 390, { steering: 'joystick' }); // someone who saved the joystick before the default changed
   await fresh.start();
+  check('a saved JOYSTICK choice is NOT overridden by the D-pad default', (await steeringOf(fresh)) === 'joystick');
+  await fresh.play();
+  check('and their first run shows the joystick zone and no pad', (await fresh.rect('.tc-zone')).display === 'block' && (await fresh.rect('.tc-dpad')).display === 'none');
+  await fresh.page.reload();
+  await fresh.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
+  await sleep(250);
+  check('the joystick choice survives a reload (the seed never overwrites a saved choice)', (await steeringOf(fresh)) === 'joystick');
   await fresh.page.evaluate(() => localStorage.setItem('asteroids.touchSteering', 'dpad'));
   await fresh.page.reload();
   await fresh.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
@@ -381,11 +398,11 @@ async function runDpad() {
   await fresh.page.reload();
   await fresh.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
   await sleep(250);
-  check('an unknown saved value falls back to the joystick', (await steeringOf(fresh)) === 'joystick');
+  check('an unknown saved value falls back to the D-pad default', (await steeringOf(fresh)) === 'dpad');
   await fresh.context.close();
 
   // storage that throws (private window): the choice still works for the visit
-  const priv = await mobilePage(844, 390);
+  const priv = await mobilePage(844, 390, { steering: null });
   await priv.page.addInitScript(() => {
     const boom = () => {
       throw new Error('SecurityError');
@@ -393,9 +410,10 @@ async function runDpad() {
     Object.defineProperty(window, 'localStorage', { get: boom, configurable: true });
   });
   await priv.start();
-  await priv.tapGame(1082, 568);
+  check('with storage blocked a first-time visitor still gets the D-pad', (await steeringOf(priv)) === 'dpad');
+  await priv.tapGame(798, 568);
   await sleep(200);
-  check('with storage blocked the D-pad can still be chosen for the visit and nothing crashes', (await steeringOf(priv)) === 'dpad' && priv.problems.filter((x) => !/SecurityError/.test(x)).length === 0, priv.problems.join(' | '));
+  check('with storage blocked the joystick can still be chosen for the visit and nothing crashes', (await steeringOf(priv)) === 'joystick' && priv.problems.filter((x) => !/SecurityError/.test(x)).length === 0, priv.problems.join(' | '));
   await priv.context.close();
 
   // =====================================================================================================
@@ -666,8 +684,8 @@ async function runFullscreen() {
   await dp.goto(`${BASE}?debug`);
   await dp.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
   await sleep(250);
-  const dstate = await dp.evaluate(() => ({ system: getComputedStyle(document.querySelector('.tc-system')).display, dpad: getComputedStyle(document.querySelector('.tc-dpad')).display, steering: window.__game.registry.get('touchSteering').mode }));
-  check('desktop: no Fullscreen control, no D-pad, nothing drawn (the keyboard game is unchanged)', dstate.system === 'none' && dstate.dpad === 'none');
+  const dstate = await dp.evaluate(() => ({ system: getComputedStyle(document.querySelector('.tc-system')).display, root: getComputedStyle(document.querySelector('.tc-root')).display, dpadBoxes: document.querySelector('.tc-dpad').getClientRects().length, steering: window.__game.registry.get('touchSteering').mode }));
+  check('desktop: no Fullscreen control, no D-pad, nothing drawn (the keyboard game is unchanged)', dstate.system === 'none' && dstate.root === 'none' && dstate.dpadBoxes === 0, JSON.stringify(dstate)); // the pad is the default steering, but it is inside the hidden touch root: nothing is rendered
   await dp.keyboard.press('Space');
   await dp.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
   await sleep(300);
@@ -716,8 +734,22 @@ process.exit(failures ? 1 : 0);
 // ---------------------------------------------------------------------------------------------------------
 
 /** One mobile-emulated page with a multi-touch emulator and the usual helpers. */
-async function mobilePage(width, height, { query = '?debug', mobile = true, touch = true } = {}) {
+/**
+ * `steering`: the touch steering choice a returning player has already saved. The sections written when the joystick was the only control
+ * (and the default) seed 'joystick' so they keep testing it; pass `null` for a first-time visitor, who gets the D-pad. A seeded value is only
+ * written when nothing is saved, so choices made during the test (and reloads) are never overwritten.
+ */
+async function mobilePage(width, height, { query = '?debug', mobile = true, touch = true, steering = 'joystick' } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 2, isMobile: mobile, hasTouch: touch });
+  if (steering) {
+    await context.addInitScript((value) => {
+      try {
+        if (localStorage.getItem('asteroids.touchSteering') === null) localStorage.setItem('asteroids.touchSteering', value);
+      } catch {
+        // storage blocked: nothing to seed
+      }
+    }, steering);
+  }
   const page = await context.newPage();
   const problems = [];
   const requests = [];
