@@ -106,7 +106,7 @@ async function run(browser) {
   const audio = () =>
     page.evaluate(`(() => { const g = window.__game, a = g.registry.get('audio'); return {
       played: a.sfx.played, sfxPlaying: a.sfx.playingCount(), totalSounds: g.sound.sounds.length,
-      musicInstances: g.sound.sounds.filter((s) => s.key === 'music').length,
+      musicInstances: g.sound.sounds.filter((s) => s.key.startsWith('music')).length,
       keys: g.sound.sounds.map((s) => s.key) }; })()`);
   const keyTap = async (key, ms = 60) => (await page.keyboard.down(key), await sleep(ms), await page.keyboard.up(key));
   const evalSim = (body) => page.evaluate(`(() => { const s = ${S}.sim; ${body} })()`);

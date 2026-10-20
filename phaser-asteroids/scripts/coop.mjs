@@ -747,7 +747,7 @@ async function run(browser) {
     st = await sim();
     check(`restart #${round}: both players fresh, no shots / lasers / UFOs / pickups / combo carried over`, !st.over && st.count === 2 && st.p1.lives === 3 && st.p2.lives === 3 && st.shots === 0 && st.lasers === 0 && st.ufos === 0 && st.powerups.length === 0 && st.combo === 0 && st.ufoShots.length === 0 && !st.p1.shield && !st.p1.rapid, JSON.stringify({ over: st.over, count: st.count, p1: st.p1, p2: st.p2, shots: st.shots, lasers: st.lasers, ufos: st.ufos, powerups: st.powerups, combo: st.combo, ufoShots: st.ufoShots.length, time: st.time }));
   }
-  const end = await page.evaluate(`({ blur: window.__game.events.listenerCount('blur'), hidden: window.__game.events.listenerCount('hidden'), children: ${S}.children.list.length, music: window.__game.sound.sounds.filter((s) => s.key === 'music').length })`);
+  const end = await page.evaluate(`({ blur: window.__game.events.listenerCount('blur'), hidden: window.__game.events.listenerCount('hidden'), children: ${S}.children.list.length, music: window.__game.sound.sounds.filter((s) => s.key.startsWith('music')).length })`);
   check('no listener or display-object build-up after the restarts, and still one music instance', end.blur === base.blur && end.hidden === base.hidden && end.children === base.children && end.music === 1, JSON.stringify({ base, end }));
 
   check('no console errors, page errors or failed requests', problems.length === 0, problems.slice(0, 3).join(' | '));

@@ -1,4 +1,5 @@
 import type { SfxKey } from '../src/audio/audioConfig';
+import type { MusicTrackId } from '../src/audio/audioConfig';
 import type { StorageLike } from '../src/audio/audioSettings';
 import type { MusicTrack } from '../src/audio/musicController';
 import type { PlayingSound, SfxBackend } from '../src/audio/sfxPlayer';
@@ -45,6 +46,7 @@ export class FakeTrack implements MusicTrack {
   calls: string[] = [];
   rates: number[] = [];
   volumes: number[] = [];
+  sources: MusicTrackId[] = [];
   play(): void {
     this.calls.push('play');
   }
@@ -53,6 +55,12 @@ export class FakeTrack implements MusicTrack {
   }
   resume(): void {
     this.calls.push('resume');
+  }
+  stop(): void {
+    this.calls.push('stop');
+  }
+  setSource(track: MusicTrackId): void {
+    this.sources.push(track);
   }
   setRate(rate: number): void {
     this.rates.push(rate);

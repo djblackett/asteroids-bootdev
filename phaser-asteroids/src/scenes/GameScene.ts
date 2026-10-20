@@ -112,13 +112,15 @@ export class GameScene extends Phaser.Scene {
     this.comboHud = new ComboHud(this, players > 1);
     this.streakBanner = new KillStreakBanner(this);
     this.audio = getAudio(this);
+    // A new game: in Random mode this is where the soundtrack for the run is picked (and only here).
+    this.audio.music.beginRun();
     this.audio.startMusicWhenUnlocked();
 
     // Touch mode keeps the pause title near the top: its buttons fill the middle of the screen.
     this.pauseOverlay = new Overlay(this, 0.59, 72, this.touchUi ? 100 : CENTER_Y - 80, 4);
     this.pauseOverlay.setTitle('PAUSED');
     // Lines 0 (resume), 1 (music toggle), 2 (menu) and 3 (controller note) are refreshed every frame in updateOverlays.
-    this.volumePanel = new VolumePanel(this, this.audio, CENTER_X, CENTER_Y + 105, 24, 34, 21);
+    this.volumePanel = new VolumePanel(this, this.audio, CENTER_X, CENTER_Y + 92, 24, 32, 21);
     this.volumePanel.setVisible(false);
 
     this.gameOverOverlay = new Overlay(this, 0.7, 54, CENTER_Y - 250, 6);
@@ -400,8 +402,8 @@ export class GameScene extends Phaser.Scene {
       if (showPause) this.touchPause?.update(this.time.now);
     } else if (showPause) {
       this.pauseOverlay.setLine(0, padActive ? 'Press P or START to Resume' : 'Press P to Resume', CENTER_Y + 10, COLORS.hint, 28);
-      this.pauseOverlay.setLine(2, padActive ? 'Press ESC or BACK for Main Menu' : 'Press ESC for Main Menu', CENTER_Y + 240, COLORS.dim, 22);
-      this.pauseOverlay.setLine(3, this.padNote, CENTER_Y + 205, '#ff6464', 20);
+      this.pauseOverlay.setLine(2, padActive ? 'Press ESC or BACK for Main Menu' : 'Press ESC for Main Menu', CENTER_Y + 258, COLORS.dim, 22);
+      this.pauseOverlay.setLine(3, this.padNote, CENTER_Y + 222, '#ff6464', 20);
       const music = this.audio.music.isMuted ? 'Off' : 'On';
       this.pauseOverlay.setLine(1, `Press M to Toggle Music (${music})`, CENTER_Y + 55, COLORS.dim, 22);
       this.volumePanel.update();

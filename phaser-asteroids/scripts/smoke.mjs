@@ -103,10 +103,10 @@ async function run(browser) {
     page.evaluate(`(() => { const g = window.__game, a = g.registry.get('audio'), m = a.musicSound;
       return { locked: g.sound.locked, ctx: g.sound.context ? g.sound.context.state : 'n/a',
         music: m ? { playing: m.isPlaying, paused: m.isPaused, rate: m.rate, key: m.key, gain: m.volume, requested: m.currentConfig.volume } : null,
-        musicInstances: g.sound.sounds.filter((s) => s.key === 'music').length, totalSounds: g.sound.sounds.length,
+        musicInstances: g.sound.sounds.filter((s) => s.key.startsWith('music')).length, totalSounds: g.sound.sounds.length,
         sfxPlaying: a.sfx.playingCount(), muted: a.music.isMuted, musicState: a.music.currentState,
         vm: a.volume('music'), vs: a.volume('sfx'),
-        sfxVolumes: g.sound.sounds.filter((s) => s.key !== 'music' && s.volumeNode).map((s) => s.currentConfig.volume) }; })()`);
+        sfxVolumes: g.sound.sounds.filter((s) => !s.key.startsWith('music') && s.volumeNode).map((s) => s.currentConfig.volume) }; })()`);
   const stored = (key) => page.evaluate((k) => localStorage.getItem(k), key);
   const near = (x, y, eps = 0.005) => typeof x === 'number' && Math.abs(x - y) < eps;
   const keyTap = async (key, ms = 60) => (await page.keyboard.down(key), await sleep(ms), await page.keyboard.up(key));

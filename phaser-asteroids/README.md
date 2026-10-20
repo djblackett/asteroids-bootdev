@@ -6,8 +6,8 @@ gameplay; this folder is self-contained and does not touch it.
 - Phaser **4.2.1** (pinned, stable), TypeScript (strict), Vite, Vitest.
 - 1280×720 logical playfield, scaled to the window with the aspect ratio preserved.
 - Keyboard, gamepad **and touchscreen** (landscape phone prototype, one player): see [docs/mobile-touch.md](docs/mobile-touch.md).
-- Everything on screen is drawn procedurally; the only assets are the music and 9 sound effects copied from
-  `../music` and `../sound-effects`, and the favicon.
+- Everything on screen is drawn procedurally; the only assets are three music tracks (selectable: Original, Mega Man, Gatekeeper or Random,
+  see [docs/music-tracks.md](docs/music-tracks.md)), 9 sound effects copied from `../music` and `../sound-effects`, and the favicon.
 
 ## Run it
 
@@ -66,7 +66,7 @@ what blocks a deploy, troubleshooting, rollback, gamepad checks and the custom-d
 | E | Laser beam (15 charges, 1 s cooldown) |
 | Shift | Boost (3 s, 8 s cooldown; rams asteroids, no shooting) |
 | M | Mute / unmute music |
-| ↑ / ↓, ← / → (while paused, or on the title screen) | Select Music or SFX, lower / raise it in 10 % steps. Saved in the browser. |
+| ↑ / ↓, ← / → (while paused, or on the title screen) | Select Music, SFX or Track; lower / raise a volume in 10 % steps, or step the music track (Original, Mega Man, Gatekeeper, Random). Saved in the browser. Mouse: click the left / right half of the Track row. Controller: X on the title screen, the D-pad on the pause screen. |
 | P | Pause / resume (also happens automatically when the tab or window loses focus) |
 | R, Enter, or click RETRY | Restart after game over (after a 1.5 s delay) |
 | Esc | Back to the title screen (while paused or on the game-over screen) |

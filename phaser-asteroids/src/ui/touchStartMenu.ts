@@ -9,7 +9,7 @@ import { toCss } from '../render/colors';
 import { drawPowerUpIcon, POWERUP_COLOR } from '../render/powerupIcons';
 import { CachedText } from './hud';
 import { addText, COLORS } from './text';
-import { ConfirmTouchButton, MIN_TARGET, SteeringSelector, TouchButton, TouchVolumeBlock } from './touchMenus';
+import { ConfirmTouchButton, MIN_TARGET, SteeringSelector, TouchButton, TouchVolumeBlock, TrackSelector } from './touchMenus';
 
 const LEFT_X = 40;
 const RIGHT_X = 940;
@@ -22,7 +22,7 @@ const POWERUPS: ReadonlyArray<readonly [PowerUpType, string, string]> = [
   ['slow_motion', 'Slow Motion', 'Slows asteroids'],
   ['mega_power', 'MEGA POWER', 'ALL POWERS!'],
 ];
-const ICON_POS = (i: number): { x: number; y: number } => ({ x: LEFT_X + 24 + (i % 2) * 300, y: 462 + Math.floor(i / 2) * 66 });
+const ICON_POS = (i: number): { x: number; y: number } => ({ x: LEFT_X + 24 + (i % 2) * 300, y: 440 + Math.floor(i / 2) * 62 });
 
 /** The first two lines depend on the steering control; they are rewritten when it changes. */
 const STEERING_HELP: Record<SteeringMode, readonly [string, string]> = {
@@ -38,12 +38,13 @@ export interface TouchStartCallbacks {
 }
 
 /**
- * The title screen for touch mode (one player only): a short how-to, the power-up legend, one big PLAY button, the volume controls
- * and the CONTROLS toggle. Deliberately no "tap anywhere to start": a stray touch (or the first tap after turning the phone) must not begin a run.
+ * The title screen for touch mode (one player only): a short how-to, the power-up legend, one big PLAY button, the volume controls, the
+ * music track selector and the CONTROLS toggle. Deliberately no "tap anywhere to start": a stray touch (or the first tap after turning the phone) must not begin a run.
  */
 export class TouchStartMenu {
   private readonly icons: Phaser.GameObjects.Graphics;
   private readonly volume: TouchVolumeBlock;
+  private readonly track: TrackSelector;
   private readonly help: [CachedText, CachedText];
   private helpMode: SteeringMode | null = null;
   private readonly keyboardButton: ConfirmTouchButton;
@@ -63,7 +64,7 @@ export class TouchStartMenu {
     );
     this.help = [new CachedText(lines[0] as Phaser.GameObjects.Text, COLORS.hint, 25), new CachedText(lines[1] as Phaser.GameObjects.Text, COLORS.dim, 25)];
 
-    addText(scene, LEFT_X + 280, 402, 'POWER-UPS', { size: 28, color: COLORS.heading, originX: 0.5, originY: 0.5 });
+    addText(scene, LEFT_X + 280, 384, 'POWER-UPS', { size: 28, color: COLORS.heading, originX: 0.5, originY: 0.5 });
     POWERUPS.forEach(([type, name, description], i) => {
       const { x, y } = ICON_POS(i);
       const color = type === 'mega_power' ? '#ff64ff' : toCss(POWERUP_COLOR[type]);
@@ -76,6 +77,8 @@ export class TouchStartMenu {
     new TouchButton(scene, RIGHT_X, 155, 480, 100, 'TAP TO PLAY', callbacks.start, { size: 48, fill: 0x1d6b3a, depth: 5 });
     this.volume = new TouchVolumeBlock(scene, audio, RIGHT_X, 258, 5, 96);
     new SteeringSelector(scene, steering, RIGHT_X, 568, 560, 5);
+    // The right column has no room left, so the soundtrack selector sits under the power-ups, level with the CONTROLS button.
+    this.track = new TrackSelector(scene, audio, LEFT_X + 280, 664, 560, 5);
     // Switching to the keyboard screen hides every touch control, so it takes two taps: the first one only asks "tap again".
     // (Nobody can then land on a screen with no way to play by one stray thumb, which happened on a real phone.)
     this.keyboardButton = new ConfirmTouchButton(
@@ -105,5 +108,6 @@ export class TouchStartMenu {
       drawPowerUpIcon(this.icons, type, x, y, POWERUP_RADIUS, time);
     });
     this.volume.update();
+    this.track.update();
   }
 }

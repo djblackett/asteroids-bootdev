@@ -24,7 +24,7 @@ Changes to the Python game or to root docs do not deploy.
 **These block deployment** (job `phaser`, Node 22, Ubuntu): `npm ci` → `npm run typecheck` → `npm test` (Vitest unit tests) →
 `npm run build` → `node scripts/pages-check.mjs`. The last step loads the production build in real headless Chrome, served
 as the site root at `/asteroids-bootdev/` (the Pages URL path) **and** at `/` (a custom domain), and checks: no console or
-page errors, no HTTP errors, all 10 audio files load from under that path, nothing is requested outside it, the title screen
+page errors, no HTTP errors, all 10 start-up audio files load from under that path, the two extra soundtracks are *not* requested at start-up but load from under it when picked (and a saved choice plays after a reload), nothing is requested outside it, the title screen
 renders in WebGL, a one-player game starts with the music playing, `?keydebug` loads, and the Gamepad API is available.
 It fails (it is never skipped) if Chrome is missing. The deploy job then publishes that same `dist/` (it is passed on as an
 artifact, not rebuilt).

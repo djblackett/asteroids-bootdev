@@ -174,5 +174,5 @@ export const PAD_MAPPING_LINES: readonly string[] = [
 export const PAD_MENU_LINES: readonly string[] = [
   'Any button wakes a controller; then press:',
   'LB = Player 1      RB = Player 2      A = join / start',
-  'D-PAD LEFT / RIGHT = 1 or 2 players      Y = this screen',
+  'D-PAD LEFT / RIGHT = 1 or 2 players      X = next music track      Y = this screen',
 ];

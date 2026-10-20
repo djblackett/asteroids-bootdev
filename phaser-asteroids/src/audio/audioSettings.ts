@@ -1,4 +1,4 @@
-import { MUSIC_MAX_GAIN, VOLUME_STEP } from './audioConfig';
+import { MUSIC_MAX_GAIN, MUSIC_TRACKS, VOLUME_STEP, type MusicTrackId } from './audioConfig';
 
 /** The two user-adjustable volumes. Mute is separate (it only affects the music, as before). */
 export type VolumeChannel = 'music' | 'sfx';
@@ -21,9 +21,14 @@ export function stepVolume(value: number, direction: 1 | -1): number {
   return clampVolume((steps + direction) * VOLUME_STEP);
 }
 
-/** Actual music gain for a Music setting. */
+/** Actual music gain for a Music setting (the original track's level; see `trackMusicGain`). */
 export function musicGain(setting: number): number {
   return clampVolume(setting) * MUSIC_MAX_GAIN;
+}
+
+/** Actual gain of one soundtrack at a Music setting: the master gain, times that track's own level (the original's is 1). */
+export function trackMusicGain(setting: number, track: MusicTrackId): number {
+  return musicGain(setting) * (MUSIC_TRACKS.find((t) => t.id === track)?.gain ?? 1);
 }
 
 export function formatPercent(setting: number): string {

@@ -1,15 +1,23 @@
 import Phaser from 'phaser';
-import { AUDIO_ASSETS } from '../audio/audioConfig';
+import { SFX_ASSETS } from '../audio/audioConfig';
+import { browserStorage } from '../audio/audioSettings';
+import { resolveStartupMusic, trackDef, type StartupMusic } from '../audio/musicTracks';
 import { AUDIO_REGISTRY_KEY, AudioDirector } from '../audio/phaserAudio';
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
+import { defaultRng } from '../core/rng';
 import { installGamepadHub } from '../input/gameGamepads';
 import { installHeldKeys } from '../input/gameKeys';
 import { installTouchControls } from '../input/gameTouch';
 import { addText, COLORS } from '../ui/text';
 import { SCENE_BOOT, SCENE_START } from './keys';
 
-/** Loads audio, then hands over to the start screen. A failed asset never blocks the game. */
+/**
+ * Loads audio, then hands over to the start screen. A failed asset never blocks the game. Only the effects and the one
+ * music track that plays first are loaded here; the other tracks are downloaded when somebody picks them (see PhaserMusicTrack).
+ */
 export class BootScene extends Phaser.Scene {
+  private startup!: StartupMusic;
+
   constructor() {
     super(SCENE_BOOT);
   }
@@ -27,12 +35,14 @@ export class BootScene extends Phaser.Scene {
     this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
       console.warn(`[asteroids] failed to load ${file.key}; continuing without it`);
     });
-    for (const [key, file] of AUDIO_ASSETS) this.load.audio(key, file);
+    this.startup = resolveStartupMusic(browserStorage(), defaultRng);
+    const music = trackDef(this.startup.track);
+    for (const [key, file] of [[music.key, music.file] as const, ...SFX_ASSETS]) this.load.audio(key, file);
   }
 
   create(): void {
     // One audio director for the whole game: music survives scene changes and restarts.
-    this.registry.set(AUDIO_REGISTRY_KEY, new AudioDirector(this.game));
+    this.registry.set(AUDIO_REGISTRY_KEY, new AudioDirector(this.game, this.startup));
     // One held-key tracker for the whole game: held keys survive pause, retry and scene changes.
     installHeldKeys(this.game);
     // One gamepad hub for the whole game: assignments survive pause, retry and scene changes (see gamepadHub.ts).

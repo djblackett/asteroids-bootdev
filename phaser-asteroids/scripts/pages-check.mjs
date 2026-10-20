@@ -30,6 +30,7 @@ const CONTENT_TYPES = {
   '.json': 'application/json',
   '.png': 'image/png',
   '.ogg': 'audio/ogg',
+  '.mp3': 'audio/mpeg',
   '.map': 'application/json',
 };
 
@@ -95,6 +96,9 @@ const audioFiles = fs.existsSync(path.join(dist, 'audio'))
   ? listFiles(path.join(dist, 'audio'), 'audio/').filter((f) => f.endsWith('.ogg'))
   : [];
 if (audioFiles.length === 0) throw new Error('dist/audio has no .ogg files; the build is incomplete.');
+// The two extra soundtracks are not loaded at start-up (only the saved / default one is); they download when somebody picks them.
+const onDemandMusic = ['audio/music/megaman.mp3', 'audio/music/gatekeeper.mp3'];
+for (const f of onDemandMusic) if (!fs.existsSync(path.join(dist, f))) throw new Error(`dist/${f} is missing; the build is incomplete.`);
 
 const browser = await chromium.launch({
   executablePath: findChrome(),
@@ -133,6 +137,8 @@ async function checkMount(mount) {
       const missing = wanted.filter((p) => !ok.has(p));
       check(`${label} canvas is created and the page has no errors`, problems.length === 0, problems.join(' | '));
       check(`${label} all ${audioFiles.length} audio files load (200) from the base path`, missing.length === 0, `missing: ${missing.join(', ')}`);
+      const early = onDemandMusic.filter((f) => ok.has(`${mount}${f}`));
+      check(`${label} the extra soundtracks are not downloaded at start-up`, early.length === 0, `requested early: ${early.join(', ')}`);
       const secure = await page.evaluate(() => ({ secure: window.isSecureContext, pads: typeof navigator.getGamepads === 'function' }));
       check(`${label} Gamepad API is available in this (secure) context`, secure.secure && secure.pads, JSON.stringify(secure));
       await page.close();
@@ -155,6 +161,34 @@ async function checkMount(mount) {
       });
       check(`${label} a single-player game starts with the music playing`, run.lives === 3 && run.music === true, JSON.stringify(run));
       check(`${label} no errors while playing`, problems.length === 0, problems.join(' | '));
+      await page.close();
+    }
+    // 2b. The soundtrack selector: a track picked on the title screen is fetched from under the base path and plays; a saved choice survives a reload.
+    {
+      const { page, problems, ok } = await open();
+      await page.goto(url('?debug'));
+      await page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
+      for (const [i, file] of onDemandMusic.entries()) {
+        const key = i === 0 ? 'music-megaman' : 'music-gatekeeper';
+        if (i === 0) await page.keyboard.press('ArrowDown'), await page.keyboard.press('ArrowDown');
+        await page.keyboard.press('ArrowRight');
+        await page.waitForFunction((k) => window.__game.registry.get('audio').musicSound?.key === k && window.__game.registry.get('audio').musicSound.isPlaying, key, { timeout: 15000 }).catch(() => {});
+        const now = await page.evaluate(() => {
+          const a = window.__game.registry.get('audio');
+          return { key: a.musicSound?.key, playing: a.musicSound?.isPlaying ?? false, choice: a.musicChoice, saved: localStorage.getItem('asteroids.musicTrack'), scene: window.__game.scene.isActive('StartScene') };
+        });
+        check(`${label} choosing ${key} on the title screen downloads it from the base path and plays it`, ok.has(`${mount}${file}`) && now.key === key && now.playing && now.saved === now.choice && now.scene, JSON.stringify(now));
+      }
+      await page.reload();
+      await page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
+      await page.keyboard.press('Space');
+      await page.waitForFunction(() => window.__game.registry.get('audio').musicSound?.isPlaying, null, { timeout: 15000 }).catch(() => {});
+      const reloaded = await page.evaluate(() => {
+        const a = window.__game.registry.get('audio');
+        return { choice: a.musicChoice, key: a.musicSound?.key, playing: a.musicSound?.isPlaying ?? false, game: window.__game.scene.isActive('GameScene') };
+      });
+      check(`${label} after a reload the saved soundtrack plays in the game`, reloaded.choice === 'gatekeeper' && reloaded.key === 'music-gatekeeper' && reloaded.playing && reloaded.game, JSON.stringify(reloaded));
+      check(`${label} no errors with the extra soundtracks`, problems.length === 0, problems.join(' | '));
       await page.close();
     }
     // 3. Development query parameters must not break a normal load.

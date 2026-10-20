@@ -891,7 +891,7 @@ async function mobilePage(width, height, { query = '?debug', mobile = true, touc
     audio: () =>
       page.evaluate(`(() => { const g = window.__game, a = g.registry.get('audio'), m = a.musicSound;
         return { locked: g.sound.locked, ctx: g.sound.context ? g.sound.context.state : 'n/a', playing: !!m && m.isPlaying, paused: !!m && m.isPaused,
-          instances: g.sound.sounds.filter((s) => s.key === 'music').length, vm: a.volume('music'), vs: a.volume('sfx'), muted: a.music.isMuted }; })()`),
+          instances: g.sound.sounds.filter((s) => s.key.startsWith('music')).length, vm: a.volume('music'), vs: a.volume('sfx'), muted: a.music.isMuted }; })()`),
     activeScene: () => page.evaluate(() => ['BootScene', 'StartScene', 'GameScene'].find((n) => window.__game.scene.isActive(n))),
     /** Every visible Text in a scene, including those inside containers (the pause / game-over overlays). */
     texts: (name = 'GameScene') => page.evaluate(`(${VISIBLE_TEXTS})(window.__game.scene.getScene('${name}'))`),

@@ -16,6 +16,7 @@
     "test:coop": "npm run build && node scripts/coop.mjs",
     "test:gamepad": "npm run build && node scripts/gamepad.mjs",
     "test:touch": "npm run build && node scripts/touch.mjs",
+    "test:music": "npm run build && node scripts/music.mjs",
     "test:pages": "npm run build && node scripts/pages-check.mjs"
   },
   "dependencies": {

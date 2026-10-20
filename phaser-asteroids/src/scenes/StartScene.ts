@@ -125,7 +125,7 @@ export class StartScene extends Phaser.Scene {
     this.buildCoopPage();
 
     this.clickStarts = !inputMode.env.coarsePrimaryPointer;
-    this.prompt = addText(this, CENTER_X, 630, this.clickStarts ? 'Press SPACE or click to start' : 'Press SPACE to start', { size: 32, originX: 0.5, originY: 0.5 });
+    this.prompt = addText(this, CENTER_X, 616, this.clickStarts ? 'Press SPACE or click to start' : 'Press SPACE to start', { size: 32, originX: 0.5, originY: 0.5 });
     this.tweens.add({ targets: this.prompt, alpha: 0.35, duration: 700, yoyo: true, repeat: -1 });
 
     // Presses meant for the scene we came from (the BACK that opened this menu, a RETRY that was refused) are not ours.
@@ -144,7 +144,7 @@ export class StartScene extends Phaser.Scene {
       18,
     );
 
-    this.volumePanel = new VolumePanel(this, this.audio, CENTER_X, 664, 18, 22, 2);
+    this.volumePanel = new VolumePanel(this, this.audio, CENTER_X, 650, 18, 20, 2);
     // A device that can touch gets a way to turn the touch controls on (desktops without a touch screen never see this). It is a big,
     // green, full-size button (at least 44 CSS px on a phone), not small text: on a phone in keyboard mode it is the only way back.
     if (inputMode.canToggle) {
@@ -232,7 +232,7 @@ export class StartScene extends Phaser.Scene {
   /**
    * Controller buttons on the title screen, one fresh press at a time. LB / RB give the pad to Player 1 / 2, A (or START) on
    * an unassigned pad joins the first free player and on an assigned pad starts the game, D-pad left / right pick one or
-   * two players, Y shows the layout and B / BACK closes it. Nothing here needs the keyboard.
+   * two players, X steps the music track, Y shows the layout and B / BACK closes it. Nothing here needs the keyboard.
    */
   private handlePadPresses(): void {
     const count = this.setup.game.playerCount;
@@ -250,6 +250,9 @@ export class StartScene extends Phaser.Scene {
           if (this.padPanel.layoutVisible) this.padPanel.setLayoutVisible(false);
           else if (assigned) this.start();
           else this.pads.join(press.padKey, count);
+          break;
+        case 'x':
+          if (!this.padPanel.layoutVisible) this.audio.cycleMusicChoice(1);
           break;
         case 'y':
           this.toggleLayout();

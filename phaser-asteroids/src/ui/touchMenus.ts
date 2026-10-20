@@ -1,5 +1,6 @@
 import type Phaser from 'phaser';
 import { formatPercent, type VolumeChannel } from '../audio/audioSettings';
+import { choiceLabel } from '../audio/musicTracks';
 import type { AudioDirector } from '../audio/phaserAudio';
 import type { SteeringController } from '../input/steeringMode';
 import type { SteeringMode } from '../input/touchModel';
@@ -209,6 +210,40 @@ export class TouchVolumeBlock {
 }
 
 const SELECTOR_GAP = 8;
+const ARROW_WIDTH = 96;
+
+/**
+ * MUSIC: ORIGINAL | MEGA MAN | GATEKEEPER | RANDOM as `<  MUSIC: NAME  >`: the arrows step to the previous / next entry (wrapping) and a tap
+ * on the name steps forward, so all three are full-size targets. It writes straight to the (persisted) soundtrack setting; changing it never
+ * starts, pauses or resumes anything. `width` is the whole control, `y` its centre.
+ */
+export class TrackSelector {
+  private readonly buttons: TouchButton[];
+  private readonly name: TouchButton;
+  private shown = '';
+
+  constructor(scene: Phaser.Scene, private readonly audio: AudioDirector, x: number, y: number, width: number, depth: number) {
+    const centreWidth = width - 2 * (ARROW_WIDTH + SELECTOR_GAP);
+    const offset = (width - ARROW_WIDTH) / 2;
+    const prev = new TouchButton(scene, x - offset, y, ARROW_WIDTH, MIN_TARGET, '<', () => this.audio.cycleMusicChoice(-1), { size: 44, depth });
+    const next = new TouchButton(scene, x + offset, y, ARROW_WIDTH, MIN_TARGET, '>', () => this.audio.cycleMusicChoice(1), { size: 44, depth });
+    this.name = new TouchButton(scene, x, y, centreWidth, MIN_TARGET, '', () => this.audio.cycleMusicChoice(1), { size: 28, depth });
+    this.buttons = [prev, this.name, next];
+    this.update();
+  }
+
+  /** Cheap to call every frame: text is only touched when its content changes. */
+  update(): void {
+    const text = `MUSIC: ${choiceLabel(this.audio.musicChoice).toUpperCase()}`;
+    if (text === this.shown) return;
+    this.shown = text;
+    this.name.setText(text);
+  }
+
+  setVisible(visible: boolean): void {
+    for (const button of this.buttons) button.setVisible(visible);
+  }
+}
 
 /**
  * STEERING: JOYSTICK | D-PAD as two side-by-side buttons with the chosen one lit, so both options are always visible and a switch is
@@ -261,12 +296,15 @@ export class TouchPauseMenu {
   private readonly menu: ConfirmTouchButton;
   private readonly volume: TouchVolumeBlock;
   private readonly steering: SteeringSelector;
+  private readonly track: TrackSelector;
 
   constructor(scene: Phaser.Scene, audio: AudioDirector, steering: SteeringController, callbacks: TouchPauseCallbacks) {
     this.resume = new TouchButton(scene, 340, 300, 480, 130, 'RESUME', callbacks.resume, { size: 44, fill: 0x1d6b3a });
     this.menu = new ConfirmTouchButton(scene, 340, 460, 480, 110, 'MAIN MENU', 'TAP AGAIN TO QUIT\nTO THE MAIN MENU', callbacks.menu, { size: 34 });
     this.volume = new TouchVolumeBlock(scene, audio, 940, 250, 23);
     this.steering = new SteeringSelector(scene, steering, 340, 610, 480, 23);
+    // Under the volume block, level with the steering selector (the volume block ends at y 497).
+    this.track = new TrackSelector(scene, audio, 940, 610, 560, 23);
     this.setVisible(false);
   }
 
@@ -275,11 +313,13 @@ export class TouchPauseMenu {
     this.menu.setVisible(visible);
     this.volume.setVisible(visible);
     this.steering.setVisible(visible);
+    this.track.setVisible(visible);
   }
 
   update(now: number): void {
     this.menu.update(now);
     this.volume.update();
+    this.track.update();
   }
 }
 

@@ -29,7 +29,7 @@ Status: automated checks pass (below); both were tried on an Android phone (D-pa
 ## What the player sees
 
 **Title screen (touch mode):** a short how-to, the five power-ups, a big **TAP TO PLAY** button, Music / SFX volume with `-` / `+`
-buttons and a music on / off button, the **STEERING: JOYSTICK | D-PAD** choice, a **CONTROLS: TOUCH (tap for keyboard)** button (it takes **two taps**: the first only asks "TAP AGAIN TO SWITCH TO KEYBOARD CONTROLS", the question lapses after 3 s, and a touch within 300 ms of the first one, such as a second finger or a bounce, does not count), and a small **FULLSCREEN** button at the top right. There is deliberately no "tap anywhere to
+buttons and a music on / off button, the **MUSIC: ORIGINAL** track selector (`<` / `>` arrows at the bottom left under the power-ups; see [music-tracks.md](music-tracks.md)), the **STEERING: JOYSTICK | D-PAD** choice, a **CONTROLS: TOUCH (tap for keyboard)** button (it takes **two taps**: the first only asks "TAP AGAIN TO SWITCH TO KEYBOARD CONTROLS", the question lapses after 3 s, and a touch within 300 ms of the first one, such as a second finger or a bounce, does not count), and a small **FULLSCREEN** button at the top right. There is deliberately no "tap anywhere to
 start": a stray touch must not begin a run.
 
 **During play (landscape):**
@@ -52,7 +52,7 @@ start": a stray touch must not begin a run.
 | **BOOST** | above FIRE (about 70 CSS px) | Boost, one activation per press. Shows READY, or the seconds left while active / cooling down. |
 | **PAUSE** | top right (52 CSS px) | Pauses. It fires on *release* of a tap, so brushing it does nothing. |
 
-**Pause screen:** RESUME, MAIN MENU (two taps: the first asks "TAP AGAIN TO QUIT TO THE MAIN MENU"), the STEERING choice, Music and SFX `-` / `+`, music on / off, and the FULLSCREEN button. **Game over:** RETRY (disabled for the short delay
+**Pause screen:** RESUME, MAIN MENU (two taps: the first asks "TAP AGAIN TO QUIT TO THE MAIN MENU"), the STEERING choice, Music and SFX `-` / `+`, music on / off, the music track selector (bottom right), and the FULLSCREEN button. **Game over:** RETRY (disabled for the short delay
 after the ship is lost, as with the R key) and MAIN MENU. The on-screen controls are only drawn while a run is actually being
 played, so the canvas gets every tap in menus. The HUD at the top left is drawn 1.4x larger in touch mode (`TOUCH_HUD_SCALE`) so it is
 readable at phone size; desktop is unchanged.

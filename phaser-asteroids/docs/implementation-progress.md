@@ -1,7 +1,7 @@
 # Implementation progress
 
 Phaser **4.2.1** · TypeScript 7.0.2 (strict) · Vite 8.3.4 · Vitest 5.0.5 · playwright-core 1.64.1 (dev only, for the
-browser tests). Last updated 2026-10-20 (Phase 6).
+browser tests). Last updated 2026-10-20 (Phase 7).
 
 ## Status
 
@@ -13,6 +13,7 @@ browser tests). Last updated 2026-10-20 (Phase 6).
 | 4 | Two-player local co-op (independent / shared lives, friendly fire, speed handicaps, Revive, co-op HUD and menu), Laser Beam kills UFOs, gradual small UFOs, shield-vs-UFO fix | Done (see "Phase 4") |
 | 5 | Gamepad support: Python mapping recovered, keyboard + controller co-op (Player 1 keyboard, Player 2 pad), hot-plug, assignment UI, `?keydebug` pad section | Done and tested with a simulated gamepad; **real-hardware test pending** (see "Phase 5") |
 | 6 | Mobile touchscreen prototype: floating joystick + FIRE / LASER / BOOST / PAUSE, landscape-first, portrait prompt, touch menus, input-mode selection | Built on branch `feature/mobile-touch-controls`, **not merged or deployed**; D-pad (default) and Android fullscreen tried on one Android phone; release-readiness pass done (Phase 6c); the keyboard-switch safeguards and iPhone are **not yet tried on a phone** (see "Phase 6") |
+| 7 | Selectable soundtrack: Original, Mega Man, Gatekeeper, Random (title and pause screens: keyboard, mouse, gamepad, touch), per-track gain, on-demand loading | Built, tested; **uncommitted, not deployed**; listening test pending (see "Phase 7" and [music-tracks.md](music-tracks.md)) |
 
 ## Phase 2: what was added
 
@@ -538,6 +539,27 @@ combat 39/39, co-op 65/65, gamepad 82/82, Pages 17/17; smoke 71/72 (the known SF
 - **Left as known limitations:** the pause screen's JOYSTICK button is also under the pad (switches steering, cannot lose the run); repeated deliberate presses can still confirm
   MAIN MENU; the keyboard-mode recovery button's caption is small. Not verified on a phone: everything in this entry, and iPhone.
 
+## Phase 7: selectable soundtrack (2026-10-20)
+
+Full write-up: [music-tracks.md](music-tracks.md) (files, behaviour, loudness measurements, memory, tests, listening checklist).
+
+- **Feature:** a Track row (Original, Mega Man, Gatekeeper, Random) on the title and pause screens, with keyboard, mouse, gamepad and
+  touch controls; saved as `asteroids.musicTrack`; Original by default. Random picks per new game (never the previous track) and holds
+  through pause, focus, mute, orientation and scene changes.
+- **Audio lifecycle:** `MusicController` gained the soundtrack choice (`setChoice`, `beginRun`, `reportUnavailable`) and its player
+  interface gained `stop` / `setSource`; `PhaserMusicTrack` downloads and decodes a track on demand, fades the old sound out in 40 ms,
+  destroys it, keeps at most two decoded tracks, and falls back to Original (with a console warning) when a track cannot be loaded.
+  The pause, mute, volume and Mega Power paths are unchanged.
+- **Loading:** the boot screen loads the effects and only the saved track; the other two music files download on first selection.
+- **Mix:** `MUSIC_MAX_GAIN` and every `SFX_GAIN` are untouched; the music level is now master x Music setting x a per-track multiplier
+  (Original 1.00, Mega Man 1.65, Gatekeeper 1.55, from ffmpeg loudness measurements; a listening test decides the final values).
+- **Files touched outside the feature itself:** `StartScene` / `GameScene` (row positions, `beginRun`, X on the title pad), `BootScene`
+  (what it loads), `touchStartMenu.ts` (power-up legend moved up ~20 px to make room for the selector), the controller help text, and the
+  browser scripts (music instances are counted as `key.startsWith('music')`; `pages-check.mjs` serves `.mp3` and checks the lazy loading).
+- **A controller alone cannot unlock browser audio** (a button press is not a user gesture): on the title screen the first key press, click or tap does it, as before.
+- **Not changed:** simulation, scoring, power-ups, controls and their mappings, fullscreen, steering settings, effects mix, the Python
+  game, the Pages workflow.
+
 ## Verification, Phase 3 (2026-10-19)
 
 - Baseline before the pass: typecheck clean, **367 unit tests**, smoke **72/72**, keyboard **49/49** (the 2026-10-18 figures below are older).
@@ -727,7 +749,7 @@ Power's blanket switch-off of Rapid Fire / Multi-Shot.
   Continuous controls no longer use Phaser's keys at all (see "Keyboard input regression pass"). Any future one-shot key must use the dispatcher.
 - Phaser 4.2.1's `fps.limit` / `TimeStep.setFPSLimit` over-reports `delta` (1.4–1.6× real time), so it is not used.
 - Below ~10 fps the game runs in slow motion (frames are clamped at 0.1 s, by design).
-- Phaser is bundled in full (1.4 MB, 357 KB gzip); the music file adds 1.4 MB of audio.
+- Phaser is bundled in full (1.4 MB, 357 KB gzip); the default music file adds 1.4 MB of audio, and each extra soundtrack (3.9 MB and 3.0 MB) is downloaded only when somebody picks it (Phase 7).
 - Only Chrome has been tested; nothing was run on Firefox, Safari, a physical GPU or a touch device. Refresh rates other
   than 60 Hz are covered by unit tests, not a real display.
 - The smoke test needs a locally installed Chrome / Edge / Chromium (set `CHROME_PATH` if it is not in a standard place).

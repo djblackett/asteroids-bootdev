@@ -18,10 +18,51 @@ export type SfxKey =
   | 'boost'
   | 'player_death';
 
+/** Phaser audio-cache key of the original track (kept as it always was; the other tracks are `music-<id>`). */
 export const MUSIC_KEY = 'music';
 
-export const AUDIO_ASSETS: ReadonlyArray<readonly [key: string, file: string]> = [
-  [MUSIC_KEY, 'audio/music/retro-bgmusic.ogg'],
+// --- Soundtracks -------------------------------------------------------------------------------------
+
+export type MusicTrackId = 'original' | 'megaman' | 'gatekeeper';
+/** What the player picks: one track, or `random` (a different track chosen at the start of every new game). */
+export type MusicChoice = MusicTrackId | 'random';
+
+export interface MusicTrackDef {
+  readonly id: MusicTrackId;
+  /** Shown in the menus. */
+  readonly label: string;
+  /** Path relative to the page (never root-absolute: the game is served from a GitHub Pages project URL). */
+  readonly file: string;
+  /** Phaser audio-cache key. */
+  readonly key: string;
+  /**
+   * Level of this track relative to the original at the same Music setting (the original is 1 and must stay 1, it is the
+   * approved mix). The music master gain (`MUSIC_MAX_GAIN`) is untouched; this only evens out how the files were mastered.
+   * Measured with ffmpeg ebur128 (integrated loudness, K-weighted): Original -9.9 LUFS, Mega Man -14.3 LUFS, Gatekeeper
+   * -13.8 LUFS, i.e. 4.4 and 3.9 LU quieter, which is x1.66 and x1.57. Rounded down a little (-0.1 dB) so a track is never
+   * the louder one; true peaks stay below 0 dBFS even at a Music setting of 100 %. Subjective balance is for a listening test.
+   */
+  readonly gain: number;
+}
+
+export const MUSIC_TRACKS: readonly MusicTrackDef[] = [
+  { id: 'original', label: 'Original', file: 'audio/music/retro-bgmusic.ogg', key: MUSIC_KEY, gain: 1 },
+  { id: 'megaman', label: 'Mega Man', file: 'audio/music/megaman.mp3', key: 'music-megaman', gain: 1.65 },
+  { id: 'gatekeeper', label: 'Gatekeeper', file: 'audio/music/gatekeeper.mp3', key: 'music-gatekeeper', gain: 1.55 },
+];
+
+export const DEFAULT_MUSIC_TRACK: MusicTrackId = 'original';
+export const DEFAULT_MUSIC_CHOICE: MusicChoice = DEFAULT_MUSIC_TRACK;
+
+/** Decoded music is large (about 0.4 MB per second). Only this many decoded tracks stay in memory: the playing one and the last one. */
+export const MAX_DECODED_MUSIC_TRACKS = 2;
+
+/** Switching tracks fades the old one out over this long (seconds) instead of cutting it off mid-wave, which clicks. */
+export const MUSIC_FADE_SECONDS = 0.04;
+
+type SfxAsset = readonly [key: string, file: string];
+
+export const SFX_ASSETS: ReadonlyArray<SfxAsset> = [
   ['shoot_low', 'audio/sfx/shoot_low.ogg'],
   ['shoot_mid', 'audio/sfx/shoot_mid.ogg'],
   ['shoot_high', 'audio/sfx/shoot_high.ogg'],
@@ -32,6 +73,9 @@ export const AUDIO_ASSETS: ReadonlyArray<readonly [key: string, file: string]> =
   ['boost', 'audio/sfx/boost-woosh.ogg'],
   ['player_death', 'audio/sfx/player-death.ogg'],
 ];
+
+/** Every known audio file. The boot screen loads the effects and only the music track that is needed first; the others load on demand. */
+export const AUDIO_ASSETS: ReadonlyArray<SfxAsset> = [...MUSIC_TRACKS.map((t): SfxAsset => [t.key, t.file]), ...SFX_ASSETS];
 
 // --- Mix ---------------------------------------------------------------------------------------------
 //
@@ -157,3 +201,5 @@ export const MEGA_POWER_MUSIC_SPEEDUP_ENABLED = false;
 export const MUSIC_MUTE_STORAGE_KEY = 'asteroids.musicMuted';
 export const MUSIC_VOLUME_STORAGE_KEY = 'asteroids.musicVolume';
 export const SFX_VOLUME_STORAGE_KEY = 'asteroids.sfxVolume';
+/** `original`, `megaman`, `gatekeeper` or `random`; anything else is ignored. */
+export const MUSIC_TRACK_STORAGE_KEY = 'asteroids.musicTrack';
