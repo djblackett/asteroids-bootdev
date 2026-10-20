@@ -4,6 +4,7 @@ import { AUDIO_REGISTRY_KEY, AudioDirector } from '../audio/phaserAudio';
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
 import { installGamepadHub } from '../input/gameGamepads';
 import { installHeldKeys } from '../input/gameKeys';
+import { installTouchControls } from '../input/gameTouch';
 import { addText, COLORS } from '../ui/text';
 import { SCENE_BOOT, SCENE_START } from './keys';
 
@@ -36,6 +37,8 @@ export class BootScene extends Phaser.Scene {
     installHeldKeys(this.game);
     // One gamepad hub for the whole game: assignments survive pause, retry and scene changes (see gamepadHub.ts).
     installGamepadHub(this.game);
+    // One input-mode choice and one touch-control layer for the whole game; inert and invisible unless touch mode is on.
+    installTouchControls(this.game);
     this.scene.start(SCENE_START);
   }
 }

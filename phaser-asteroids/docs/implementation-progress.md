@@ -1,7 +1,7 @@
 # Implementation progress
 
 Phaser **4.2.1** · TypeScript 7.0.2 (strict) · Vite 8.3.4 · Vitest 5.0.5 · playwright-core 1.64.1 (dev only, for the
-browser tests). Last updated 2026-10-19 (Phase 5).
+browser tests). Last updated 2026-10-20 (Phase 6).
 
 ## Status
 
@@ -12,6 +12,7 @@ browser tests). Last updated 2026-10-19 (Phase 5).
 | 3 | Combo scoring, kill-streak banners, large and small UFOs (AI, shots, collisions, drops), integrated combat tests | Done (see "Phase 3") |
 | 4 | Two-player local co-op (independent / shared lives, friendly fire, speed handicaps, Revive, co-op HUD and menu), Laser Beam kills UFOs, gradual small UFOs, shield-vs-UFO fix | Done (see "Phase 4") |
 | 5 | Gamepad support: Python mapping recovered, keyboard + controller co-op (Player 1 keyboard, Player 2 pad), hot-plug, assignment UI, `?keydebug` pad section | Done and tested with a simulated gamepad; **real-hardware test pending** (see "Phase 5") |
+| 6 | Mobile touchscreen prototype: floating joystick + FIRE / LASER / BOOST / PAUSE, landscape-first, portrait prompt, touch menus, input-mode selection | Built on branch `feature/mobile-touch-controls`, **not merged or deployed**; tested in touch emulation only, **real-phone test pending** (see "Phase 6") |
 
 ## Phase 2: what was added
 
@@ -454,6 +455,30 @@ press). Chrome only exposes `navigator.getGamepads()` in a secure context (https
    values, the normalised command, the target player and the connect / disconnect timeline), the exact controller model and how it is connected, the browser and its version, and, for drift problems, the idle
    values of axes 0 / 1.
 
+## Phase 6: mobile touchscreen prototype (2026-10-20)
+
+Full description, layout, mapping, mode policy, limits and the phone test procedure: [mobile-touch.md](mobile-touch.md). Summary:
+
+- **Architecture.** Touch is one more source of `PlayerInput`, merged into Player 1 by `readPlayerInputs` after keyboard and pad. `src/core/` is unchanged.
+  `touchModel.ts` (pure: pointer id -> control binding, stick normalisation reusing `stickAxis`), `touchBinding.ts` (Pointer Events wiring against
+  structural interfaces, so it is unit tested with fake targets), `touchControls.ts` (game-wide facade: mode, layer, portrait, pause tap),
+  `inputMode.ts` (policy), `gameTouch.ts` (registry install, like held keys and the gamepad hub), `ui/touchOverlay.ts` + `touch.css` (DOM controls and the
+  portrait prompt), `ui/touchMenus.ts` / `touchStartMenu.ts` / `touchLabels.ts` (Phaser touch menus, ability labels).
+- **Changed existing files** (all behaviour-preserving on desktop): `BootScene` (installs the touch layer), `StartScene` (touch title screen branch, CONTROLS switch),
+  `GameScene` (touch layer / pause / game-over buttons, portrait pause), `playerInputs.ts` (optional touch source), `hud.ts` (optional scale, default 1),
+  `main.ts` (`input.activePointers: 3`), `index.html` (`viewport-fit=cover`, safe-area inset on the canvas container, `overscroll-behavior`).
+- **Bugs the browser suite found while building it** (all fixed): Phaser's window-level touch listener processed touches on the DOM overlay as taps on Phaser
+  buttons (a tap on the rotate prompt started a game); Phaser's single default touch pointer ignored a RETRY tap while the other thumb rested on the screen.
+- **Not changed:** scoring, physics, collisions, difficulty, UFOs, power-ups, audio files and mix, the Python game, the deployment workflow.
+- **Verification (Phase 6).** Unit tests: 845 in 34 files (733 before this phase; 112 new across `touchModel`, `touchBinding`, `touchControls`, `inputMode`, `touchInput`).
+  Browser: `npm run test:touch` (101 checks; genuine four-finger multi-touch through CDP, phone viewports 844x390, 667x375, 932x430, 740x360, 915x412, 1024x768, portrait,
+  pause / retry / menu / mode switch, desktop-unchanged guards). The existing suites were re-run on the final build: smoke, keyboard, combat, co-op, gamepad and Pages
+  validation (see the final report for the counts). Flakiness, measured: the timing-sensitive checks in the smoke and keyboard suites fail
+  intermittently on this machine **with and without this phase**. Pristine `main` (built in a separate worktree) failed 3 of 17 smoke runs (two different checks, e.g. the SFX
+  sample-shot level and "boost moves ~2.5x faster"); this branch failed 3 of ~14 (the same SFX check, and once a keyboard "movement + laser" 200 ms-window check
+  while unit tests ran concurrently). Isolated reruns pass. Treat a single red timing check as a rerun, not as a regression, and investigate only if it repeats.
+- **Not verified:** anything on a physical phone, iOS Safari, Android Chrome, a real GPU, safe-area insets on a notched device, thumb ergonomics.
+
 ## Verification, Phase 3 (2026-10-19)
 
 - Baseline before the pass: typecheck clean, **367 unit tests**, smoke **72/72**, keyboard **49/49** (the 2026-10-18 figures below are older).
@@ -653,7 +678,7 @@ Power's blanket switch-off of Rapid Fire / Multi-Shot.
 
 ## Not implemented yet (deferred)
 
-Wave mode (and with it the wave-based UFO schedule), death taunts, high-score screen, touch, online leaderboards, more than
+Wave mode (and with it the wave-based UFO schedule), death taunts, high-score screen, online leaderboards, more than
 two players, key remapping.
 
 ## Next steps

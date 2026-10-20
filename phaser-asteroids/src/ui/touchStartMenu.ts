@@ -1,0 +1,77 @@
+import type Phaser from 'phaser';
+import type { AudioDirector } from '../audio/phaserAudio';
+import { POWERUP_RADIUS } from '../core/constants';
+import type { PowerUpType } from '../core/powerup';
+import type { InputModeController } from '../input/inputMode';
+import { toCss } from '../render/colors';
+import { drawPowerUpIcon, POWERUP_COLOR } from '../render/powerupIcons';
+import { addText, COLORS } from './text';
+import { MIN_TARGET, TouchButton, TouchVolumeBlock } from './touchMenus';
+
+const LEFT_X = 40;
+const RIGHT_X = 940;
+
+/** The five power-ups a one-player game has, as the keyboard title screen lists them (touch play is one player, so no Revive). */
+const POWERUPS: ReadonlyArray<readonly [PowerUpType, string, string]> = [
+  ['rapid_fire', 'Rapid Fire', 'Faster shooting'],
+  ['multi_shot', 'Multi-Shot', 'Shoot 3 bullets'],
+  ['shield', 'Shield', 'One-hit protection'],
+  ['slow_motion', 'Slow Motion', 'Slows asteroids'],
+  ['mega_power', 'MEGA POWER', 'ALL POWERS!'],
+];
+const ICON_POS = (i: number): { x: number; y: number } => ({ x: LEFT_X + 24 + (i % 2) * 300, y: 462 + Math.floor(i / 2) * 66 });
+
+const HOW_TO_PLAY = [
+  'LEFT SIDE: drag to steer and fly',
+  '  (left / right turns, up = forward)',
+  'FIRE: hold it down to shoot',
+  'LASER and BOOST: tap',
+  'PAUSE: top right corner',
+];
+
+export interface TouchStartCallbacks {
+  start: () => void;
+  /** The CONTROLS button was tapped: the scene rebuilds itself for the new mode. */
+  switchMode: () => void;
+}
+
+/**
+ * The title screen for touch mode (one player only): a short how-to, the power-up legend, one big PLAY button, the volume controls
+ * and the CONTROLS toggle. Deliberately no "tap anywhere to start": a stray touch (or the first tap after turning the phone) must not begin a run.
+ */
+export class TouchStartMenu {
+  private readonly icons: Phaser.GameObjects.Graphics;
+  private readonly volume: TouchVolumeBlock;
+
+  constructor(scene: Phaser.Scene, audio: AudioDirector, mode: InputModeController, callbacks: TouchStartCallbacks) {
+    this.icons = scene.add.graphics().setDepth(2);
+
+    addText(scene, LEFT_X + 280, 128, 'HOW TO PLAY', { size: 30, color: COLORS.heading, originX: 0.5, originY: 0.5 });
+    HOW_TO_PLAY.forEach((line, i) => {
+      addText(scene, LEFT_X, 172 + i * 40, line, { size: 25, color: i === 1 ? COLORS.dim : COLORS.hint, originY: 0.5, bold: i !== 1 });
+    });
+
+    addText(scene, LEFT_X + 280, 402, 'POWER-UPS', { size: 28, color: COLORS.heading, originX: 0.5, originY: 0.5 });
+    POWERUPS.forEach(([type, name, description], i) => {
+      const { x, y } = ICON_POS(i);
+      const color = type === 'mega_power' ? '#ff64ff' : toCss(POWERUP_COLOR[type]);
+      addText(scene, x + 34, y - 11, name, { size: 21, color, originY: 0.5 });
+      addText(scene, x + 34, y + 13, description, { size: 17, color: COLORS.hint, originY: 0.5, bold: false });
+    });
+
+    new TouchButton(scene, RIGHT_X, 190, 540, 140, 'TAP TO PLAY', callbacks.start, { size: 48, fill: 0x1d6b3a, depth: 5 });
+    this.volume = new TouchVolumeBlock(scene, audio, RIGHT_X, 330, 5);
+    new TouchButton(scene, RIGHT_X, 640, 560, MIN_TARGET, '', callbacks.switchMode, { size: 24, depth: 5 }).setText(
+      mode.isTouch ? 'CONTROLS: TOUCH  (tap for keyboard)' : 'CONTROLS: KEYBOARD  (tap for touch)',
+    );
+  }
+
+  update(time: number): void {
+    this.icons.clear();
+    POWERUPS.forEach(([type], i) => {
+      const { x, y } = ICON_POS(i);
+      drawPowerUpIcon(this.icons, type, x, y, POWERUP_RADIUS, time);
+    });
+    this.volume.update();
+  }
+}

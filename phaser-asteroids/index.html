@@ -2,12 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Asteroids</title>
     <link rel="icon" type="image/png" href="./favicon.png" />
     <style>
-      html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
-      #game { position: fixed; inset: 0; }
+      html, body { margin: 0; height: 100%; background: #000; overflow: hidden; overscroll-behavior: none; }
+      /* The canvas stays inside the notch / rounded-corner safe area (all four insets are 0 on desktop, so nothing changes there).
+         The touch controls (src/ui/touch.css) use the full viewport and place themselves inside the same insets. */
+      #game { position: fixed; inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
       canvas { display: block; }
     </style>
   </head>

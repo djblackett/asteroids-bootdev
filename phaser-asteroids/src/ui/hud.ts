@@ -47,6 +47,12 @@ export class CachedText {
   }
 }
 
+/**
+ * Touch mode draws the top-left readouts larger: on a phone the 1280x720 canvas is shown at about half size, which would make
+ * the default 20 px text about 10 CSS px. Desktop passes no scale (1) and is unchanged.
+ */
+export const TOUCH_HUD_SCALE = 1.4;
+
 const PLAYER_COLORS: readonly string[] = [COLORS.player1, COLORS.player2];
 export const playerColor = (index: number): string => PLAYER_COLORS[index] ?? COLORS.white;
 
@@ -60,9 +66,9 @@ export class Hud {
   private readonly lives: CachedText[];
   private readonly clock: CachedText;
 
-  constructor(scene: Phaser.Scene, playerCount = 1) {
+  constructor(scene: Phaser.Scene, playerCount = 1, scale = 1) {
     const make = (x: number, y: number, size: number, color: string, originX = 0): CachedText =>
-      new CachedText(addText(scene, x, y, '', { size, color, originX }).setDepth(10), color, size);
+      new CachedText(addText(scene, x, y, '', { size: Math.round(size * scale), color, originX }).setDepth(10), color, Math.round(size * scale));
     this.scores = [];
     this.lives = [];
     for (let i = 0; i < playerCount; i++) {
@@ -70,7 +76,7 @@ export class Hud {
       const x = right ? SCREEN_WIDTH - 10 : 10;
       const color = playerColor(i);
       this.scores.push(make(x, 10, 20, color, right ? 1 : 0));
-      this.lives.push(make(x, 45, 20, color, right ? 1 : 0));
+      this.lives.push(make(x, 45 * scale, 20, color, right ? 1 : 0));
     }
     this.clock = make(SCREEN_WIDTH / 2, 10, 34, COLORS.white, 0.5);
   }
@@ -200,12 +206,14 @@ export class AbilityHud {
   constructor(
     scene: Phaser.Scene,
     private readonly index = 0,
+    private readonly scale = 1,
   ) {
     const right = index === 1;
     const x = right ? SCREEN_WIDTH - 10 : 10;
+    const size = Math.round(20 * scale);
     this.lines = Array.from({ length: 6 }, () => {
-      const text = addText(scene, x, 80, '', { size: 20, originX: right ? 1 : 0 }).setDepth(10);
-      return new CachedText(text, COLORS.white, 20);
+      const text = addText(scene, x, 80 * scale, '', { size, originX: right ? 1 : 0 }).setDepth(10);
+      return new CachedText(text, COLORS.white, size);
     });
   }
 
@@ -238,14 +246,15 @@ export class AbilityHud {
       }
     }
 
-    let y = 80;
+    const k = this.scale;
+    let y = 80 * k;
     this.lines.forEach((line, i) => {
       const r = rows[i];
       line.setVisible(r !== undefined);
       if (!r) return;
-      line.set(r.text, r.color, r.size);
+      line.set(r.text, r.color, Math.round(r.size * k));
       line.setY(y);
-      y += r.gap;
+      y += r.gap * k;
     });
   }
 }

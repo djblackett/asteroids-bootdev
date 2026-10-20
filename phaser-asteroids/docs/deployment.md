@@ -103,3 +103,9 @@ Pages keeps no history of its own; roll back by redeploying a known-good commit:
   rebuilds from that run's commit and publishes it. (A re-run keeps that run's commit, not today's `main`.)
 - **Durable:** `git revert <bad-commit>` and push to `main`; the workflow deploys the reverted tree.
 - To take the site down entirely: **Settings → Pages → Unpublish site**.
+
+## Trying a branch on a phone before it is published
+
+Only pushes to `main` deploy, so a feature branch (or a pull request, which only runs the validation job) never changes the live site, and there is no
+preview deployment. To try the mobile touch controls on a real phone from your own machine without publishing anything, follow
+[mobile-touch.md](mobile-touch.md#manual-testing-on-a-real-phone): `npm run build && npm run preview:lan` and open the LAN address, or `adb reverse` for Android.

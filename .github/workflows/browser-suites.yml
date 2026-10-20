@@ -1,6 +1,6 @@
 name: Phaser browser suites
 
-# The full real-browser suites (smoke, keyboard, combat, co-op, gamepad). Slower than the checks that gate deployment,
+# The full real-browser suites (smoke, keyboard, combat, co-op, gamepad, touch). Slower than the checks that gate deployment,
 # so they run only when started by hand (Actions tab -> "Phaser browser suites" -> Run workflow) and never block a
 # deploy. Each suite reports separately; a failure in one does not hide the others.
 
@@ -56,3 +56,7 @@ jobs:
       - name: Gamepad (simulated controller)
         if: ${{ !cancelled() }}
         run: node scripts/gamepad.mjs
+
+      - name: Touch (mobile emulation, multi-touch)
+        if: ${{ !cancelled() }}
+        run: node scripts/touch.mjs

@@ -8,12 +8,15 @@ import { getSetup, setSetup, type GameSetup } from '../gameSetup';
 import { toCss } from '../render/colors';
 import { drawPowerUpIcon, POWERUP_COLOR } from '../render/powerupIcons';
 import { getGamepadHub } from '../input/gameGamepads';
+import { getInputMode } from '../input/gameTouch';
 import type { GamepadHub } from '../input/gamepadHub';
+import type { InputModeController } from '../input/inputMode';
 import { createKeyPressDispatcher } from '../input/keyPress';
 import { ControllerPanel } from '../ui/controllerPanel';
 import { drawStarfield } from '../render/worldRenderer';
 import { CachedText } from '../ui/hud';
 import { addText, COLORS } from '../ui/text';
+import { TouchStartMenu } from '../ui/touchStartMenu';
 import { VolumePanel } from '../ui/volumePanel';
 import { SCENE_GAME, SCENE_START } from './keys';
 
@@ -77,6 +80,8 @@ export class StartScene extends Phaser.Scene {
   private pads!: GamepadHub;
   private padPanel!: ControllerPanel;
   private prompt!: Phaser.GameObjects.Text;
+  /** Only in touch mode: the touch title screen replaces everything the keyboard / controller screen builds. */
+  private touchMenu: TouchStartMenu | null = null;
 
   private oneLabel!: Phaser.GameObjects.Text;
   private twoLabel!: Phaser.GameObjects.Text;
@@ -96,15 +101,22 @@ export class StartScene extends Phaser.Scene {
     this.soloObjects = [];
     this.coopObjects = [];
     this.p2Controls = [];
+    this.touchMenu = null;
     this.setup = getSetup(this.registry);
     this.audio = getAudio(this);
     this.audio.startMusicWhenUnlocked();
+    this.pads = getGamepadHub(this);
+    const inputMode = getInputMode(this);
 
     const stars = this.add.graphics().setDepth(0);
     drawStarfield(stars, new Starfield(defaultRng));
-    this.iconGfx = this.add.graphics().setDepth(2);
 
     addText(this, CENTER_X, 46, 'ASTEROIDS', { size: 60, originX: 0.5, originY: 0.5 });
+    if (inputMode.isTouch) {
+      this.createTouchMenu(inputMode);
+      return;
+    }
+    this.iconGfx = this.add.graphics().setDepth(2);
     this.buildModeSelector();
     this.buildSoloPage();
     this.buildCoopPage();
@@ -112,7 +124,6 @@ export class StartScene extends Phaser.Scene {
     this.prompt = addText(this, CENTER_X, 630, 'Press SPACE or click to start', { size: 32, originX: 0.5, originY: 0.5 });
     this.tweens.add({ targets: this.prompt, alpha: 0.35, duration: 700, yoyo: true, repeat: -1 });
 
-    this.pads = getGamepadHub(this);
     // Presses meant for the scene we came from (the BACK that opened this menu, a RETRY that was refused) are not ours.
     this.pads.discardPresses();
     this.padPanel = new ControllerPanel(
@@ -130,6 +141,12 @@ export class StartScene extends Phaser.Scene {
     );
 
     this.volumePanel = new VolumePanel(this, this.audio, CENTER_X, 664, 18, 22, 2);
+    // A device that can touch gets a way to turn the touch controls on (desktops without a touch screen never see this).
+    if (inputMode.canToggle) {
+      addText(this, SCREEN_WIDTH - 14, 12, 'TOUCH CONTROLS: OFF  (tap to turn on)', { size: 16, color: COLORS.dim, originX: 1, bold: false })
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.switchInputMode(inputMode));
+    }
 
     const keyboard = this.input.keyboard;
     if (keyboard) {
@@ -173,6 +190,12 @@ export class StartScene extends Phaser.Scene {
   }
 
   override update(time: number): void {
+    if (this.touchMenu) {
+      this.touchMenu.update(time);
+      // Controller presses are not used on the touch screen; do not let them pile up for the next scene.
+      this.pads.discardPresses();
+      return;
+    }
     this.iconGfx.clear();
     if (this.phase === 'solo') {
       POWERUPS.forEach(([type], i) => drawPowerUpIcon(this.iconGfx, type, SOLO_ICON_X, SOLO_POWERUP_ROW_Y(i), POWERUP_RADIUS, time));
@@ -234,6 +257,34 @@ export class StartScene extends Phaser.Scene {
           break;
       }
     }
+  }
+
+  /**
+   * The touch title screen (one player). The simulation is told it is a one-player game so a co-op choice made on the keyboard
+   * screen cannot leak into a run that has no way to drive a second ship. Space still starts and M still mutes for anyone with a keyboard.
+   */
+  private createTouchMenu(inputMode: InputModeController): void {
+    if (this.setup.game.playerCount !== 1) {
+      this.pads.playerCountChanged(1);
+      this.setup = { ...this.setup, game: { ...this.setup.game, playerCount: 1 } };
+      setSetup(this.registry, this.setup);
+    }
+    this.touchMenu = new TouchStartMenu(this, this.audio, inputMode, {
+      start: () => this.start(),
+      switchMode: () => this.switchInputMode(inputMode),
+    });
+    const keyboard = this.input.keyboard;
+    if (keyboard) {
+      keyboard.addCapture('SPACE');
+      keyboard.on(Phaser.Input.Keyboard.Events.ANY_KEY_DOWN, createKeyPressDispatcher({ Space: () => this.start(), KeyM: () => this.audio.music.toggleMuted() }));
+    }
+  }
+
+  /** Flips between touch and keyboard / controller controls and rebuilds this screen for the new mode. */
+  private switchInputMode(inputMode: InputModeController): void {
+    if (this.starting) return;
+    inputMode.toggle();
+    this.scene.restart();
   }
 
   private toggleLayout(): void {

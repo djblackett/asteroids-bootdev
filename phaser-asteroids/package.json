@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "preview:lan": "vite preview --host",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:browser": "npm run build && node scripts/smoke.mjs",
@@ -14,6 +15,7 @@
     "test:combat": "npm run build && node scripts/combat.mjs",
     "test:coop": "npm run build && node scripts/coop.mjs",
     "test:gamepad": "npm run build && node scripts/gamepad.mjs",
+    "test:touch": "npm run build && node scripts/touch.mjs",
     "test:pages": "npm run build && node scripts/pages-check.mjs"
   },
   "dependencies": {

@@ -16,6 +16,9 @@ const game = new Phaser.Game({
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
   },
+  // Phaser's default is one touch pointer. Menus on a phone must still work while a thumb from the last run is resting on the
+  // screen, so allow several simultaneous touches (gameplay touches are handled by the DOM overlay, see src/ui/touchOverlay.ts).
+  input: { activePointers: 3 },
   scene: [BootScene, StartScene, GameScene],
 });
 
