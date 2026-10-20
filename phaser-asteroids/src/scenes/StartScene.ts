@@ -5,6 +5,7 @@ import type { PowerUpType } from '../core/powerup';
 import { defaultRng } from '../core/rng';
 import { Starfield } from '../core/starfield';
 import { getSetup, setSetup, type GameSetup } from '../gameSetup';
+import { getHaptics } from '../haptics/gameHaptics';
 import { toCss } from '../render/colors';
 import { drawPowerUpIcon, POWERUP_COLOR } from '../render/powerupIcons';
 import { getGamepadHub } from '../input/gameGamepads';
@@ -283,7 +284,7 @@ export class StartScene extends Phaser.Scene {
       this.setup = { ...this.setup, game: { ...this.setup.game, playerCount: 1 } };
       setSetup(this.registry, this.setup);
     }
-    this.touchMenu = new TouchStartMenu(this, this.audio, inputMode, getSteering(this), {
+    this.touchMenu = new TouchStartMenu(this, this.audio, getHaptics(this), inputMode, getSteering(this), {
       start: () => this.start(),
       switchMode: () => this.switchInputMode(inputMode),
     });

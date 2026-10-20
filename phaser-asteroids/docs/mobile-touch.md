@@ -29,7 +29,7 @@ Status: automated checks pass (below); both were tried on an Android phone (D-pa
 ## What the player sees
 
 **Title screen (touch mode):** a short how-to, the five power-ups, a big **TAP TO PLAY** button, Music / SFX volume with `-` / `+`
-buttons and a music on / off button, the **MUSIC: ORIGINAL** track selector (`<` / `>` arrows at the bottom left under the power-ups; see [music-tracks.md](music-tracks.md)), the **STEERING: JOYSTICK | D-PAD** choice, a **CONTROLS: TOUCH (tap for keyboard)** button (it takes **two taps**: the first only asks "TAP AGAIN TO SWITCH TO KEYBOARD CONTROLS", the question lapses after 3 s, and a touch within 300 ms of the first one, such as a second finger or a bounce, does not count), and a small **FULLSCREEN** button at the top right. There is deliberately no "tap anywhere to
+buttons and a music on / off button, a row of three switches under the volume rows (**MUSIC ON | HAPTICS OFF | TEST VIBRATION**: see [haptics.md](haptics.md)), the **MUSIC: ORIGINAL** track selector (`<` / `>` arrows at the bottom left under the power-ups; see [music-tracks.md](music-tracks.md)), the **STEERING: JOYSTICK | D-PAD** choice, a **CONTROLS: TOUCH (tap for keyboard)** button (it takes **two taps**: the first only asks "TAP AGAIN TO SWITCH TO KEYBOARD CONTROLS", the question lapses after 3 s, and a touch within 300 ms of the first one, such as a second finger or a bounce, does not count), and a small **FULLSCREEN** button at the top right. There is deliberately no "tap anywhere to
 start": a stray touch must not begin a run.
 
 **During play (landscape):**
@@ -52,7 +52,7 @@ start": a stray touch must not begin a run.
 | **BOOST** | above FIRE (about 70 CSS px) | Boost, one activation per press. Shows READY, or the seconds left while active / cooling down. |
 | **PAUSE** | top right (52 CSS px) | Pauses. It fires on *release* of a tap, so brushing it does nothing. |
 
-**Pause screen:** RESUME, MAIN MENU (two taps: the first asks "TAP AGAIN TO QUIT TO THE MAIN MENU"), the STEERING choice, Music and SFX `-` / `+`, music on / off, the music track selector (bottom right), and the FULLSCREEN button. **Game over:** RETRY (disabled for the short delay
+**Pause screen:** RESUME, MAIN MENU (two taps: the first asks "TAP AGAIN TO QUIT TO THE MAIN MENU"), the STEERING choice, Music and SFX `-` / `+`, the MUSIC / HAPTICS / TEST VIBRATION switches, the music track selector (bottom right), and the FULLSCREEN button. **Game over:** RETRY (disabled for the short delay
 after the ship is lost, as with the R key) and MAIN MENU. The on-screen controls are only drawn while a run is actually being
 played, so the canvas gets every tap in menus. The HUD at the top left is drawn 1.4x larger in touch mode (`TOUCH_HUD_SCALE`) so it is
 readable at phone size; desktop is unchanged.
@@ -307,7 +307,8 @@ event type at the moment of the call and asserts both.
 | Steering choice: D-pad default, a saved joystick / D-pad choice is never overridden, persistence, junk and blocked storage, listeners | `tests/steeringMode.test.ts` | 8 tests |
 | Tap-again confirmation for the keyboard switch and the pause screen's MAIN MENU (arms, confirms inside 3 s, lapses, a second touch within 300 ms is not a confirmation, clock going backwards) | `tests/confirmTap.test.ts` | 8 tests |
 | Fullscreen: support detection (incl. iPhone-like, webkit names, standalone), request accepted / rejected / throws / `fullscreenerror`, enter, exit, system exit, button wording, cleanup | `tests/fullscreen.test.ts` | 29 tests |
-| Real browser, genuine multi-touch (CDP `Input.dispatchTouchEvent`, 4 fingers at once), mobile emulation DPR 2: everything above on real touches, plus D-pad / fullscreen sections | `npm run test:touch` | 219 checks (208 before the release-readiness pass, 101 before the D-pad pass) |
+| Haptics: manager rules, adapter, settings, lifecycle (see [haptics.md](haptics.md)) | `tests/haptics.test.ts` | 62 tests |
+| Real browser, genuine multi-touch (CDP `Input.dispatchTouchEvent`, 4 fingers at once), mobile emulation DPR 2: everything above on real touches, plus D-pad / fullscreen / haptics sections | `npm run test:touch` | 256 checks (219 before the haptics pass, 208 before the release-readiness pass, 101 before the D-pad pass) |
 
 The browser suite covers: load, touch-only start, audio unlock by touch, overlay in landscape, layout and 44 px targets on six phone / tablet
 sizes, HUD visible, steering changes the simulation input, FIRE held while steering, LASER and BOOST with other fingers down,
@@ -339,6 +340,8 @@ Measured on the development machine (Windows, headless Chrome 155, software WebG
   landscape / portrait sequences with fingers on the pad and FIRE, rotation while paused and rotation on the title screen. No orientation race was found in the code: the release
   and the pause both happen synchronously in the `resize` handler, and the binding only treats a real width / height flip as a rotation. If it fails again, the screenshot
   `touch-05-portrait-prompt.png` and the check's own fields (prompt, paused, command, overlay) say which part failed.
+
+- **`touch.mjs`, D-pad D4 "Up flies the way the ship is facing":** failed once in 4 full runs during the haptics pass (`along` 0.978 against a 0.98 threshold, ship moved 167 px); the next three runs passed. It is a measurement of the ship's drift over a 600 ms thumb hold, nothing the haptics code touches (the manager returns `disabled` there). Not investigated further.
 
 Rerun a suite alone (nothing else using the CPU) before investigating a single red check.
 
@@ -455,6 +458,6 @@ The pieces added after the Android test, which only a person on a phone can conf
 
 Based on what usually goes wrong with on-screen controls, in rough order: (1) tune stick radius and dead zone on a real thumb; (2) a left-handed
 mirror and a button-size setting; (3) an auto-fire option, only if holding FIRE is tiring (it is not the default, as specified); (4) (done:
-fullscreen button; still to verify on Android and iPhone); (5) a haptic tick on LASER / BOOST via `navigator.vibrate` (Android only); (6) an in-game one-time control hint
+fullscreen button; still to verify on Android and iPhone); (5) (done in Phase 8: Android haptics for Boost, Laser, damage and death, see [haptics.md](haptics.md); still to feel on a phone); (6) an in-game one-time control hint
 over the first seconds of play; (7) a preview deployment for pull requests so phones can test without a tunnel; (8) a pause-screen layout that keeps MAIN MENU and the
 STEERING buttons clear of where the steering thumb rests (see Known issues).

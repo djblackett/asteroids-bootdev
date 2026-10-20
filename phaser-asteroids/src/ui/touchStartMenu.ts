@@ -1,6 +1,7 @@
 import type Phaser from 'phaser';
 import type { AudioDirector } from '../audio/phaserAudio';
 import { POWERUP_RADIUS } from '../core/constants';
+import type { HapticManager } from '../haptics/hapticManager';
 import type { PowerUpType } from '../core/powerup';
 import type { InputModeController } from '../input/inputMode';
 import type { SteeringController } from '../input/steeringMode';
@@ -52,6 +53,7 @@ export class TouchStartMenu {
   constructor(
     scene: Phaser.Scene,
     audio: AudioDirector,
+    haptics: HapticManager,
     mode: InputModeController,
     private readonly steering: SteeringController,
     callbacks: TouchStartCallbacks,
@@ -75,7 +77,7 @@ export class TouchStartMenu {
     // The right column is packed tight (every target is still a full MIN_TARGET tall): PLAY, volume, steering, then the keyboard switch.
     // PLAY starts at y 105 and stops short of the right edge so the DOM Fullscreen pill (top right, 44 CSS px tall) never covers it.
     new TouchButton(scene, RIGHT_X, 155, 480, 100, 'TAP TO PLAY', callbacks.start, { size: 48, fill: 0x1d6b3a, depth: 5 });
-    this.volume = new TouchVolumeBlock(scene, audio, RIGHT_X, 258, 5, 96);
+    this.volume = new TouchVolumeBlock(scene, audio, haptics, RIGHT_X, 258, 5, 96);
     new SteeringSelector(scene, steering, RIGHT_X, 568, 560, 5);
     // The right column has no room left, so the soundtrack selector sits under the power-ups, level with the CONTROLS button.
     this.track = new TrackSelector(scene, audio, LEFT_X + 280, 664, 560, 5);
@@ -107,7 +109,7 @@ export class TouchStartMenu {
       const { x, y } = ICON_POS(i);
       drawPowerUpIcon(this.icons, type, x, y, POWERUP_RADIUS, time);
     });
-    this.volume.update();
+    this.volume.update(time);
     this.track.update();
   }
 }

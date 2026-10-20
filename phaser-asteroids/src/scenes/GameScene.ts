@@ -4,6 +4,8 @@ import { SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
 import { GameSim, type SimEvent } from '../core/game';
 import { NO_INPUT, type PlayerInput } from '../core/player';
 import { getSetup, simConfigOf } from '../gameSetup';
+import { getHaptics } from '../haptics/gameHaptics';
+import type { HapticManager } from '../haptics/hapticManager';
 import { getGamepadHub } from '../input/gameGamepads';
 import { getHeldKeys } from '../input/gameKeys';
 import { getSteering, getTouchControls } from '../input/gameTouch';
@@ -65,6 +67,8 @@ export class GameScene extends Phaser.Scene {
   private keyDiag: MountedDiagnostics | null = null;
   private phaserDiagKeys: Array<[string, Phaser.Input.Keyboard.Key]> = [];
   private audio!: AudioDirector;
+  /** Game-wide haptic manager (see haptics/): buzzes the phone for a few important events, in touch mode only. */
+  private haptics!: HapticManager;
   private volumePanel!: VolumePanel;
   /** Key scheme of each player, in player order (one for a one-player game). */
   private schemes: readonly KeyScheme[] = [];
@@ -112,6 +116,9 @@ export class GameScene extends Phaser.Scene {
     this.comboHud = new ComboHud(this, players > 1);
     this.streakBanner = new KillStreakBanner(this);
     this.audio = getAudio(this);
+    this.haptics = getHaptics(this);
+    // Nothing from an earlier run (a buzz in progress, cooldowns, a pause) carries into this one.
+    this.haptics.reset();
     // A new game: in Random mode this is where the soundtrack for the run is picked (and only here).
     this.audio.music.beginRun();
     this.audio.startMusicWhenUnlocked();
@@ -136,7 +143,7 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false);
 
     if (this.touchUi) {
-      this.touchPause = new TouchPauseMenu(this, this.audio, getSteering(this), { resume: () => this.togglePause(), menu: () => this.toMenu() });
+      this.touchPause = new TouchPauseMenu(this, this.audio, this.haptics, getSteering(this), { resume: () => this.togglePause(), menu: () => this.toMenu() });
       this.touchOver = new TouchGameOverButtons(this, { retry: () => this.retry(), menu: () => this.toMenu() });
     }
 
@@ -157,6 +164,8 @@ export class GameScene extends Phaser.Scene {
     if (!this.paused) {
       const events = sim.step(dt, inputs[0] ?? NO_INPUT, inputs[1] ?? NO_INPUT);
       this.audio.sfx.handle(events);
+      // Only the touch UI buzzes: the same events on a keyboard or controller run (or a second player's ship) never reach the phone's motor.
+      if (this.touchUi) this.haptics.handle(events);
       this.announce(events, time);
       this.applyShake();
     }
@@ -181,6 +190,7 @@ export class GameScene extends Phaser.Scene {
     this.comboHud.update(sim);
     this.streakBanner.update(sim);
     if (this.touchUi) this.updateTouchControls();
+    this.haptics.setPaused(this.paused);
     this.audio.music.setGamePaused(this.paused);
     this.audio.music.setMegaPowerActive(sim.players.some((p) => p.megaPower.active));
     this.updateOverlays();
@@ -374,6 +384,7 @@ export class GameScene extends Phaser.Scene {
       events.off(Phaser.Core.Events.HIDDEN, autoPause);
       // Leave the shared audio in a neutral state: effects stop, music resumes normal speed and is not held paused.
       this.audio.sfx.stopAll();
+      this.haptics.reset();
       this.audio.music.setGamePaused(false);
       this.audio.music.setMegaPowerActive(false);
     });

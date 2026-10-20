@@ -740,6 +740,299 @@ async function runFullscreen() {
   await desk.close();
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// Haptics: HAPTICS ON/OFF + TEST VIBRATION in the touch menus, and what the game asks navigator.vibrate() for. The Vibration API is
+// replaced by a recording spy: this proves WHAT the game requests and WHEN. It cannot prove that a real phone's motor moves, or how
+// the effects feel (see docs/mobile-touch.md, "Haptics" and "Manual testing").
+// ---------------------------------------------------------------------------------------------------------
+
+const VIB_MOCK = `(() => {
+  const state = { calls: [], accept: true, events: [] };
+  window.__vib = state;
+  // writable: Phaser's device detection assigns navigator.vibrate itself and would throw on a read-only property
+  Object.defineProperty(navigator, 'vibrate', { configurable: true, writable: true, value(pattern) {
+    state.calls.push(Array.isArray(pattern) ? pattern.slice() : pattern);
+    state.events.push(window.event ? window.event.type : null);
+    return state.accept;
+  } });
+})()`;
+const NO_VIB_MOCK = `Object.defineProperty(navigator, 'vibrate', { configurable: true, writable: true, value: undefined })`;
+const SEED_HAPTICS = (value) => `try { if (localStorage.getItem('asteroids.haptics') === null) localStorage.setItem('asteroids.haptics', '${value}'); } catch (e) {}`;
+const ROCK_ON_SHIP = `(() => { const s = window.__game.scene.getScene('GameScene').sim; s.spawner.spawnTimer = -1e9; s.player.shieldActive = false; s.player.isRespawning = false; s.player.boost.active = false;
+  s.asteroids.push({ position: { x: s.player.position.x, y: s.player.position.y }, velocity: { x: 0, y: 0 }, radius: 40, archetype: 'standard', sizeCategory: 'medium', maxHitPoints: 1, hitPoints: 1, dying: false, deathTimer: 0, deathTimerReal: 0, hitFlashTimer: 0, shakeOffset: { x: 0, y: 0 }, alive: true }); })()`;
+
+const vibCalls = (p) => p.page.evaluate(() => window.__vib.calls.slice());
+const hapticsOn = (p) => p.page.evaluate(`window.__game.registry.get('haptics').enabled`);
+const savedHaptics = (p) => p.page.evaluate(() => localStorage.getItem('asteroids.haptics'));
+// The three switches under the volume rows: the same place on the title screen and the pause screen.
+const MUTE_AT = [750, 452];
+const HAPTICS_AT = [940, 452];
+const TEST_AT = [1130, 452];
+
+async function runHaptics() {
+  console.log('\n--- Haptics ---');
+  // =====================================================================================================
+  // H1. Title screen: the controls, the default, persistence, TEST VIBRATION
+  // =====================================================================================================
+  const t = await mobilePage(844, 390, { steering: null });
+  await t.context.addInitScript(VIB_MOCK);
+  await t.start();
+  const titleTexts = await t.texts('StartScene');
+  check('the title screen offers HAPTICS and TEST VIBRATION beside the music switch', titleTexts.includes('HAPTICS\nOFF') && titleTexts.includes('TEST\nVIBRATION') && titleTexts.includes('MUSIC\nON'), titleTexts.filter((x) => /HAPTICS|TEST|MUSIC/.test(x)).join(' | '));
+  check('a new player has HAPTICS OFF and nothing is saved until they choose', (await hapticsOn(t)) === false && (await savedHaptics(t)) === null);
+  const boxes = [];
+  for (const [x, y] of [MUTE_AT, HAPTICS_AT, TEST_AT]) boxes.push(await gameRectCss(t, x - 90, y - 45, x + 90, y + 45));
+  check('the three switches are thumb-sized (at least 44 CSS px tall and 80 wide), do not overlap and stay on screen', boxes.every((b) => b.height >= 44 && b.width >= 80 && b.right <= 844 && b.bottom <= 390) && !overlaps(boxes[0], boxes[1]) && !overlaps(boxes[1], boxes[2]), boxes.map((b) => `${Math.round(b.width)}x${Math.round(b.height)}`).join(' '));
+  await t.shot('haptics-title-off');
+
+  const audio0 = await t.audio();
+  await t.tapGame(...HAPTICS_AT);
+  await sleep(250);
+  check('tapping HAPTICS turns it ON, shows it lit, saves "1" and does not buzz by itself', (await hapticsOn(t)) === true && (await savedHaptics(t)) === '1' && (await t.texts('StartScene')).includes('HAPTICS\nON') && (await vibCalls(t)).length === 0);
+  const audio1 = await t.audio();
+  check('the setting does not touch the music mute or either volume', audio1.muted === audio0.muted && audio1.vm === audio0.vm && audio1.vs === audio0.vs, JSON.stringify([audio0, audio1].map((a) => [a.muted, a.vm, a.vs])));
+  await t.shot('haptics-title-on');
+
+  await t.tapGame(...TEST_AT);
+  await sleep(250);
+  const afterTest = await t.page.evaluate(() => ({ calls: window.__vib.calls.slice(), events: window.__vib.events.slice() }));
+  check('TEST VIBRATION sends one short double pulse, from inside the tap itself (a direct user gesture)', JSON.stringify(afterTest.calls) === JSON.stringify([[80, 60, 80]]) && afterTest.events[0] !== null, JSON.stringify(afterTest));
+  info(`TEST VIBRATION ran inside a "${afterTest.events[0]}" event`);
+  check('the button then says SENT - FELT IT? (it reports the request, it does not claim the phone moved)', (await t.texts('StartScene')).includes('SENT -\nFELT IT?'));
+  await t.shot('haptics-title-test-sent');
+  await sleep(2500);
+  check('and goes back to TEST VIBRATION by itself', (await t.texts('StartScene')).includes('TEST\nVIBRATION'));
+
+  await t.tapGame(...HAPTICS_AT);
+  await sleep(200);
+  await t.tapGame(...TEST_AT);
+  await sleep(200);
+  check('TEST VIBRATION works with HAPTICS OFF too (it exists to tell "this phone cannot" from "the game did not ask")', (await hapticsOn(t)) === false && (await vibCalls(t)).filter((c) => Array.isArray(c)).length === 2, JSON.stringify(await vibCalls(t)));
+  await t.page.evaluate(() => {
+    window.__vib.accept = false;
+  });
+  await sleep(2500);
+  await t.tapGame(...TEST_AT);
+  await sleep(200);
+  check('a browser that refuses the request is reported as BLOCKED - TAP AGAIN, without errors', (await t.texts('StartScene')).includes('BLOCKED -\nTAP AGAIN') && t.problems.length === 0, t.problems.join(' | '));
+  await t.page.evaluate(() => {
+    window.__vib.accept = true;
+  });
+  await t.tapGame(...HAPTICS_AT);
+  await sleep(200);
+  check('HAPTICS is ON again', (await hapticsOn(t)) === true && (await savedHaptics(t)) === '1');
+  await t.page.reload();
+  await t.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
+  await sleep(300);
+  check('after a reload HAPTICS is still ON (the preference persists)', (await hapticsOn(t)) === true && (await t.texts('StartScene')).includes('HAPTICS\nON'));
+  await t.page.evaluate(() => localStorage.setItem('asteroids.haptics', 'maybe'));
+  await t.page.reload();
+  await t.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
+  await sleep(300);
+  check('an invalid stored value falls back to OFF', (await hapticsOn(t)) === false);
+  await t.page.evaluate(() => localStorage.setItem('asteroids.haptics', '1'));
+  await t.page.reload();
+  await t.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
+  await sleep(300);
+
+  // =====================================================================================================
+  // H2. Gameplay: only successful events vibrate
+  // =====================================================================================================
+  await t.play();
+  await t.quiet();
+  await sleep(200);
+  check('starting the run, after the menu taps before it, caused no gameplay vibration', (await vibCalls(t)).length === 0);
+  const boost = await t.centre('.tc-boost');
+  const laser = await t.centre('.tc-laser');
+  const pauseBtn = await t.centre('.tc-pause');
+  await t.finger.tap(boost.x, boost.y);
+  await sleep(250);
+  check('a successful BOOST vibrates once for 30 ms', JSON.stringify(await vibCalls(t)) === JSON.stringify([30]), JSON.stringify(await vibCalls(t)));
+  await t.finger.tap(boost.x, boost.y);
+  await sleep(250);
+  await t.finger.tap(boost.x, boost.y);
+  await sleep(250);
+  check('pressing BOOST again while it is running or cooling down does not vibrate', (await vibCalls(t)).length === 1 && (await t.sim()).boostCd > 0, JSON.stringify(await vibCalls(t)));
+  await t.finger.tap(laser.x, laser.y);
+  await sleep(250);
+  check('a LASER shot vibrates once for 55 ms', JSON.stringify(await vibCalls(t)) === JSON.stringify([30, 55]), JSON.stringify(await vibCalls(t)));
+  await t.page.evaluate(`window.__game.scene.getScene('GameScene').sim.player.laser.shotsRemaining = 0`);
+  await t.finger.tap(laser.x, laser.y);
+  await sleep(250);
+  await t.finger.tap(laser.x, laser.y);
+  await sleep(250);
+  check('pressing LASER with no charges does not vibrate', (await vibCalls(t)).length === 2, JSON.stringify(await vibCalls(t)));
+
+  // opening / closing the pause menu is not gameplay; the same switches are there
+  await t.finger.tap(pauseBtn.x, pauseBtn.y);
+  await sleep(300);
+  check('the pause menu offers the same HAPTICS and TEST VIBRATION controls, with HAPTICS lit', (await t.texts()).includes('HAPTICS\nON') && (await t.texts()).includes('TEST\nVIBRATION'));
+  await t.shot('haptics-pause-on');
+  await t.tapGame(...HAPTICS_AT);
+  await sleep(200);
+  check('HAPTICS can be switched OFF from the pause menu (saved at once)', (await hapticsOn(t)) === false && (await savedHaptics(t)) === '0' && (await t.texts()).includes('HAPTICS\nOFF'));
+  await t.tapGame(...TEST_AT);
+  await sleep(200);
+  check('TEST VIBRATION from the pause menu sends the test pattern', JSON.stringify((await vibCalls(t)).slice(2)) === JSON.stringify([[80, 60, 80]]), JSON.stringify(await vibCalls(t)));
+  await t.tapGame(...HAPTICS_AT);
+  await sleep(200);
+  check('...and HAPTICS goes back ON', (await hapticsOn(t)) === true);
+  await t.tapGame(340, 300); // RESUME
+  await sleep(300);
+  const beforePause = (await vibCalls(t)).length;
+  await t.finger.tap(pauseBtn.x, pauseBtn.y);
+  await sleep(250);
+  await t.tapGame(340, 300);
+  await sleep(250);
+  check('pausing and resuming caused no vibration', (await vibCalls(t)).length === beforePause);
+
+  // damage, then death: one vibration each
+  await t.page.evaluate(`window.__game.scene.getScene('GameScene').sim.player.lives = 3`);
+  const mark = (await vibCalls(t)).length;
+  await t.page.evaluate(ROCK_ON_SHIP);
+  await sleep(300);
+  check('losing a life vibrates once for 65 ms', (await t.sim()).lives === 2 && JSON.stringify((await vibCalls(t)).slice(mark)) === JSON.stringify([65]), JSON.stringify((await vibCalls(t)).slice(mark)));
+  await t.page.evaluate(`window.__game.scene.getScene('GameScene').sim.player.lives = 1`);
+  await sleep(2300); // respawn protection ends
+  const mark2 = (await vibCalls(t)).length;
+  await t.page.evaluate(ROCK_ON_SHIP);
+  await waitGameOver(t, 'haptics-death');
+  await sleep(400);
+  check('the fatal hit gives ONE vibration, the 110 ms death one (not a damage buzz followed by a death buzz)', JSON.stringify((await vibCalls(t)).slice(mark2)) === JSON.stringify([110]), JSON.stringify((await vibCalls(t)).slice(mark2)));
+  await sleep(1200);
+  check('nothing keeps buzzing on the game-over screen', (await vibCalls(t)).length === mark2 + 1);
+
+  // restart: a fresh run replays nothing
+  await t.page.evaluate(`window.__game.scene.getScene('GameScene').sim.retryDelay = 0`);
+  const mark3 = (await vibCalls(t)).length;
+  await t.tapGame(430, 470); // RETRY
+  await sleep(800);
+  check('RETRY starts a clean run that does not replay the previous run\'s vibrations', (await t.sim()).phase === 'playing' && (await vibCalls(t)).length === mark3, JSON.stringify(await vibCalls(t)));
+
+  // cancellation: all inside one evaluate, so the 220 ms test pattern is certainly still running at each check
+  const cancelled = await t.page.evaluate(async () => {
+    const g = window.__game;
+    const h = g.registry.get('haptics');
+    const sc = g.scene.getScene('GameScene');
+    const lastIsCancel = () => window.__vib.calls[window.__vib.calls.length - 1] === 0;
+    const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const out = {};
+    h.testVibration();
+    h.setEnabled(false);
+    out.disabled = lastIsCancel();
+    h.setEnabled(true);
+    h.testVibration();
+    sc.togglePause();
+    await frame();
+    out.paused = lastIsCancel();
+    sc.togglePause();
+    await frame();
+    h.testVibration();
+    window.dispatchEvent(new Event('blur'));
+    out.blur = lastIsCancel();
+    out.blurredRequest = h.request('boost');
+    window.dispatchEvent(new Event('focus'));
+    h.testVibration();
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    out.hidden = lastIsCancel();
+    out.hiddenRequest = h.request('boost');
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    document.dispatchEvent(new Event('visibilitychange'));
+    h.testVibration();
+    g.scene.start('StartScene');
+    await frame();
+    out.sceneLeft = lastIsCancel();
+    return out;
+  });
+  check('turning HAPTICS off, pausing, losing focus, hiding the tab and leaving the scene each cancel a running vibration (vibrate(0))', cancelled.disabled && cancelled.paused && cancelled.blur && cancelled.hidden && cancelled.sceneLeft, JSON.stringify(cancelled));
+  check('and a blurred or hidden page refuses to start one', cancelled.blurredRequest === 'background' && cancelled.hiddenRequest === 'background', JSON.stringify(cancelled));
+  await sleep(300);
+  check('(haptics, touch) no console errors', t.problems.length === 0, t.problems.join(' | '));
+  await t.context.close();
+
+  // =====================================================================================================
+  // H3. Fullscreen and orientation never buzz
+  // =====================================================================================================
+  const f = await mobilePage(844, 390, { steering: null });
+  await f.context.addInitScript(VIB_MOCK);
+  await f.context.addInitScript(SEED_HAPTICS('1'));
+  await f.page.addInitScript(FS_MOCK);
+  await f.start();
+  await tapPill(f);
+  await f.page.setViewportSize({ width: 844, height: 360 });
+  await sleep(400);
+  await f.play();
+  await f.quiet();
+  await f.page.evaluate(`window.__game.scene.getScene('GameScene').sim.player.lives = 99`);
+  await f.page.setViewportSize({ width: 390, height: 844 });
+  await sleep(500);
+  await f.page.setViewportSize({ width: 844, height: 390 });
+  await sleep(500);
+  await f.page.evaluate(`window.__fs.el = null; document.dispatchEvent(new Event('fullscreenchange'))`);
+  await sleep(200);
+  check('entering and leaving fullscreen and turning the phone upright and back caused no vibration, and the run is paused', (await vibCalls(f)).length === 0 && (await f.sim()).paused === true, JSON.stringify(await vibCalls(f)));
+  check('(haptics, fullscreen/orientation) no console errors', f.problems.length === 0, f.problems.join(' | '));
+  await f.context.close();
+
+  // =====================================================================================================
+  // H4. Unsupported browsers (iPhone Safari): the game is unaffected
+  // =====================================================================================================
+  const u = await mobilePage(844, 390, { steering: null });
+  await u.context.addInitScript(NO_VIB_MOCK);
+  await u.context.addInitScript(SEED_HAPTICS('1'));
+  await u.start();
+  check('without navigator.vibrate the menus still show the controls', (await u.texts('StartScene')).includes('HAPTICS\nON') && (await u.page.evaluate(() => typeof navigator.vibrate)) === 'undefined');
+  await u.tapGame(...TEST_AT);
+  await sleep(200);
+  check('TEST VIBRATION says NOT SUPPORTED instead of pretending', (await u.texts('StartScene')).includes('NOT\nSUPPORTED'), (await u.texts('StartScene')).filter((x) => /TEST|SUPPORT|SENT/.test(x)).join('|'));
+  await u.play();
+  await u.quiet();
+  const ub = await u.centre('.tc-boost');
+  const ul = await u.centre('.tc-laser');
+  await u.finger.tap(ub.x, ub.y);
+  await sleep(200);
+  await u.finger.tap(ul.x, ul.y);
+  await sleep(200);
+  await u.page.evaluate(ROCK_ON_SHIP);
+  await sleep(300);
+  await u.page.evaluate(`window.__game.scene.getScene('GameScene').sim.player.lives = 1`);
+  await sleep(2300);
+  await u.page.evaluate(ROCK_ON_SHIP);
+  await waitGameOver(u, 'haptics-unsupported');
+  check('boost, laser, damage and death all work with no vibration API, and nothing is logged as an error', (await u.sim()).phase === 'gameOver' && u.problems.length === 0, u.problems.join(' | '));
+  await u.context.close();
+
+  // =====================================================================================================
+  // H5. Desktop / keyboard: the same events never reach a vibration motor
+  // =====================================================================================================
+  const d = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  await d.addInitScript(VIB_MOCK);
+  await d.addInitScript(SEED_HAPTICS('1'));
+  const dp = await d.newPage();
+  const dproblems = [];
+  dp.on('console', (m) => m.type() === 'error' && dproblems.push(m.text()));
+  dp.on('pageerror', (e) => dproblems.push(String(e)));
+  await dp.goto(`${BASE}?debug`);
+  await dp.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
+  await sleep(250);
+  await dp.keyboard.press('Space');
+  await dp.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
+  await sleep(300);
+  for (const key of ['ShiftLeft', 'KeyE']) {
+    await dp.keyboard.down(key); // held for a few frames: the game samples the keys once per frame
+    await sleep(150);
+    await dp.keyboard.up(key);
+    await sleep(150);
+  }
+  await dp.evaluate(ROCK_ON_SHIP);
+  await sleep(400);
+  const dsim = await dp.evaluate(`(() => { const s = window.__game.scene.getScene('GameScene').sim; return { lives: s.player.lives, boosted: s.player.boost.cooldown > 0, lasers: s.player.laser.shotsRemaining }; })()`);
+  check('desktop with HAPTICS saved ON: boost, laser and damage happen but the vibration API is never called', dsim.boosted && dsim.lasers < 15 && dsim.lives < 3 && (await dp.evaluate(() => window.__vib.calls.length)) === 0, JSON.stringify(dsim));
+  check('(haptics, desktop) no console errors', dproblems.length === 0, dproblems.join(' | '));
+  await d.close();
+}
+
 async function waitForServer() {
   for (let i = 0; i < 100; i++) {
     const ok = await new Promise((resolve) => {
@@ -1105,9 +1398,9 @@ async function run() {
   await sleep(150);
   const v1 = await m.audio();
   check('Music and SFX volume can be changed by touch (and are saved)', Math.abs(v1.vm - (v0.vm + 0.1)) < 1e-9 && Math.abs(v1.vs - (v0.vs - 0.1)) < 1e-9 && (await m.page.evaluate(() => localStorage.length)) > 0, JSON.stringify({ v0: [v0.vm, v0.vs], v1: [v1.vm, v1.vs] }));
-  await m.tapGame(940, 250 + 2 * 104 - 6); // mute toggle
+  await m.tapGame(940 - 190, 250 + 2 * 104 - 6); // mute toggle (the left of the three switches; HAPTICS is in the middle)
   await sleep(150);
-  check('the music can be muted by touch, and unmuted again', (await m.audio()).muted === true && (await (async () => (await m.tapGame(940, 250 + 2 * 104 - 6), await sleep(150), (await m.audio()).muted === false))()));
+  check('the music can be muted by touch, and unmuted again', (await m.audio()).muted === true && (await (async () => (await m.tapGame(940 - 190, 250 + 2 * 104 - 6), await sleep(150), (await m.audio()).muted === false))()));
 
   const instanceBefore = await m.page.evaluate(`window.__game.scene.getScene('GameScene').sim.time`);
   await m.tapGame(340, 300); // RESUME
@@ -1410,6 +1703,7 @@ async function run() {
 
   await runDpad();
   await runFullscreen();
+  await runHaptics();
 
   // =====================================================================================================
   // 9. Overall health

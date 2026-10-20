@@ -1,7 +1,7 @@
 # Implementation progress
 
 Phaser **4.2.1** · TypeScript 7.0.2 (strict) · Vite 8.3.4 · Vitest 5.0.5 · playwright-core 1.64.1 (dev only, for the
-browser tests). Last updated 2026-10-20 (Phase 7).
+browser tests). Last updated 2026-10-20 (Phase 8).
 
 ## Status
 
@@ -14,6 +14,7 @@ browser tests). Last updated 2026-10-20 (Phase 7).
 | 5 | Gamepad support: Python mapping recovered, keyboard + controller co-op (Player 1 keyboard, Player 2 pad), hot-plug, assignment UI, `?keydebug` pad section | Done and tested with a simulated gamepad; **real-hardware test pending** (see "Phase 5") |
 | 6 | Mobile touchscreen prototype: floating joystick + FIRE / LASER / BOOST / PAUSE, landscape-first, portrait prompt, touch menus, input-mode selection | Built on branch `feature/mobile-touch-controls`, **not merged or deployed**; D-pad (default) and Android fullscreen tried on one Android phone; release-readiness pass done (Phase 6c); the keyboard-switch safeguards and iPhone are **not yet tried on a phone** (see "Phase 6") |
 | 7 | Selectable soundtrack: Original, Mega Man, Gatekeeper, Random (title and pause screens: keyboard, mouse, gamepad, touch), per-track gain, on-demand loading | Built, tested; **uncommitted, not deployed**; listening test pending (see "Phase 7" and [music-tracks.md](music-tracks.md)) |
+| 8 | Mobile haptics: Boost, Laser, damage and death vibrate an Android phone through `navigator.vibrate`; HAPTICS ON / OFF (default OFF) and TEST VIBRATION on the touch title and pause screens | Built, tested with a spy; **uncommitted, not deployed**; feel on a real phone pending (see "Phase 8" and [haptics.md](haptics.md)) |
 
 ## Phase 2: what was added
 
@@ -559,6 +560,23 @@ Full write-up: [music-tracks.md](music-tracks.md) (files, behaviour, loudness me
 - **A controller alone cannot unlock browser audio** (a button press is not a user gesture): on the title screen the first key press, click or tap does it, as before.
 - **Not changed:** simulation, scoring, power-ups, controls and their mappings, fullscreen, steering settings, effects mix, the Python
   game, the Pages workflow.
+
+## Phase 8: mobile haptics (2026-10-20)
+
+Full write-up: [haptics.md](haptics.md) (effects, rules, menus, browsers, tests, limitations, the Android test script and what to tune).
+
+- **Feature:** four effects from existing sim events, no change to `src/core/`: Boost 30 ms (`boost_started`), Laser 55 ms (`laser_fired`), damage 65 ms (`player_hit`),
+  death 110 ms (`player_eliminated` / `game_over`). Only successful events: a refused Boost or Laser, or a hit a Shield absorbs, emits no event and no buzz.
+- **Manager:** `src/haptics/` (`HapticManager`, `NavigatorVibrationAdapter`, `HapticSettings`, the pattern table). Priorities (death > damage > boost = laser, a lower one never interrupts a
+  running higher one, nothing queued), per-effect cooldowns, an 80 ms gap for the medium effects, an injectable clock. One effect per simulation step: a fatal hit emits damage and death together
+  and plays only the death effect, whatever the event order.
+- **Cleanup:** `vibrate(0)` on HAPTICS off, pause, blur, hidden tab, `pagehide`, scene shutdown and game destroy; one manager per game (registry), listeners added once.
+- **UI:** the title and pause screens' full-width music button became three switches: MUSIC, HAPTICS (OFF by default, saved as `asteroids.haptics`) and TEST VIBRATION.
+  Touch UI only: the keyboard / controller screens and runs are untouched, and `GameScene` forwards events to the manager only in touch mode.
+- **Files touched outside the feature itself:** `GameScene` / `StartScene` / `BootScene` (wiring), `touchMenus.ts` (`TouchVolumeBlock` signature and layout), `touchStartMenu.ts`, and `touch.mjs`
+  (a Haptics section, plus the mute-by-touch check's tap position).
+- **Not changed:** simulation, scoring, power-ups, controls, audio mix, fullscreen, steering, the Python game, the Pages workflow. Gamepad rumble, iOS workarounds and the other deferred
+  haptics (pick-ups, shields, revive, kill streaks, user-configurable durations) are not implemented.
 
 ## Verification, Phase 3 (2026-10-19)
 

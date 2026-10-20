@@ -6,6 +6,7 @@ import { AUDIO_REGISTRY_KEY, AudioDirector } from '../audio/phaserAudio';
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
 import { defaultRng } from '../core/rng';
 import { installGamepadHub } from '../input/gameGamepads';
+import { installHaptics } from '../haptics/gameHaptics';
 import { installHeldKeys } from '../input/gameKeys';
 import { installTouchControls } from '../input/gameTouch';
 import { addText, COLORS } from '../ui/text';
@@ -49,6 +50,8 @@ export class BootScene extends Phaser.Scene {
     installGamepadHub(this.game);
     // One input-mode choice and one touch-control layer for the whole game; inert and invisible unless touch mode is on.
     installTouchControls(this.game);
+    // One haptic manager (and its saved HAPTICS setting) for the whole game; only the touch screens use it, and it is OFF until the player turns it on.
+    installHaptics(this.game);
     this.scene.start(SCENE_START);
   }
 }

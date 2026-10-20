@@ -121,7 +121,7 @@ title screen switches and remembers). Left side: a digital **D-pad** by default 
 prefer, a floating joystick (drag anywhere; left / right rotates, up / down flies, proportional with the controller's dead zone); pick with the
 **STEERING: JOYSTICK | D-PAD** buttons on the title and pause screens (your choice is remembered and never overridden). A **FULLSCREEN** button (title and pause screens) hides the browser's
 address bar where the browser allows it; on iPhone Safari, which does not, it offers a short Add-to-Home-Screen tip instead. Right side: **FIRE** (hold; works while steering), **LASER** (tap) and **BOOST** (tap); **PAUSE** top right.
-Menus, pause, volume and game over all work by touch. In portrait a "Rotate your phone to play." prompt covers the game and pauses it.
+Menus, pause, volume and game over all work by touch. **HAPTICS** (title and pause screens, off by default) makes an Android phone vibrate briefly for Boost, Laser, damage and death, with a TEST VIBRATION button ([docs/haptics.md](docs/haptics.md)). In portrait a "Rotate your phone to play." prompt covers the game and pauses it.
 Desktop keyboard, controller and two-player play are unchanged. It has been tested in Chromium's touch emulation only: layout, input
 mapping, lifecycle rules, browser tests, what to check by hand on Android Chrome and iPhone Safari, and the known issues are in
 [docs/mobile-touch.md](docs/mobile-touch.md); a possible future installed-web-app configuration is sketched in [docs/standalone-web-app.md](docs/standalone-web-app.md).
@@ -142,13 +142,14 @@ src/
   scenes/    Boot (load audio) -> Start (title) -> Game (glue: input, sim.step, draw, overlays)
   render/    Procedural drawing into two reusable Graphics objects (stars, playfield)
   input/     Held keys (by KeyboardEvent.code), gamepads (GamepadHub, gamepadMapping) and touch (touchModel, touchBinding, touchControls, inputMode, steeringMode, fullscreen) -> the same PlayerInput; one-shot key dispatcher; ?keydebug diagnostics
+  haptics/   Optional phone vibration for four events (hapticPatterns, hapticManager, vibrationAdapter, hapticSettings)
   audio/     Pure logic (event -> sound, music state machine, volume settings, mix config) + one Phaser adapter (`AudioDirector`)
   ui/        HUD, pause / game-over overlays, the Music / SFX volume panel, the title screen's controller status; touch: DOM overlay (touchOverlay.ts, systemOverlay.ts, touch.css) and touch menus
 tests/       Vitest suites for src/core and src/audio (no browser, no audio device)
   gameSetup.ts  The title screen's choices (kept in the Phaser registry); the game scene builds a fresh GameSim from them
 scripts/     smoke.mjs: browser smoke test; keyboard.mjs: real-browser keyboard tests; combat.mjs: combo / banner / UFO tests;
              coop.mjs: two-player tests; gamepad.mjs: keyboard + simulated-gamepad co-op tests; touch.mjs: multi-touch / mobile-viewport tests
-docs/        implementation-progress.md, deployment.md, mobile-touch.md, standalone-web-app.md
+docs/        implementation-progress.md, deployment.md, mobile-touch.md, haptics.md, music-tracks.md, standalone-web-app.md
 ```
 
 Design rule: gameplay lives in `src/core` and is driven only by `GameSim.step(dt, input)`; Phaser is used for

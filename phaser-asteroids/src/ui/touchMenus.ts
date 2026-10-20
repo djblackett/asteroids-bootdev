@@ -2,6 +2,7 @@ import type Phaser from 'phaser';
 import { formatPercent, type VolumeChannel } from '../audio/audioSettings';
 import { choiceLabel } from '../audio/musicTracks';
 import type { AudioDirector } from '../audio/phaserAudio';
+import type { HapticManager, TestResult } from '../haptics/hapticManager';
 import type { SteeringController } from '../input/steeringMode';
 import type { SteeringMode } from '../input/touchModel';
 import { ConfirmTap } from './confirmTap';
@@ -152,20 +153,39 @@ export class ConfirmTouchButton {
 
 const ROW_STEP = 104;
 
+/** The bottom row of the volume block is three equal switches (MUSIC, HAPTICS, TEST VIBRATION) across the 560 px column. */
+const SWITCH_WIDTH = 180;
+const SWITCH_STEP = 190;
+/** How long a TEST VIBRATION result stays on the button before it says TEST VIBRATION again. */
+const TEST_RESULT_MS = 2500;
+const TEST_LABEL = 'TEST\nVIBRATION';
+/** What the button says after a test. It reports what the browser did; it cannot know whether a motor moved, hence the question. */
+const TEST_RESULT: Record<TestResult, { text: string; color: string }> = {
+  sent: { text: 'SENT -\nFELT IT?', color: COLORS.heading },
+  unsupported: { text: 'NOT\nSUPPORTED', color: COLORS.dead },
+  blocked: { text: 'BLOCKED -\nTAP AGAIN', color: COLORS.dead },
+};
+
 /**
- * Music and SFX volume as `-  80%  +` rows, plus a Music on / off button: the touch version of `VolumePanel`. Rows are centred on
- * `x`; the first row is at `y`.
+ * Music and SFX volume as `-  80%  +` rows, plus a row of three switches under them: Music on / off, HAPTICS on / off and TEST VIBRATION.
+ * The touch version of `VolumePanel`, with the haptics controls beside it so the title and pause screens offer the same ones. Rows are
+ * centred on `x`; the first row is at `y`.
  */
 export class TouchVolumeBlock {
   private readonly values: Array<readonly [VolumeChannel, CachedText]> = [];
   private readonly mute: TouchButton;
+  private readonly hapticsButton: TouchButton;
+  private readonly testButton: TouchButton;
   private muteText = '';
+  private hapticsText = '';
+  private testUntil = 0;
   private readonly parts: TouchButton[] = [];
   private readonly labels: Phaser.GameObjects.Text[] = [];
 
   constructor(
-    scene: Phaser.Scene,
+    private readonly scene: Phaser.Scene,
     private readonly audio: AudioDirector,
+    private readonly feedback: HapticManager,
     x: number,
     y: number,
     depth: number,
@@ -183,23 +203,47 @@ export class TouchVolumeBlock {
       this.values.push([channel, value]);
       this.parts.push(new TouchButton(scene, x + 240, rowY, 96, MIN_TARGET, '+', () => this.audio.adjustVolume(channel, 1), { size: 44, depth }));
     });
-    // The mute button sits one 90 px button and an 8 px gap below the SFX row, however tight the rows are packed.
-    this.mute = new TouchButton(scene, x, y + rowStep + MIN_TARGET + 8, 560, MIN_TARGET, '', () => this.audio.music.toggleMuted(), { size: 28, depth });
-    this.parts.push(this.mute);
-    this.update();
+    // The switches sit one 90 px button and an 8 px gap below the SFX row, however tight the rows are packed.
+    const switchY = y + rowStep + MIN_TARGET + 8;
+    const style = { size: 24, depth };
+    this.mute = new TouchButton(scene, x - SWITCH_STEP, switchY, SWITCH_WIDTH, MIN_TARGET, '', () => this.audio.music.toggleMuted(), style);
+    this.hapticsButton = new TouchButton(scene, x, switchY, SWITCH_WIDTH, MIN_TARGET, '', () => this.feedback.setEnabled(!this.feedback.enabled), style);
+    this.testButton = new TouchButton(scene, x + SWITCH_STEP, switchY, SWITCH_WIDTH, MIN_TARGET, TEST_LABEL, () => this.runTest(), style);
+    this.parts.push(this.mute, this.hapticsButton, this.testButton);
+    this.update(0);
   }
 
-  /** Cheap to call every frame: text is only touched when its content changes. */
-  update(): void {
+  /** Cheap to call every frame: text is only touched when its content changes. `now` is the scene clock (it times the test result). */
+  update(now: number): void {
     for (const [channel, value] of this.values) {
       const muted = channel === 'music' && this.audio.music.isMuted;
       value.set(formatPercent(this.audio.volume(channel)), muted ? COLORS.dead : COLORS.white);
     }
-    const text = this.audio.music.isMuted ? 'MUSIC: OFF  (tap to turn on)' : 'MUSIC: ON  (tap to mute)';
-    if (text !== this.muteText) {
-      this.muteText = text;
-      this.mute.setText(text);
+    const muted = this.audio.music.isMuted;
+    const muteText = muted ? 'MUSIC\nOFF' : 'MUSIC\nON';
+    if (muteText !== this.muteText) {
+      this.muteText = muteText;
+      this.mute.setText(muteText, muted ? COLORS.dead : COLORS.white);
     }
+    const on = this.feedback.enabled;
+    const hapticsText = on ? 'HAPTICS\nON' : 'HAPTICS\nOFF';
+    if (hapticsText !== this.hapticsText) {
+      this.hapticsText = hapticsText;
+      this.hapticsButton.setText(hapticsText);
+    }
+    this.hapticsButton.setSelected(on);
+    if (this.testUntil > 0 && now >= this.testUntil) {
+      this.testUntil = 0;
+      this.testButton.setText(TEST_LABEL, COLORS.white);
+    }
+  }
+
+  /** Runs inside the tap itself, which is what lets the browser allow the vibration. */
+  private runTest(): void {
+    const result = this.feedback.testVibration();
+    const shown = TEST_RESULT[result];
+    this.testUntil = this.scene.time.now + TEST_RESULT_MS;
+    this.testButton.setText(shown.text, shown.color);
   }
 
   setVisible(visible: boolean): void {
@@ -298,10 +342,10 @@ export class TouchPauseMenu {
   private readonly steering: SteeringSelector;
   private readonly track: TrackSelector;
 
-  constructor(scene: Phaser.Scene, audio: AudioDirector, steering: SteeringController, callbacks: TouchPauseCallbacks) {
+  constructor(scene: Phaser.Scene, audio: AudioDirector, haptics: HapticManager, steering: SteeringController, callbacks: TouchPauseCallbacks) {
     this.resume = new TouchButton(scene, 340, 300, 480, 130, 'RESUME', callbacks.resume, { size: 44, fill: 0x1d6b3a });
     this.menu = new ConfirmTouchButton(scene, 340, 460, 480, 110, 'MAIN MENU', 'TAP AGAIN TO QUIT\nTO THE MAIN MENU', callbacks.menu, { size: 34 });
-    this.volume = new TouchVolumeBlock(scene, audio, 940, 250, 23);
+    this.volume = new TouchVolumeBlock(scene, audio, haptics, 940, 250, 23);
     this.steering = new SteeringSelector(scene, steering, 340, 610, 480, 23);
     // Under the volume block, level with the steering selector (the volume block ends at y 497).
     this.track = new TrackSelector(scene, audio, 940, 610, 560, 23);
@@ -318,7 +362,7 @@ export class TouchPauseMenu {
 
   update(now: number): void {
     this.menu.update(now);
-    this.volume.update();
+    this.volume.update(now);
     this.track.update();
   }
 }
