@@ -1,6 +1,6 @@
 import type Phaser from 'phaser';
 import { archetypeConfig, type Asteroid } from '../core/asteroid';
-import { BOOST_WARNING_TIME } from '../core/constants';
+import { BOOST_FLASH_COUNT, BOOST_FLASH_PERIOD, BOOST_WARNING_TIME } from '../core/constants';
 import { PICKUP_FLASH_DURATION, type GameSim } from '../core/game';
 import type { LaserBeam } from '../core/laser';
 import { getForwardVector } from '../core/math';
@@ -16,6 +16,7 @@ const WHITE = 0xffffff;
 const GREY_150 = 0x969696;
 const RESPAWN_DIM = 0x646464;
 const BOOST_MAGENTA = 0xff64ff;
+const BOOST_FLASH_RED = 0xff0000;
 const RAPID_YELLOW = 0xffff00;
 const MULTI_ORANGE = 0xffa500;
 const SHIELD_CYAN = 0x00ffff;
@@ -62,6 +63,12 @@ function drawAsteroid(g: Graphics, a: Asteroid): void {
   }
 }
 
+/** True during the red flashes in the last moments of a boost; driven by the boost timer so there are exactly three. */
+export function boostFlashRed(p: PlayerState): boolean {
+  const t = p.boost.timer;
+  return p.boost.active && t > 0 && t <= BOOST_FLASH_COUNT * BOOST_FLASH_PERIOD && t % BOOST_FLASH_PERIOD <= BOOST_FLASH_PERIOD / 2;
+}
+
 /**
  * Ship colour by state, in the same priority order as the Python `Player.draw`. `base` replaces the plain white of a
  * ship with nothing special active, which is how the two ships of a co-op game are told apart.
@@ -69,7 +76,7 @@ function drawAsteroid(g: Graphics, a: Asteroid): void {
 export function shipColor(p: PlayerState, timeMs: number, base = WHITE): number {
   if (p.isRespawning) return Math.floor(timeMs / 100) % 2 === 0 ? RESPAWN_DIM : WHITE;
   if (p.megaPower.active) return rainbowColor(timeMs);
-  if (p.boost.active) return BOOST_MAGENTA;
+  if (p.boost.active) return boostFlashRed(p) ? BOOST_FLASH_RED : BOOST_MAGENTA;
   if (p.rapidFire.active) return RAPID_YELLOW;
   if (p.multiShot.active) return MULTI_ORANGE;
   return base;
@@ -97,7 +104,7 @@ function drawPlayer(g: Graphics, p: PlayerState, timeMs: number, coop: boolean):
     }
     if (p.boost.timer <= BOOST_WARNING_TIME) {
       const pulse = Math.abs(((timeMs / 1000) * 8) % 2 - 1);
-      g.lineStyle(pulse > 0.5 ? 2 : 3, RAPID_YELLOW, 1);
+      g.lineStyle(pulse > 0.5 ? 2 : 3, boostFlashRed(p) ? BOOST_FLASH_RED : RAPID_YELLOW, 1);
       g.strokeCircle(p.position.x, p.position.y, Math.trunc(p.radius * (1.8 + 0.4 * pulse)));
     }
   }

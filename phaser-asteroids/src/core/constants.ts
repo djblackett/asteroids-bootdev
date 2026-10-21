@@ -231,6 +231,9 @@ export const BOOST_SPEED_MULTIPLIER = 2.5;
 /** Starts counting when the boost starts, so it is already 3 s in when the boost ends. */
 export const BOOST_COOLDOWN = 8.0;
 export const BOOST_WARNING_TIME = 1.0; // seconds before expiry that the warning ring pulses
+/** The last `BOOST_FLASH_COUNT * BOOST_FLASH_PERIOD` seconds of a boost flash red, ending on a flash. */
+export const BOOST_FLASH_COUNT = 3;
+export const BOOST_FLASH_PERIOD = 0.2; // seconds per flash cycle (half red, half normal)
 
 // --- Boundary bounce -------------------------------------------------------
 export const BOUNDARY_BOUNCE_FORCE = 150; // px/s
