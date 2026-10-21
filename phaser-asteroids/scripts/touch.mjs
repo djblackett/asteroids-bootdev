@@ -1750,7 +1750,7 @@ async function run() {
   await dpage.keyboard.press('KeyP');
   await sleep(150);
   const dpaused = await dpage.evaluate(`(${VISIBLE_TEXTS})(window.__game.scene.getScene('GameScene'))`);
-  check('desktop: the pause menu has the same four buttons, plus the keyboard hint line', dpaused.includes('PAUSED') && ['RESUME', 'AUDIO', 'CONTROLS', 'RETURN TO MENU'].every((t) => dpaused.includes(t)) && dpaused.some((t) => /^P: resume/.test(t)));
+  check('desktop: the pause menu has the same four buttons, plus the keyboard hint line', dpaused.includes('PAUSED') && ['RESUME', 'AUDIO', 'CONTROLS', 'RETURN TO MENU'].every((t) => dpaused.includes(t)) && dpaused.some((t) => /^P \/ ESC: resume/.test(t)));
   check('desktop: no console errors', dproblems.length === 0, dproblems.join(' | '));
   await desktop.close();
 

@@ -108,7 +108,7 @@ describe('MenuController: keyboard and controller', () => {
     expect(menu.currentPage).toBe('title');
   });
 
-  it('Escape at the root is not consumed (the pause screen uses that to leave for the title)', () => {
+  it('Escape at the root is not consumed (the title screen ignores it; the pause screen resumes on it, see backNavigation.test.ts)', () => {
     const { menu } = makeMenu();
     expect(menu.key('Escape')).toBe(false);
     expect(menu.pad('b')).toBe(false);

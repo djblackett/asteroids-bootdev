@@ -71,7 +71,7 @@ what blocks a deploy, troubleshooting, rollback, gamepad checks and the custom-d
 | ↑ / ↓ / ← / → (in a menu: the title screen, AUDIO, CONTROLS, the pause menu) | Move the highlight; ← / → change the highlighted slider or choice. Enter / Space press the highlighted button (Space always means PLAY on the title page). Esc goes back one page. |
 | P | Pause / resume (also happens automatically when the tab or window loses focus) |
 | R, Enter, or click RETRY | Restart after game over (after a 1.5 s delay) |
-| Esc | Back one menu page; on the pause menu itself, or after game over, back to the title screen |
+| Esc | Pause while playing; back one menu page; resume from the pause menu itself; after game over, back to the title screen. It never abandons a run: use RETURN TO MENU (two presses) for that |
 
 ### Menus
 
@@ -82,7 +82,7 @@ touch controls) and what the pick-ups do (a compact power-up legend that opens a
 - **CONTROLS** (title and pause): on a phone the steering choice (D-pad or joystick), haptic feedback with TEST VIBRATION, and the way to the keyboard; with a keyboard the key map, the controllers and
   who each one drives, the controller layout and (two players) Player 2's keys. A touch-capable device in keyboard mode always has a large green way back to touch controls.
 - **CO-OP** (title, two players): lives, friendly fire and each player's speed (the L, F, S, D keys still work).
-- **Pause:** RESUME, AUDIO, CONTROLS, RETURN TO MENU (two presses). AUDIO and CONTROLS leave the run paused and BACK returns to the pause menu.
+- **Pause:** RESUME, AUDIO, CONTROLS, RETURN TO MENU (two presses). AUDIO and CONTROLS leave the run paused and BACK (or Esc) returns to the pause menu; Esc on the pause menu itself resumes.
 
 Details, where every old setting went, the phone safeguards and the tests: [docs/menus.md](docs/menus.md).
 
@@ -121,7 +121,7 @@ keeps their keyboard keys too; where both push the same axis the keyboard wins, 
 | X | Laser Beam (once per press) |
 | B | Boost (once per press) |
 | START | Pause / resume |
-| BACK | Main menu (on the pause menu itself or on the game-over screen); back one page inside AUDIO / CONTROLS |
+| BACK | Same as Esc: pause while playing, back one page inside AUDIO / CONTROLS, resume from the pause menu itself, main menu on the game-over screen. (B also goes back or resumes while the pause menu is open; in play it stays Boost.) |
 | A | Retry after game over; join an unassigned controller on the title screen; press the highlighted menu button (PLAY by default) |
 | D-pad in a menu | Move the highlight (left / right on the 1 / 2 PLAYERS switch or a slider change it); B goes back, X steps the music track on the title screen |
 

@@ -99,6 +99,16 @@ async function run(browser) {
 
   const shot = (name) => page.screenshot({ path: path.join(outDir, `${name}.png`) });
   const scene = () => `window.__game.scene.getScene('GameScene')`;
+  /** A paused run -> the title screen, the deliberate way: RETURN TO MENU (3 x Down from RESUME), asked once, confirmed by a second Enter. Escape no longer does this. */
+  const quitToTitle = async (pg = page) => {
+    for (let i = 0; i < 3; i++) {
+      await pg.keyboard.press('ArrowDown');
+      await sleep(40);
+    }
+    await pg.keyboard.press('Enter');
+    await sleep(450);
+    await pg.keyboard.press('Enter');
+  };
   const sim = () =>
     page.evaluate(`(() => { const s = ${scene()}.sim, p = s.player; return {
       x: p.position.x, y: p.position.y, rot: p.rotation, lives: p.lives, score: p.score, time: s.time, phase: s.phase,
@@ -464,18 +474,20 @@ async function run(browser) {
   for (let i = 0; i < 12; i++) {
     await page.keyboard.press('KeyP');
     await page.keyboard.press('Escape'); // typically lands in the same frame as P
-    const reached = await page.waitForFunction(() => window.__game.scene.isActive('StartScene'), null, { timeout: 1500 }).then(() => true, () => false);
-    if (!reached) burstFailures++;
-    if (!reached) await page.keyboard.press('Escape');
-    await page.keyboard.press('Space');
-    await page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 3000 });
-    await sleep(120);
+    await sleep(250);
+    // Escape pauses and resumes but never leaves: the run is still there, and paused / menu-shown agree (the Escape either landed
+    // before the menu existed and was ignored, or a frame later and resumed).
+    const st = await page.evaluate(`({ active: window.__game.scene.isActive('GameScene'), paused: ${scene()}.paused, menu: ${scene()}.pauseMenu.isOpen })`);
+    if (!st.active || st.paused !== st.menu) burstFailures++;
+    if (st.paused) await page.keyboard.press('KeyP');
+    await sleep(150);
   }
-  check('P then Escape in quick succession always reaches the menu (12 tries)', burstFailures === 0, `failures=${burstFailures}`);
+  check('P then Escape in quick succession never leaves the run and ends in one coherent state (12 tries)', burstFailures === 0, `failures=${burstFailures}`);
 
   // --- menu and back ---------------------------------------------------------------------------------------------------
   await page.keyboard.press('KeyP');
-  await page.keyboard.press('Escape');
+  await sleep(150);
+  await quitToTitle();
   await page.waitForFunction(() => window.__game.scene.isActive('StartScene'), null, { timeout: 3000 });
   a = await audio();
   check('music keeps playing on the title screen, at the same level', a.music?.playing === true && a.musicInstances === 1 && near(a.music?.gain, 0.42) && near(a.vm, 0.6, 1e-9));

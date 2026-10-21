@@ -166,8 +166,8 @@ export const PAD_MAPPING_LINES: readonly string[] = [
   'D-PAD  -  Rotate / Move when the stick is centred',
   'RT or A  -  Shoot (hold to keep firing)',
   'X  -  Laser Beam         B  -  Boost',
-  'START  -  Pause / Resume',
-  'Paused: D-PAD moves, A selects, B goes back, BACK = Main Menu',
+  'START  -  Pause / Resume        BACK  -  Pause, or go back one page',
+  'Paused: D-PAD moves, A selects, B or BACK goes back (then resumes)',
   'After Game Over: A  -  Retry        BACK  -  Main Menu',
 ];
 

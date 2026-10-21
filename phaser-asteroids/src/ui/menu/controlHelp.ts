@@ -82,4 +82,4 @@ export function touchRows(steering: SteeringMode): TouchHelpRow[] {
 }
 
 /** The keys every keyboard player has, whatever the ship scheme. */
-export const SYSTEM_KEYS_LINE = 'P pause   M music   ESC menu';
+export const SYSTEM_KEYS_LINE = 'P / ESC pause   M music';

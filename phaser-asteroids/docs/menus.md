@@ -22,8 +22,29 @@ Title                                            Pause (during a run)
                                                   TWO-PLAYER OPTIONS: LIVES · FRIENDLY FIRE · PLAYER 1 / 2 SPEED
 ```
 
-Back (Escape, B, the BACK button) closes one page and returns to its parent with the same button lit; on the pause menu itself Escape / BACK still
-go straight to the title screen, as they always did. Opening a page from the pause menu leaves the game exactly as it was: still paused, same run.
+Opening a page from the pause menu leaves the game exactly as it was: still paused, same run.
+
+## Escape / Back
+
+Escape, the controller's BACK button (and B on the pause menu) and the on-screen BACK buttons all go *backwards through the menus*; none of them ever abandons a run in
+progress. The one deliberate way out of a run is **RETURN TO MENU** on the pause menu, which takes two presses. The rule is one function, `handleBack` (`ui/menu/backAction.ts`),
+used by the keyboard and the controller alike.
+
+| Where you are | Escape / BACK |
+|---|---|
+| Playing | Pause (opens the pause menu) |
+| Pause menu | Resume (the cannon, Laser and Boost stay quiet until released, like RESUME itself) |
+| Pause > AUDIO / CONTROLS (> CONTROLLER LAYOUT) | Back one page, with the same button lit; the game stays paused |
+| Title > AUDIO / CONTROLS / POWER-UPS / CO-OP (> CONTROLLER LAYOUT) | Back one page to the title page |
+| Title page | Nothing (never starts or quits anything) |
+| Game over | Main menu (the run is already over) |
+
+- **Keyboard:** `Esc`. One physical press is one step: auto-repeat while it is held and the engine's replayed key events are filtered (`keyPress.ts`), so holding Escape cannot skip pages.
+  P (and the controller's START) still pause / resume from anywhere, inside a sub-page too.
+- **Controller:** `B` is Boost in play, so it is the menu's cancel button only while the pause menu is open (and on the title screen). `BACK` (Select / View) is the same
+  as Escape everywhere, including pausing a run in play. `START` is unchanged: pause / resume.
+- **Mouse and touch:** the visible BACK button on every sub-page (nothing else is needed on the pause menu: RESUME is its way out).
+- A press of Escape that lands in the same frame as the P that paused the game, before the pause menu exists, is ignored: it neither resumes nor leaves.
 
 ## What the title screen shows
 
@@ -57,13 +78,13 @@ go straight to the title screen, as they always did. Opening a page from the pau
 
 Every device drives the same state machine (`menuController.ts`):
 
-- **Keyboard:** arrows move the focus (and Left / Right change the focused slider or choice), Enter / Space press it, Escape goes back. Page hotkeys keep working
+- **Keyboard:** arrows move the focus (and Left / Right change the focused slider or choice), Enter / Space press it, Escape goes back (see "Escape / Back" above). Page hotkeys keep working
   (Space = PLAY on the title page, P, M, 1 / 2, L / F / K / S / D, G, C). Space and Enter on RESUME never fire a shot: every cannon that is down when the menu resumes the
   game stays quiet until it has been released once (`GameScene.resumeFromMenu`).
 - **Mouse:** hovering moves the focus; a click presses. A click on empty space does nothing (there is no click-anywhere start).
 - **Touch:** a tap presses; no focus ring is drawn after a tap. Taps are swallowed for 220 ms after a page change so a double tap cannot hit the next page's button.
   Menu taps never reach the game: the on-screen game controls are hidden while any menu is open, and the pause menu swallows every tap.
-- **Controller:** D-pad moves, A presses, B goes back, START starts / resumes. (Controllers with a non-standard layout have no D-pad: they can still start and
+- **Controller:** D-pad moves, A presses, B or BACK goes back, START starts / resumes. (Controllers with a non-standard layout have no D-pad: they can still start and
   resume with A / START.)
 
 ## Phones: safeguards kept
@@ -74,7 +95,7 @@ Every device drives the same state machine (`menuController.ts`):
 - **A way back that cannot be missed.** On a touch-capable device in keyboard mode the title screen has a large green **TOUCH CONTROLS: OFF / TAP TO TURN ON** button top right, and the CONTROLS page starts with a full-width
   green bar. Switching modes rebuilds the page in place (no scene restart) and clears every held input.
 - **D-pad is the default steering**, the joystick one tap away in CONTROLS (also from the pause menu); a saved choice is never overridden.
-- **RETURN TO MENU needs two presses** on every device (the Escape key keeps its direct shortcut).
+- **RETURN TO MENU needs two presses** on every device, and it is the only way out of a run in progress: Escape and BACK only pause, resume and go back.
 - Portrait still covers everything with the rotate prompt and pauses the run.
 
 ## Haptics default

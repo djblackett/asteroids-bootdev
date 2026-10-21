@@ -43,6 +43,17 @@ function findChrome() {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** A paused run -> the title screen, the deliberate way: RETURN TO MENU (3 x Down from RESUME), asked once, confirmed by a second Enter. Escape only resumes. */
+async function quitToTitle(d) {
+  await sleep(300); // the pause menu is built a frame after the P that opened it
+  for (let i = 0; i < 3; i++) {
+    await d.key('ArrowDown');
+    await sleep(40);
+  }
+  await d.key('Enter');
+  await sleep(450);
+  await d.key('Enter');
+}
 let failures = 0;
 let total = 0;
 function check(name, ok, detail = '') {
@@ -483,7 +494,7 @@ async function run() {
   s = await g.settled();
   check('RETRY starts the new game with the same chosen track, still one sound', !(await g.paused()) && s.count === 1 && s.sounds[0]?.key === 'music-megaman' && s.sounds[0]?.tag === 'vol', JSON.stringify(s.sounds));
   await g.key('KeyP');
-  await g.key('Escape');
+  await quitToTitle(g);
   await sleep(500);
   s = await g.settled();
   check('Main Menu keeps the music going: the same sound, no second one', (await g.scene()) === 'StartScene' && s.count === 1 && s.sounds[0]?.tag === 'vol' && s.sounds[0]?.playing, JSON.stringify({ scene: await g.scene(), sounds: s.sounds }));
@@ -580,7 +591,7 @@ async function run() {
   s = await r.audio();
   check('after all that Random is still the saved mode', s.stored === 'random' && s.choice === 'random');
   await r.key('KeyP');
-  await r.key('Escape');
+  await quitToTitle(r);
   await sleep(400);
   const menuTrack = (await r.audio()).current;
   await r.start();

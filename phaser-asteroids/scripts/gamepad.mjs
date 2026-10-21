@@ -634,9 +634,19 @@ async function run(browser) {
   // =====================================================================================================================
   await padTap(0, BTN.START);
   await padTap(0, BTN.BACK);
+  await sleep(200);
+  st = await sim();
+  check('START pauses and BACK resumes the same run: BACK never abandons it', (await page.evaluate(() => window.__game.scene.isActive('GameScene'))) && st.paused === false, JSON.stringify({ paused: st.paused }));
+  await padTap(0, BTN.START);
+  await sleep(250);
+  for (let i = 0; i < 3; i++) await padTap(0, BTN.DOWN); // RETURN TO MENU is the only way out: asked once, confirmed by a second A
+  await padTap(0, BTN.A);
+  await sleep(350);
+  check('A on RETURN TO MENU only asks first', await page.evaluate(() => window.__game.scene.isActive('GameScene')));
+  await padTap(0, BTN.A);
   await page.waitForFunction(() => window.__game.scene.isActive('StartScene'), null, { timeout: 4000 }).catch(() => {});
   h = await hub();
-  check('START then BACK returns to the title screen; the pad keeps its assignment and no game listener is left behind', await page.evaluate(() => window.__game.scene.isActive('StartScene')) && h.p2 === 0 && h.listeners === 0, JSON.stringify(h));
+  check('START, then RETURN TO MENU (A twice) returns to the title screen; the pad keeps its assignment and no game listener is left behind', await page.evaluate(() => window.__game.scene.isActive('StartScene')) && h.p2 === 0 && h.listeners === 0, JSON.stringify(h));
   await page.keyboard.press('Digit1');
   await sleep(250);
   t = await texts(T);

@@ -64,7 +64,7 @@ const server = spawn(process.execPath, [path.join(root, 'node_modules', 'vite', 
 const stopServer = () => server.kill();
 process.on('exit', stopServer);
 
-const BTN = { A: 0, B: 1, X: 2, Y: 3, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
+const BTN = { A: 0, B: 1, X: 2, Y: 3, BACK: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 };
 const near = (a, b, eps = 0.005) => Math.abs(a - b) < eps;
 /** The signed turn from one heading to another, in degrees (-180..180). */
 const turn = (from, to) => ((((to - from) % 360) + 540) % 360) - 180;
@@ -335,7 +335,8 @@ async function run() {
   const k7 = await d.sim();
   check('W moves the ship, S moves it back, D and A turn it', Math.hypot(k1.x - k0.x, k1.y - k0.y) > 40 && Math.hypot(k2.x - k1.x, k2.y - k1.y) > 20 && turn(k2.rot, k3.rot) > 20 && turn(k3.rot, k4.rot) < -20, JSON.stringify({ w: Math.round(Math.hypot(k1.x - k0.x, k1.y - k0.y)), rot: [k2.rot, k3.rot, k4.rot].map(Math.round) }));
   check('SPACE shoots, E fires the laser, SHIFT boosts', k5.shots >= 1 && k6.laser === k5.laser - 1 && k7.boost, JSON.stringify({ shots: k5.shots, laser: [k5.laser, k6.laser], boost: k7.boost }));
-  await d.key('Escape'); // pause menu is not open: Escape leaves only when paused
+  await d.key('Escape', 300); // Escape while playing pauses (it no longer does nothing, and never leaves)
+  check('Escape during play pauses the run and opens the pause menu', (await d.sim()).paused === true && (await d.menu('GameScene')).page === 'pause' && (await d.scene()) === 'GameScene');
   await d.page.evaluate(() => window.__game.scene.getScene('GameScene').scene.start('StartScene'));
   await sleep(500);
 
@@ -500,6 +501,7 @@ async function run() {
   await k.shot('desktop-pause-controls');
   check('...without the settings that cannot change mid-run (no controller assignment buttons enabled, no touch switch)', !(await k.menu('GameScene')).items.some((i) => i.id === 'touch-on' || i.id === 'p2-keys'));
   await k.key('Escape', 250);
+  check('Escape closes CONTROLS the same way: pause menu, CONTROLS focused, still paused, still this run', (await k.menu('GameScene')).page === 'pause' && (await k.menu('GameScene')).focus === 'controls' && (await k.sim()).paused === true && (await k.scene()) === 'GameScene');
   check('time did not advance during any of it', near((await k.sim()).time, t0, 0.02), `${t0} -> ${(await k.sim()).time}`);
   // leaving from inside a submenu with P closes everything
   await k.focus('audio', 'GameScene');
@@ -515,12 +517,127 @@ async function run() {
   await k.key('Enter', 400);
   await sleep(500);
   check('a second press returns to the title screen', (await k.scene()) === 'StartScene' && (await k.menu()).page === 'title');
+  // =====================================================================================================
+  // 4b. Escape / Back: pause, resume, back out of a page; it never leaves a run that is in progress
+  // =====================================================================================================
+  console.log('\n--- Escape and Back (keyboard and mouse, in a run) ---');
+  const GS = `window.__game.scene.getScene('GameScene')`;
+  const menuOpen = () => k.page.evaluate(`${GS}.pauseMenu.isOpen`);
+  const sameRun = async () => (await k.scene()) === 'GameScene' && (await k.page.evaluate(`${GS}.sim.__run === 'same'`));
   await k.start();
-  await k.key('KeyP', 250);
-  await k.key('Escape', 500);
-  check('Escape on the pause menu itself still goes straight to the title screen', (await k.scene()) === 'StartScene');
+  await k.page.evaluate(`${GS}.sim.__run = 'same'`); // a restart or a new run builds a new sim, which would not carry this
+  await k.key('Escape', 300);
+  check('Escape while playing pauses and shows the pause menu (RESUME focused)', (await k.sim()).paused === true && (await menuOpen()) && (await k.menu('GameScene')).page === 'pause' && (await k.menu('GameScene')).focus === 'resume');
+  await k.key('Escape', 300);
+  check('Escape on the pause menu resumes the same run (it does not go to the title screen)', (await k.sim()).paused === false && !(await menuOpen()) && (await sameRun()));
+  for (let i = 0; i < 6; i++) {
+    await k.key('Escape', 300);
+    const expectPaused = i % 2 === 0;
+    if ((await k.sim()).paused !== expectPaused || !(await sameRun())) {
+      check(`Escape toggles pause one step at a time (press ${i + 1})`, false, JSON.stringify(await k.sim()));
+      break;
+    }
+    if (i === 5) check('six Escape presses alternate pause / resume exactly, in the same run, never leaving', true);
+  }
+  // a page deeper than the pause menu, and a key that is held down: one press is one step
+  await k.key('Escape', 300); // pause
+  await k.focus('controls', 'GameScene');
+  await k.key('Enter', 300);
+  const hasLayout = (await k.menu('GameScene')).items.some((i) => i.id === 'pad-layout');
+  if (hasLayout) {
+    await k.focus('pad-layout', 'GameScene');
+    await k.key('Enter', 300);
+  }
+  const depthBefore = (await k.menu('GameScene')).page;
+  await k.page.keyboard.down('Escape');
+  for (let i = 0; i < 6; i++) await k.page.keyboard.down('Escape'); // auto-repeat events
+  await k.page.keyboard.up('Escape');
+  await sleep(350);
+  check(`holding Escape on ${depthBefore} goes back exactly one page (${hasLayout ? 'to CONTROLS' : 'to the pause menu'}), still paused`, (await k.menu('GameScene')).page === (hasLayout ? 'controls' : 'pause') && (await k.sim()).paused === true && (await sameRun()), JSON.stringify((await k.menu('GameScene')).page));
+  if (hasLayout) await k.key('Escape', 300);
+  check('...and the next press returns to the pause menu', (await k.menu('GameScene')).page === 'pause' && (await k.sim()).paused === true);
+  await k.page.keyboard.down('Escape');
+  for (let i = 0; i < 6; i++) await k.page.keyboard.down('Escape');
+  await k.page.keyboard.up('Escape');
+  await sleep(350);
+  check('holding Escape on the pause menu resumes once (it does not pause again)', (await k.sim()).paused === false && !(await menuOpen()) && (await sameRun()));
+  // the key that resumed must not fire anything: laser and boost keys held through the pause, Space held through the pause and the resume
+  await k.key('Escape', 300);
+  await k.page.keyboard.down('KeyE');
+  await k.page.keyboard.down('ShiftLeft');
+  await k.key('Escape', 300);
+  await sleep(400);
+  await k.page.keyboard.up('KeyE');
+  await k.page.keyboard.up('ShiftLeft');
+  check('Escape-resume with the Laser and Boost keys held fires neither', (await k.sim()).laser === 15 && !(await k.sim()).boost && (await k.sim()).paused === false, JSON.stringify(await k.sim()));
+  await k.page.keyboard.down('Space');
+  await sleep(250);
+  await k.key('Escape', 300); // pause with the cannon held
+  await k.page.evaluate(`${GS}.sim.shots.length = 0`);
+  await k.key('Escape', 300); // resume with the cannon still held
+  await sleep(700);
+  check('Escape-resume with Space still held does not fire (until Space is released and pressed again)', (await k.sim()).paused === false && (await k.sim()).shots === 0, JSON.stringify(await k.sim()));
+  await k.page.keyboard.up('Space');
+  await sleep(150);
+  await k.page.keyboard.down('Space');
+  await sleep(450);
+  check('...and the cannon works again after that', (await k.sim()).shots >= 1);
+  await k.page.keyboard.up('Space');
+  // the mouse BACK button does what Escape does
+  await k.key('Escape', 300);
+  const t1 = await k.sim();
+  await k.tap('audio', { scene: 'GameScene' });
+  await k.tap('back', { scene: 'GameScene' });
+  check('clicking AUDIO then BACK returns to the pause menu, still paused, same run', (await k.menu('GameScene')).page === 'pause' && (await k.sim()).paused === true && (await sameRun()));
+  await k.tap('controls', { scene: 'GameScene' });
+  await k.tap('back', { scene: 'GameScene' });
+  const t2 = await k.sim();
+  check('...and the same for CONTROLS; the paused game is exactly where it was (position, heading, clock)', (await k.menu('GameScene')).page === 'pause' && near(t1.x, t2.x, 1e-6) && near(t1.y, t2.y, 1e-6) && near(t1.rot, t2.rot, 1e-6) && near(t1.time, t2.time, 1e-6) && t1.lives === t2.lives, JSON.stringify({ t1, t2 }));
+  // RETURN TO MENU is still the only way out, and Escape disarms it
+  await k.focus('menu', 'GameScene');
+  await k.key('Enter', 400);
+  check('RETURN TO MENU still asks first', (await k.scene()) === 'GameScene' && (await k.words('GameScene')).some((t) => /QUIT THIS RUN/.test(t)));
+  await k.key('Escape', 300);
+  check('Escape while it is asking resumes the run (it is not a second press)', (await k.sim()).paused === false && (await sameRun()));
+  await k.key('Escape', 300);
+  check('the next pause shows RETURN TO MENU un-armed again', (await k.words('GameScene')).includes('RETURN TO MENU') && !(await k.words('GameScene')).some((t) => /QUIT THIS RUN/.test(t)));
+  await k.focus('menu', 'GameScene');
+  await k.key('Enter', 400);
+  await k.key('Enter', 400);
+  await sleep(400);
+  check('only the second press of RETURN TO MENU leaves for the title screen', (await k.scene()) === 'StartScene' && (await k.menu()).page === 'title');
   check('no console errors', k.problems.length === 0, k.problems.join(' | '));
   await k.context.close();
+
+  // =====================================================================================================
+  // 4c. Escape / Back on the title screen
+  // =====================================================================================================
+  console.log('\n--- Escape and Back (title screen) ---');
+  const tt = await open();
+  await tt.goto();
+  await tt.key('Escape');
+  await tt.key('Escape');
+  check('Escape on the title page itself does nothing: still the title, no game started', (await tt.menu()).page === 'title' && (await tt.scene()) === 'StartScene');
+  await tt.key('Digit2', 250);
+  for (const target of ['audio', 'controls', 'coop', 'powerups']) {
+    await tt.tap(target);
+    const opened = (await tt.menu()).page === target;
+    await tt.key('Escape');
+    let s = await tt.menu();
+    check(`Title > ${target} > Escape returns to the title page with ${target} lit, and starts nothing`, opened && s.page === 'title' && s.focus === target && (await tt.scene()) === 'StartScene', JSON.stringify({ opened, page: s.page, focus: s.focus }));
+    await tt.tap(target);
+    await tt.tap('back');
+    s = await tt.menu();
+    check(`Title > ${target} > the BACK button (mouse) does the same`, s.page === 'title' && s.focus === target && (await tt.scene()) === 'StartScene', JSON.stringify({ page: s.page, focus: s.focus }));
+  }
+  await tt.tap('controls');
+  await tt.page.keyboard.down('Escape');
+  for (let i = 0; i < 6; i++) await tt.page.keyboard.down('Escape');
+  await tt.page.keyboard.up('Escape');
+  await sleep(350);
+  check('holding Escape on a title sub-page goes back one page and then stops at the title page', (await tt.menu()).page === 'title' && (await tt.scene()) === 'StartScene');
+  check('no console errors', tt.problems.length === 0, tt.problems.join(' | '));
+  await tt.context.close();
 
   // =====================================================================================================
   // 5. Menu presses never reach the game
@@ -644,6 +761,12 @@ async function run() {
   check('B goes back to the title page', (await pd.menu()).page === 'title');
   await pd.padTap(BTN.Y);
   check('Y opens CONTROLS', (await pd.menu()).page === 'controls');
+  await pd.padTap(BTN.BACK);
+  check('the controller\'s BACK button also goes back to the title page', (await pd.menu()).page === 'title');
+  await pd.padTap(BTN.B);
+  await pd.padTap(BTN.BACK);
+  check('B and BACK on the title page itself do nothing', (await pd.menu()).page === 'title' && (await pd.scene()) === 'StartScene');
+  await pd.padTap(BTN.Y);
   await pd.padTap(BTN.B);
   await pd.padTap(BTN.START);
   await pd.page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
@@ -658,6 +781,10 @@ async function run() {
   check('D-pad Down + A open AUDIO from the pause menu, still paused', (await pd.menu('GameScene')).page === 'audio' && (await pd.sim()).paused === true);
   await pd.padTap(BTN.B);
   check('B goes back to the pause menu, still paused', (await pd.menu('GameScene')).page === 'pause' && (await pd.sim()).paused === true);
+  await pd.padTap(BTN.A);
+  check('A opens AUDIO again', (await pd.menu('GameScene')).page === 'audio');
+  await pd.padTap(BTN.BACK);
+  check('BACK from AUDIO returns to the pause menu: still paused, not resumed, not the title screen', (await pd.menu('GameScene')).page === 'pause' && (await pd.sim()).paused === true && (await pd.scene()) === 'GameScene');
   await pd.padTap(BTN.UP);
   await pd.padPut({ buttons: { [BTN.A]: 1 } }); // A held: RESUME is pressed, and A is also the cannon
   await sleep(150);
@@ -666,6 +793,23 @@ async function run() {
   const padHeld = await pd.sim();
   check('A on RESUME resumes without firing while A is still held', padResumed.paused === false && padHeld.shots === 0, JSON.stringify({ paused: padResumed.paused, shots: padHeld.shots }));
   await pd.padPut({});
+  await sleep(200);
+  await pd.padTap(BTN.BACK);
+  check('BACK while playing pauses and opens the pause menu', (await pd.sim()).paused === true && (await pd.menu('GameScene')).page === 'pause');
+  await pd.padTap(BTN.BACK);
+  check('BACK on the pause menu resumes the run', (await pd.sim()).paused === false && (await pd.scene()) === 'GameScene');
+  await pd.padTap(BTN.START);
+  await sleep(250);
+  await pd.padPut({ buttons: { [BTN.B]: 1 } }); // B held: it resumes from the pause menu, and it is also Boost
+  await sleep(150);
+  const bResumed = await pd.sim();
+  await sleep(400);
+  const bHeld = await pd.sim();
+  check('B on the pause menu resumes, and the held B does not boost', bResumed.paused === false && !bHeld.boost, JSON.stringify({ paused: bResumed.paused, boost: bHeld.boost }));
+  await pd.padPut({});
+  await sleep(200);
+  await pd.padTap(BTN.B);
+  check('B while playing is still Boost (it does not pause)', (await pd.sim()).paused === false && (await pd.sim()).boost === true);
   check('no console errors', pd.problems.length === 0, pd.problems.join(' | '));
   await pd.context.close();
 

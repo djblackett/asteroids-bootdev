@@ -101,6 +101,16 @@ async function run(browser) {
   const paused = () => page.evaluate(`${scene}.paused`);
   const heldKeys = () => page.evaluate(() => [...window.__game.registry.get('heldKeys').snapshot()].sort());
   const listeners = () => page.evaluate(() => ({ keydown: window.__listenerCounts.keydown, keyup: window.__listenerCounts.keyup, blur: window.__listenerCounts.blur }));
+  /** A paused run -> the title screen, the deliberate way: RETURN TO MENU (3 x Down from RESUME), asked once, confirmed by a second Enter. Escape no longer does this. */
+  const quitToTitle = async (pg = page) => {
+    for (let i = 0; i < 3; i++) {
+      await pg.keyboard.press('ArrowDown');
+      await sleep(40);
+    }
+    await pg.keyboard.press('Enter');
+    await sleep(450);
+    await pg.keyboard.press('Enter');
+  };
   const tap = async (key, ms = 60) => (await page.keyboard.down(key), await sleep(ms), await page.keyboard.up(key));
   const dist = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
   const reset = () =>
@@ -326,7 +336,8 @@ async function run(browser) {
     await page.evaluate(`${scene}.sim.spawner.spawnTimer = -1e9`);
   }
   await tap('KeyP');
-  await page.keyboard.press('Escape');
+  await sleep(150);
+  await quitToTitle();
   await page.waitForFunction(() => window.__game.scene.isActive('StartScene'), null, { timeout: 3000 });
   await page.keyboard.down('KeyW'); // hold a movement key on the title screen, then start with Space
   await tap('Space', 80);
@@ -352,20 +363,21 @@ async function run(browser) {
     check('P pressed (and auto-repeating) while W is held toggles pause exactly once', (await paused()) === !was);
     await tap('KeyP');
     await page.keyboard.up('KeyW');
+    // Escape pauses a run and resumes from the pause menu; it never leaves. P then Escape lands either in one frame (the menu does not
+    // exist yet, so the Escape is ignored: paused) or in two (it resumes): whichever, the run is still there, in one coherent state.
     let failures8 = 0;
     for (let i = 0; i < 8; i++) {
       await page.keyboard.down('KeyW');
       await page.keyboard.press('KeyP');
       await page.keyboard.press('Escape');
-      const reached = await page.waitForFunction(() => window.__game.scene.isActive('StartScene'), null, { timeout: 1500 }).then(() => true, () => false);
-      if (!reached) failures8++;
+      await sleep(250);
+      const st = await page.evaluate(`({ active: window.__game.scene.isActive('GameScene'), paused: ${scene}.paused, menu: ${scene}.pauseMenu.isOpen, page: ${scene}.pauseMenuSnapshot().page })`);
+      if (!st.active || st.paused !== st.menu || (st.paused && st.page !== 'pause')) failures8++;
       await page.keyboard.up('KeyW');
-      if (!reached) await page.keyboard.press('Escape');
-      await page.keyboard.press('Space');
-      await page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 3000 });
-      await sleep(100);
+      if (st.paused) await page.keyboard.press('KeyP');
+      await sleep(150);
     }
-    check('P then Escape with a movement key held always reaches the menu (8 tries)', failures8 === 0, `failures=${failures8}`);
+    check('P then Escape with a movement key held never leaves the run and ends in one coherent state (8 tries)', failures8 === 0, `failures=${failures8}`);
   }
 
   // --- 9. diagnostics: opt-in only ------------------------------------------------------------------------------------------------------------
@@ -463,7 +475,8 @@ async function run(browser) {
   check('panel on, 3 keys held, 3 s: average frame < 25 ms', avg < 25, `avg=${avg.toFixed(1)} ms`);
 
   await diag.keyboard.press('KeyP');
-  await diag.keyboard.press('Escape');
+  await sleep(150);
+  await quitToTitle(diag);
   await diag.waitForFunction(() => window.__game.scene.isActive('StartScene'), null, { timeout: 3000 });
   check('the overlay is removed when the game scene shuts down', (await diag.evaluate(() => document.querySelector('[data-keydebug]'))) === null);
   await diag.close();

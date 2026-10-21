@@ -668,8 +668,11 @@ async function run(browser) {
 
   // Back to one player through the menu: no co-op state survives.
   await page.keyboard.press('KeyP');
-  await sleep(100);
-  await page.keyboard.press('Escape');
+  await sleep(200);
+  for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown'); // RETURN TO MENU: asked once, confirmed by the second press (Escape only resumes)
+  await page.keyboard.press('Enter');
+  await sleep(450);
+  await page.keyboard.press('Enter');
   await page.waitForFunction(() => window.__game.scene.isActive('StartScene'), null, { timeout: 5000 });
   await sleep(300);
   await page.keyboard.press('Digit1');

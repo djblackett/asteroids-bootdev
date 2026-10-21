@@ -32,6 +32,7 @@ import { buildAudioPage } from '../ui/menu/pages/audio';
 import { buildControlsPage } from '../ui/menu/pages/controls';
 import { buildPadLayoutPage } from '../ui/menu/pages/padLayout';
 import { buildPausePage } from '../ui/menu/pages/pause';
+import { handleBack } from '../ui/menu/backAction';
 import { TouchGameOverButtons } from '../ui/touchMenus';
 import { SCENE_GAME, SCENE_START } from './keys';
 
@@ -268,10 +269,11 @@ export class GameScene extends Phaser.Scene {
           else this.retry();
           break;
         case 'b':
-          if (this.pauseMenuOpen) this.pauseMenu.controller.pad('b');
+          // B is Boost while playing; it is the menu's cancel button only on the pause menu.
+          if (this.pauseMenuOpen) this.goBack();
           break;
         case 'back':
-          if (!this.pauseMenuOpen || !this.pauseMenu.controller.back()) this.toMenu();
+          this.goBack();
           break;
         case 'up':
         case 'down':
@@ -349,20 +351,36 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
+   * Escape and the controller's BACK button (B too, but only on the pause menu, where it is not Boost): see `handleBack`. They pause a
+   * run, close an open pause page, resume from the pause menu itself, and after Game Over leave for the title screen. They never
+   * abandon a run in progress; RETURN TO MENU does that.
+   */
+  private goBack(): void {
+    handleBack({
+      gameOver: this.sim.isGameOver,
+      paused: this.paused,
+      menuShown: this.pauseMenu.isOpen,
+      menuBack: () => this.pauseMenu.controller.back(),
+      pause: () => this.togglePause(),
+      resume: () => this.resumeFromMenu(),
+      leaveFinishedRun: () => this.toMenu(),
+    });
+  }
+
+  /**
    * One-shot keys. P pauses / resumes and M mutes the music anywhere. While the pause menu is open it also takes the arrow keys (which
-   * steer the ship the rest of the time), Enter and Space, and Escape: it closes AUDIO or CONTROLS first, and from the menu itself
-   * leaves for the title screen as it always has. After Game Over, R (and Enter in a one-player game) retries and Escape leaves.
+   * steer the ship the rest of the time), Enter and Space. Escape goes back (see `goBack`). After Game Over, R (and Enter in a
+   * one-player game) retries.
    */
   private onKey(code: string): void {
     if (code === 'KeyP') return this.togglePause();
     if (code === 'KeyM') return void this.audio.music.toggleMuted();
+    if (code === 'Escape') return void this.goBack();
     if (this.pauseMenuOpen) {
-      if (this.pauseMenu.controller.key(code)) return;
-      if (code === 'Escape') this.toMenu();
+      this.pauseMenu.controller.key(code);
       return;
     }
-    if (code === 'Escape') this.toMenu();
-    else if (code === 'KeyR') this.retry();
+    if (code === 'KeyR') this.retry();
     // Enter is Player 2's cannon in a two-player game, so it only retries a one-player run.
     else if (code === 'Enter' && this.sim.players.length === 1) this.retry();
   }

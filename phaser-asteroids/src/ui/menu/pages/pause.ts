@@ -9,8 +9,8 @@ const X = CENTER_X - W / 2;
 
 /**
  * The pause menu: RESUME, AUDIO, CONTROLS, RETURN TO MENU. The two sub-pages are the title screen's own (same builders), opened on top of
- * this one, so the paused game is untouched and BACK returns here. RETURN TO MENU abandons the run, so the button takes two presses
- * (the Escape key still goes straight there, as it always has).
+ * this one, so the paused game is untouched and BACK returns here. Escape / B / BACK on this page itself resume the game. RETURN TO MENU
+ * abandons the run, so it takes two presses, on every device: it is the only way out of a run in progress.
  * `padNote` is the red line about a controller that disappeared mid-run.
  */
 export function buildPausePage(kit: PageKit, ctx: MenuContext, nav: PageNav, padNote: () => string): PageDef {
@@ -37,7 +37,7 @@ export function buildPausePage(kit: PageKit, ctx: MenuContext, nav: PageNav, pad
     // A controller that drives a ship in this run also has START and BACK.
     const count = ctx.setup().game.playerCount;
     const pad = ctx.pads.padFor(0, count) !== null || ctx.pads.padFor(1, count) !== null;
-    const hint = pad ? 'P / START: resume     M: music     ESC / BACK: main menu' : 'P: resume     M: music     ESC: main menu';
+    const hint = pad ? 'P / ESC / START: resume     M: music' : 'P / ESC: resume     M: music';
     kit.text(CENTER_X, 640, hint, { size: TEXT.small, originX: 0.5, originY: 0.5, color: COLORS.dim, bold: false });
   }
   return { defaultFocus: 'resume' };

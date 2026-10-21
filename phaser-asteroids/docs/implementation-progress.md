@@ -240,7 +240,7 @@ and a one-player run never sees a co-op setting (tested at config, sim and brows
 | Shoot | Space | Enter (or numpad Enter) | ; |
 | Laser Beam | E | Right Shift | U |
 | Boost | Left Shift | **. (period)** | O |
-| Shared | P pause, M mute, R retry, Esc menu (arrows adjust volume on the pause / title screens only) | | |
+| Shared | P pause, M mute, R retry, Esc pause / back / resume (arrows adjust volume on the pause / title screens only) | | |
 
 **Deviation: Python's Right Ctrl boost is not used.** In a browser Ctrl + W / T / N close the tab or window and no page can cancel them, and Player 1 holds W almost all the time.
 The one-player scheme (WASD or arrows, either Shift) is unchanged; in a two-player game Player 1 has WASD only (the arrows and Right Shift are Player 2's).
@@ -341,7 +341,7 @@ no controller-to-player assignment beyond the start-up count. `test_gamepad.py` 
 | X | laser (once per press) | laser (once per press, by the existing `keyHeld` latch in `player.ts`) |
 | B | boost (once per press) | boost (once per press) |
 | Start | pause (button 7) | pause / resume (**button 9**, standard numbering) |
-| Back | none | main menu, only while paused or on game over (browser addition; Python used the keyboard's Esc) |
+| Back | none | like Esc (browser addition): pauses in play, goes back a page / resumes on the pause menu, main menu on game over. Never abandons a run; RETURN TO MENU does (two presses) |
 | A on game over / title | retry / start | retry (fresh press, after the retry delay) / start (on an assigned pad) |
 | LB / RB / Y on the title | none | LB = Player 1, RB = Player 2, Y = show the controller layout (assignment UI, see below) |
 
@@ -589,11 +589,12 @@ Full write-up: [menus.md](menus.md) (hierarchy, where every setting went, input,
 - **Haptics:** default flipped to **ON** for new players after a real-phone test (a saved OFF is kept, nothing is migrated), with a one-line hint about Silent mode.
 - **Safeguards kept:** no tap-anywhere start, two-tap switch to keyboard, a large green way back to touch (title corner and CONTROLS page), D-pad default, rotate prompt, fullscreen pill.
 - **Behaviour changes worth knowing:** clicking empty space no longer starts a desktop game (PLAY is a button; Space still starts); D-pad left / right changes the player count only when the 1 / 2 PLAYERS switch is
-  focused; Space / Enter / A pressed on RESUME never fires a shot; the HUD is hidden behind AUDIO / CONTROLS while paused. RETURN TO MENU needs two presses (Escape is still direct).
+  focused; Space / Enter / A pressed on RESUME never fires a shot; the HUD is hidden behind AUDIO / CONTROLS while paused. RETURN TO MENU needs two presses. (Escape was first left direct; a follow-up pass made Escape / BACK navigate backwards only - see `docs/menus.md`, "Escape / Back".)
 - **Tests:** three new unit suites (focus, controller, content) and `scripts/menu.mjs` (`npm run test:menu`, including an automated layout review of every page at five phone and five desktop sizes); the smoke, touch, music, gamepad, co-op
   and pages suites were rewritten to drive the new menus through `menuSnapshot()` / `pauseMenuSnapshot()`. `coop.mjs` now starts on the Original soundtrack like the other suites (its "one music instance" check
   was already failing on `main` because the default became Random).
 - **Not changed:** `src/core/`, movement, weapons, power-ups, scoring, UFOs, difficulty, audio gains and playback rules, haptic patterns and events, the Python game, the Pages workflow.
+- **Follow-up, Escape / Back:** Escape and the controller's BACK no longer leave a run: they pause in play, close a pause sub-page, and resume from the pause menu (B does the same on the pause menu only, where it is not Boost). RETURN TO MENU (two presses) is the only way out. One function, `handleBack` in `ui/menu/backAction.ts`; unit tests in `tests/backNavigation.test.ts`, browser checks in `scripts/menu.mjs` (4b, 4c, 7). The older suites that used P + Escape to reach the title now use RETURN TO MENU.
 
 ## Verification, Phase 3 (2026-10-19)
 
