@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -6,6 +6,7 @@ import {
   DEFAULT_MUSIC_CHOICE,
   DEFAULT_MUSIC_TRACK,
   DEFAULT_MUSIC_VOLUME,
+  LEGACY_MUSIC_TRACK_IDS,
   MUSIC_KEY,
   MUSIC_MAX_GAIN,
   MUSIC_TRACKS,
@@ -32,19 +33,28 @@ import { seededRng } from '../src/core/rng';
 import { FakeBackend, FakeStorage, FakeTrack } from './audioFakes';
 
 const PUBLIC = resolve(import.meta.dirname, '..', 'public');
+const ROOT = resolve(import.meta.dirname, '..');
+
+/** Every file below `dir` (relative to the project root), for the stale-reference scan. */
+function filesUnder(dir: string): string[] {
+  return readdirSync(resolve(ROOT, dir)).flatMap((name) => {
+    const path = `${dir}/${name}`;
+    return statSync(resolve(ROOT, path)).isDirectory() ? filesUnder(path) : [path];
+  });
+}
 
 describe('track definitions', () => {
   it('lists the three tracks with their display names and files, Original first', () => {
     expect(MUSIC_TRACKS.map((t) => [t.id, t.label, t.file])).toEqual([
       ['original', 'Original', 'audio/music/retro-bgmusic.ogg'],
-      ['megaman', 'Mega Man', 'audio/music/megaman.mp3'],
+      ['megapop', 'MegaPop', 'audio/music/megapop.mp3'],
       ['gatekeeper', 'Gatekeeper', 'audio/music/gatekeeper.mp3'],
     ]);
   });
 
-  it('offers Original, Mega Man, Gatekeeper, Random, in that order', () => {
-    expect(MUSIC_CHOICES).toEqual(['original', 'megaman', 'gatekeeper', 'random']);
-    expect(MUSIC_CHOICES.map(choiceLabel)).toEqual(['Original', 'Mega Man', 'Gatekeeper', 'Random']);
+  it('offers Original, MegaPop, Gatekeeper, Random, in that order', () => {
+    expect(MUSIC_CHOICES).toEqual(['original', 'megapop', 'gatekeeper', 'random']);
+    expect(MUSIC_CHOICES.map(choiceLabel)).toEqual(['Original', 'MegaPop', 'Gatekeeper', 'Random']);
   });
 
   it('every file exists in public/ and is a relative path (works from a GitHub Pages project URL)', () => {
@@ -58,7 +68,7 @@ describe('track definitions', () => {
   it('the new tracks are real MP3 files and the original is still the unchanged Ogg', () => {
     const head = (file: string): Uint8Array => readFileSync(resolve(PUBLIC, file)).subarray(0, 4);
     const text = (bytes: Uint8Array): string => String.fromCharCode(...bytes);
-    for (const file of ['audio/music/megaman.mp3', 'audio/music/gatekeeper.mp3']) {
+    for (const file of ['audio/music/megapop.mp3', 'audio/music/gatekeeper.mp3']) {
       const bytes = head(file);
       const id3 = text(bytes.subarray(0, 3)) === 'ID3';
       const frameSync = bytes[0] === 0xff && ((bytes[1] ?? 0) & 0xe0) === 0xe0;
@@ -73,6 +83,17 @@ describe('track definitions', () => {
     for (const t of MUSIC_TRACKS) expect(AUDIO_ASSETS).toContainEqual([t.key, t.file]);
   });
 
+  it('the renamed MP3 is the only MegaPop file: the old megaman.mp3 is gone and no source mentions it', () => {
+    expect(existsSync(resolve(PUBLIC, 'audio/music/megaman.mp3'))).toBe(false);
+    expect(readdirSync(resolve(PUBLIC, 'audio/music')).sort()).toEqual(['gatekeeper.mp3', 'megapop.mp3', 'retro-bgmusic.ogg']);
+    expect(trackDef('megapop').file).toBe('audio/music/megapop.mp3');
+    expect(trackDef('megapop').key).toBe('music-megapop');
+    for (const file of [...filesUnder('src'), 'index.html']) {
+      const text = String.fromCharCode(...readFileSync(resolve(ROOT, file)).subarray(0, 200_000));
+      expect(text, file).not.toMatch(/megaman\.mp3|music-megaman|mega man/i);
+    }
+  });
+
   it('the effects list holds no music, so the boot screen can load effects plus one track', () => {
     expect(SFX_ASSETS.some(([key]) => key.startsWith('music'))).toBe(false);
     expect(SFX_ASSETS.length + MUSIC_TRACKS.length).toBe(AUDIO_ASSETS.length);
@@ -82,7 +103,7 @@ describe('track definitions', () => {
 describe('per-track gain', () => {
   it('the original is exactly 1, so its level is the approved one; the others are within a sensible range', () => {
     expect(trackDef('original').gain).toBe(1);
-    for (const id of ['megaman', 'gatekeeper'] as const) {
+    for (const id of ['megapop', 'gatekeeper'] as const) {
       expect(trackDef(id).gain).toBeGreaterThan(1);
       expect(trackDef(id).gain).toBeLessThan(2);
     }
@@ -98,7 +119,7 @@ describe('per-track gain', () => {
     for (const setting of [0, 0.3, 0.8, 1]) {
       for (const t of MUSIC_TRACKS) expect(trackMusicGain(setting, t.id)).toBeCloseTo(musicGain(setting) * t.gain, 12);
     }
-    expect(trackMusicGain(0, 'megaman')).toBe(0);
+    expect(trackMusicGain(0, 'megapop')).toBe(0);
   });
 
   it('leaves the sound-effect gains as approved', () => {
@@ -112,25 +133,61 @@ describe('per-track gain', () => {
 describe('validation, stepping and persistence', () => {
   it('accepts exactly the four choices', () => {
     for (const c of MUSIC_CHOICES) expect(isMusicChoice(c)).toBe(true);
-    for (const bad of ['', 'Original', 'RANDOM', 'mega man', 'shuffle', null, undefined, 3, {}]) expect(isMusicChoice(bad)).toBe(false);
+    for (const bad of ['', 'Original', 'RANDOM', 'mega man', 'MegaPop', 'shuffle', null, undefined, 3, {}]) expect(isMusicChoice(bad)).toBe(false);
   });
 
-  it('defaults to Random for a new player (a different track each game); Original is the fall-back track', () => {
-    expect(DEFAULT_MUSIC_CHOICE).toBe('random');
+  it('defaults to MegaPop for a new player; Original stays the fall-back track when a file cannot be loaded', () => {
+    expect(DEFAULT_MUSIC_CHOICE).toBe('megapop');
     expect(DEFAULT_MUSIC_TRACK).toBe('original');
-    expect(loadMusicChoice(new FakeStorage())).toBe('random');
-    expect(loadMusicChoice(null)).toBe('random');
+    expect(loadMusicChoice(new FakeStorage())).toBe('megapop');
+    expect(loadMusicChoice(null)).toBe('megapop');
   });
 
-  it('keeps a saved Original: choosing it explicitly is not overridden by the Random default', () => {
+  it('a fresh profile starts the music controller on MegaPop, at the unchanged MegaPop level', () => {
+    const track = new FakeTrack();
+    const { music } = createAudioParts(new FakeStorage(), track, new FakeBackend(), seededRng(1));
+    expect(music.choice).toBe('megapop');
+    expect(music.currentTrack).toBe('megapop');
+    expect(track.sources).toEqual(['megapop']);
+    expect(track.volumes).toEqual([trackMusicGain(DEFAULT_MUSIC_VOLUME, 'megapop')]);
+    expect(trackDef('megapop').gain).toBe(1.65);
+  });
+
+  it('an existing saved Mega Man selection (the old id `megaman`) is read as MegaPop, and is not rewritten', () => {
+    expect(LEGACY_MUSIC_TRACK_IDS).toEqual({ megaman: 'megapop' });
     const storage = new FakeStorage();
-    saveMusicChoice(storage, 'original');
-    expect(loadMusicChoice(storage)).toBe('original');
+    storage.data.set(MUSIC_TRACK_STORAGE_KEY, 'megaman');
+    expect(loadMusicChoice(storage)).toBe('megapop');
+    expect(storage.data.get(MUSIC_TRACK_STORAGE_KEY)).toBe('megaman');
+    const track = new FakeTrack();
+    const { music } = createAudioParts(storage, track, new FakeBackend(), seededRng(1));
+    expect(music.choice).toBe('megapop');
+    expect(track.sources).toEqual(['megapop']);
+    expect(resolveStartupMusic(storage, seededRng(1))).toEqual({ choice: 'megapop', track: 'megapop' });
+    // The next explicit pick replaces it with the new id.
+    music.setChoice('gatekeeper');
+    expect(storage.data.get(MUSIC_TRACK_STORAGE_KEY)).toBe('gatekeeper');
+  });
+
+  it('the old id is only an alias for reading: it is not a choice the menus or the controller accept', () => {
+    expect(isMusicChoice('megaman')).toBe(false);
+    expect(MUSIC_CHOICES).not.toContain('megaman');
+    const { music } = createAudioParts(new FakeStorage(), new FakeTrack(), new FakeBackend(), seededRng(1));
+    music.setChoice('megaman' as MusicChoice);
+    expect(music.choice).toBe('megapop');
+  });
+
+  it('keeps every saved choice (Original, Gatekeeper, Random, MegaPop): none is overridden by the MegaPop default', () => {
+    for (const choice of ['original', 'gatekeeper', 'random', 'megapop'] as const) {
+      const storage = new FakeStorage();
+      saveMusicChoice(storage, choice);
+      expect(loadMusicChoice(storage)).toBe(choice);
+    }
   });
 
   it('cycles forward and backward through the choices and wraps', () => {
-    expect(cycleChoice('original', 1)).toBe('megaman');
-    expect(cycleChoice('megaman', 1)).toBe('gatekeeper');
+    expect(cycleChoice('original', 1)).toBe('megapop');
+    expect(cycleChoice('megapop', 1)).toBe('gatekeeper');
     expect(cycleChoice('gatekeeper', 1)).toBe('random');
     expect(cycleChoice('random', 1)).toBe('original');
     expect(cycleChoice('original', -1)).toBe('random');
@@ -146,8 +203,9 @@ describe('validation, stepping and persistence', () => {
     }
   });
 
-  it('ignores invalid or stale stored values and falls back to the default (Random)', () => {
-    for (const stale of ['', 'retro-bgmusic.ogg', 'music', 'megaman.mp3', 'true', '2', 'Random', '{"track":"megaman"}']) {
+  it('ignores invalid or stale stored values and falls back to the default (MegaPop)', () => {
+    const stales = ['', 'retro-bgmusic.ogg', 'music', 'megapop.mp3', 'megaman.mp3', 'music-megaman', 'Megaman', 'MEGAMAN', ' megaman', 'true', '2', 'Random', '{"track":"megapop"}', 'constructor', '__proto__', 'toString', 'hasOwnProperty'];
+    for (const stale of stales) {
       const storage = new FakeStorage();
       storage.data.set(MUSIC_TRACK_STORAGE_KEY, stale);
       expect(loadMusicChoice(storage)).toBe(DEFAULT_MUSIC_CHOICE);
@@ -158,7 +216,8 @@ describe('validation, stepping and persistence', () => {
     const storage = new FakeStorage();
     storage.broken = true;
     expect(loadMusicChoice(storage)).toBe(DEFAULT_MUSIC_CHOICE);
-    expect(() => saveMusicChoice(storage, 'megaman')).not.toThrow();
+    expect(() => saveMusicChoice(storage, 'megapop')).not.toThrow();
+    expect(resolveStartupMusic(storage, seededRng(1))).toEqual({ choice: 'megapop', track: 'megapop' });
   });
 
   it('keeps the other saved settings when the soundtrack changes', () => {
@@ -178,13 +237,13 @@ describe('validation, stepping and persistence', () => {
 
   it('a controller built from storage starts on the saved choice', () => {
     const storage = new FakeStorage();
-    storage.data.set(MUSIC_TRACK_STORAGE_KEY, 'megaman');
+    storage.data.set(MUSIC_TRACK_STORAGE_KEY, 'megapop');
     const track = new FakeTrack();
     const { music } = createAudioParts(storage, track, new FakeBackend(), seededRng(1));
-    expect(music.choice).toBe('megaman');
-    expect(music.currentTrack).toBe('megaman');
-    expect(track.sources).toEqual(['megaman']);
-    expect(track.volumes).toEqual([trackMusicGain(DEFAULT_MUSIC_VOLUME, 'megaman')]);
+    expect(music.choice).toBe('megapop');
+    expect(music.currentTrack).toBe('megapop');
+    expect(track.sources).toEqual(['megapop']);
+    expect(track.volumes).toEqual([trackMusicGain(DEFAULT_MUSIC_VOLUME, 'megapop')]);
   });
 });
 
@@ -214,16 +273,14 @@ describe('Random selection', () => {
 
   it('is deterministic for a given generator, and safe for an rng that returns 0 or almost 1', () => {
     expect(pickRandomTrack(seededRng(3), 'original')).toBe(pickRandomTrack(seededRng(3), 'original'));
-    expect(pickRandomTrack(() => 0, 'original')).toBe('megaman');
+    expect(pickRandomTrack(() => 0, 'original')).toBe('megapop');
     expect(pickRandomTrack(() => 0.999999, 'original')).toBe('gatekeeper');
     expect(pickRandomTrack(() => 1, 'original')).toBe('gatekeeper');
   });
 
-  it('start-up resolves Random to a real track and an explicit choice to itself', () => {
+  it('start-up resolves a fresh profile to MegaPop, Random to a real track and an explicit choice to itself', () => {
     const storage = new FakeStorage();
-    const fresh = resolveStartupMusic(storage, seededRng(1));
-    expect(fresh.choice).toBe('random');
-    expect(MUSIC_TRACKS.map((t) => t.id)).toContain(fresh.track);
+    expect(resolveStartupMusic(storage, seededRng(1))).toEqual({ choice: 'megapop', track: 'megapop' });
     storage.data.set(MUSIC_TRACK_STORAGE_KEY, 'original');
     expect(resolveStartupMusic(storage, seededRng(1))).toEqual({ choice: 'original', track: 'original' });
     storage.data.set(MUSIC_TRACK_STORAGE_KEY, 'gatekeeper');
@@ -238,7 +295,7 @@ describe('Random selection', () => {
 describe('the AUDIO menu music track names', () => {
   it('lists every soundtrack and Random, in the order the arrows step through them, short enough for the track box', () => {
     const names = MUSIC_CHOICES.map((c) => choiceLabel(c).toUpperCase());
-    expect(names).toEqual(['ORIGINAL', 'MEGA MAN', 'GATEKEEPER', 'RANDOM']);
+    expect(names).toEqual(['ORIGINAL', 'MEGAPOP', 'GATEKEEPER', 'RANDOM']);
     // The stepper's name box is about 380 game px wide and draws 32 px Courier (19 px a character).
     for (const name of names) expect(name.length * 19).toBeLessThan(380);
   });
@@ -266,24 +323,24 @@ describe('MusicController soundtrack', () => {
   it('an explicit choice switches at once: the old sound is stopped first, then the new source plays from the start', () => {
     const { track, music, saved } = setup();
     music.start();
-    music.setChoice('megaman');
+    music.setChoice('megapop');
     expect(track.calls).toEqual(['play', 'stop', 'play']);
-    expect(track.sources).toEqual(['original', 'megaman']);
+    expect(track.sources).toEqual(['original', 'megapop']);
     expect(music.currentState).toBe('playing');
-    expect(saved).toEqual(['megaman']);
+    expect(saved).toEqual(['megapop']);
   });
 
   it('applies the per-track gain on every switch and keeps volume changes relative to the playing track', () => {
     const { track, music } = setup({ volume: 0.5 });
     music.start();
-    music.setChoice('megaman');
+    music.setChoice('megapop');
     music.setVolume(0.6);
     music.setChoice('gatekeeper');
     music.setChoice('original');
     expect(track.volumes).toEqual([
       trackMusicGain(0.5, 'original'),
-      trackMusicGain(0.5, 'megaman'),
-      trackMusicGain(0.6, 'megaman'),
+      trackMusicGain(0.5, 'megapop'),
+      trackMusicGain(0.6, 'megapop'),
       trackMusicGain(0.6, 'gatekeeper'),
       trackMusicGain(0.6, 'original'),
     ]);
@@ -291,9 +348,9 @@ describe('MusicController soundtrack', () => {
   });
 
   it('choosing the same entry again does nothing (no restart, nothing saved)', () => {
-    const { track, music, saved } = setup({ choice: 'megaman' });
+    const { track, music, saved } = setup({ choice: 'megapop' });
     music.start();
-    music.setChoice('megaman');
+    music.setChoice('megapop');
     expect(track.calls).toEqual(['play']);
     expect(saved).toEqual([]);
   });
@@ -326,7 +383,7 @@ describe('MusicController soundtrack', () => {
     expect(track.sources.at(-1)).toBe('gatekeeper');
 
     music.setMuted(true);
-    music.setChoice('megaman');
+    music.setChoice('megapop');
     expect(track.count('play')).toBe(2);
     music.setMuted(false);
     expect(track.count('play')).toBe(3);
@@ -340,12 +397,12 @@ describe('MusicController soundtrack', () => {
   });
 
   it('before the browser unlocks audio nothing plays, and the chosen track plays after start()', () => {
-    const { track, music } = setup({ choice: 'megaman' });
+    const { track, music } = setup({ choice: 'megapop' });
     music.setChoice('gatekeeper');
     expect(track.calls).toEqual(['stop']);
     music.start();
     expect(track.calls).toEqual(['stop', 'play']);
-    expect(track.sources).toEqual(['megaman', 'gatekeeper']);
+    expect(track.sources).toEqual(['megapop', 'gatekeeper']);
   });
 
   it('pause, resume, mute and volume never switch tracks or restart them', () => {
@@ -367,19 +424,19 @@ describe('MusicController soundtrack', () => {
     const { track, music } = setup({ megaPowerSpeedup: true });
     music.start();
     music.setMegaPowerActive(true);
-    music.setChoice('megaman');
+    music.setChoice('megapop');
     expect(track.rates).toEqual([1.26, 1.26]);
     expect(music.playbackRate).toBe(1.26);
   });
 
   it('cycleChoice steps through the four entries and saves each', () => {
     const { music, saved } = setup();
-    expect(music.cycleChoice(1)).toBe('megaman');
+    expect(music.cycleChoice(1)).toBe('megapop');
     expect(music.cycleChoice(1)).toBe('gatekeeper');
     expect(music.cycleChoice(1)).toBe('random');
     expect(music.cycleChoice(1)).toBe('original');
     expect(music.cycleChoice(-1)).toBe('random');
-    expect(saved).toEqual(['megaman', 'gatekeeper', 'random', 'original', 'random']);
+    expect(saved).toEqual(['megapop', 'gatekeeper', 'random', 'original', 'random']);
   });
 
   describe('Random', () => {
@@ -415,7 +472,7 @@ describe('MusicController soundtrack', () => {
     });
 
     it('keeps one track for the whole run: pause, resume, focus, mute and volume never re-roll', () => {
-      const { track, music } = setup({ choice: 'random', track: 'megaman' });
+      const { track, music } = setup({ choice: 'random', track: 'megapop' });
       music.start();
       music.beginRun();
       music.beginRun(); // a retry: new pick, which then must hold
@@ -434,13 +491,13 @@ describe('MusicController soundtrack', () => {
     });
 
     it('choosing Random mid-run keeps the playing track; the next run picks a different one', () => {
-      const { track, music } = setup({ choice: 'megaman' });
+      const { track, music } = setup({ choice: 'megapop' });
       music.start();
       music.setChoice('random');
-      expect(music.currentTrack).toBe('megaman');
+      expect(music.currentTrack).toBe('megapop');
       expect(track.calls).toEqual(['play']);
       music.beginRun();
-      expect(music.currentTrack).not.toBe('megaman');
+      expect(music.currentTrack).not.toBe('megapop');
       expect(track.calls).toEqual(['play', 'stop', 'play']);
     });
 
@@ -455,7 +512,7 @@ describe('MusicController soundtrack', () => {
     });
 
     it('an explicit choice does not restart the music on each new run', () => {
-      const { track, music } = setup({ choice: 'megaman' });
+      const { track, music } = setup({ choice: 'megapop' });
       music.start();
       music.beginRun();
       music.beginRun();
@@ -465,16 +522,16 @@ describe('MusicController soundtrack', () => {
 
   describe('a track that cannot be loaded', () => {
     it('falls back to Original with a diagnostic, and keeps the saved choice', () => {
-      const { track, music, warnings, saved } = setup({ choice: 'megaman' });
+      const { track, music, warnings, saved } = setup({ choice: 'megapop' });
       music.start();
-      music.reportUnavailable('megaman');
+      music.reportUnavailable('megapop');
       expect(music.currentTrack).toBe('original');
-      expect(music.choice).toBe('megaman');
+      expect(music.choice).toBe('megapop');
       expect(saved).toEqual([]);
-      expect(track.sources).toEqual(['megaman', 'original']);
+      expect(track.sources).toEqual(['megapop', 'original']);
       expect(track.calls).toEqual(['play', 'stop', 'play']);
       expect(warnings).toHaveLength(1);
-      expect(warnings[0]).toMatch(/Mega Man/);
+      expect(warnings[0]).toMatch(/MegaPop/);
       expect(warnings[0]).toMatch(/Original/);
     });
 
@@ -486,11 +543,11 @@ describe('MusicController soundtrack', () => {
     });
 
     it('the next run tries the chosen track again', () => {
-      const { music } = setup({ choice: 'megaman' });
+      const { music } = setup({ choice: 'megapop' });
       music.start();
-      music.reportUnavailable('megaman');
+      music.reportUnavailable('megapop');
       music.beginRun();
-      expect(music.currentTrack).toBe('megaman');
+      expect(music.currentTrack).toBe('megapop');
     });
 
     it('a failure of the original is reported and leaves the game running without music', () => {
@@ -503,13 +560,13 @@ describe('MusicController soundtrack', () => {
     });
 
     it('ignores a late report about a track that is no longer in use', () => {
-      const { music, warnings, track } = setup({ choice: 'megaman' });
+      const { music, warnings, track } = setup({ choice: 'megapop' });
       music.start();
       music.setChoice('gatekeeper');
-      music.reportUnavailable('megaman');
+      music.reportUnavailable('megapop');
       expect(music.currentTrack).toBe('gatekeeper');
       expect(warnings).toEqual([]);
-      expect(track.sources).toEqual(['megaman', 'gatekeeper']);
+      expect(track.sources).toEqual(['megapop', 'gatekeeper']);
     });
   });
 });

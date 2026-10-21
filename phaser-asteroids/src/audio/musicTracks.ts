@@ -1,6 +1,7 @@
 import type { Rng } from '../core/rng';
 import {
   DEFAULT_MUSIC_CHOICE,
+  LEGACY_MUSIC_TRACK_IDS,
   MUSIC_TRACKS,
   MUSIC_TRACK_STORAGE_KEY,
   type MusicChoice,
@@ -26,7 +27,7 @@ export function isMusicChoice(value: unknown): value is MusicChoice {
   return value === 'random' || isTrackId(value);
 }
 
-/** Text for menus: `Mega Man`, `Random`. */
+/** Text for menus: `MegaPop`, `Random`. */
 export function choiceLabel(choice: MusicChoice): string {
   return choice === 'random' ? 'Random' : trackDef(choice).label;
 }
@@ -48,10 +49,15 @@ export function pickRandomTrack(rng: Rng, previous?: MusicTrackId): MusicTrackId
   return (pool[index] as MusicTrackDef).id;
 }
 
-/** The saved choice, or the default (Original) when nothing, something stale or something unreadable is stored. */
+/**
+ * The saved choice, or the default (MegaPop) when nothing, something invalid or something unreadable is stored. An id that an
+ * earlier build saved (`megaman`) is read as the track it became (`megapop`); the stored value is not rewritten until the player
+ * next picks a soundtrack.
+ */
 export function loadMusicChoice(storage: StorageLike | null): MusicChoice {
   try {
     const raw = storage?.getItem(MUSIC_TRACK_STORAGE_KEY);
+    if (typeof raw === 'string' && Object.hasOwn(LEGACY_MUSIC_TRACK_IDS, raw)) return LEGACY_MUSIC_TRACK_IDS[raw] ?? DEFAULT_MUSIC_CHOICE;
     return isMusicChoice(raw) ? raw : DEFAULT_MUSIC_CHOICE;
   } catch {
     return DEFAULT_MUSIC_CHOICE;

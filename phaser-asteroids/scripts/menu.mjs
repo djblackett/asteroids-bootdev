@@ -87,7 +87,7 @@ process.exit(failures ? 1 : 0);
 
 /**
  * A page with the usual helpers. `touch`: mobile emulation (coarse pointer, touch). `pad`: a scripted Gamepad API. `seed`: localStorage
- * written once before the first load (the soundtrack defaults to Original so the music suite's randomness stays out of these tests).
+ * written once before the first load (the soundtrack is seeded as Original so the track these tests step from is fixed; the music suite covers the MegaPop default).
  */
 async function open({ w = 1280, h = 720, touch = false, query = '?debug', pad = false, seed = {}, vibrate = false } = {}) {
   const context = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: touch ? 2 : 1, isMobile: touch, hasTouch: touch });
@@ -408,7 +408,7 @@ async function run() {
   check('the - and + buttons step the volume by one notch each', near((await a.page.evaluate(() => window.__game.registry.get('audio').volume('music'))), 0.5));
   await a.focus('track');
   await a.key('ArrowRight');
-  check('Right on the track row picks the next track and saves it', (await a.stored('asteroids.musicTrack')) === 'megaman' && (await a.words()).includes('MEGA MAN'));
+  check('Right on the track row picks the next track and saves it', (await a.stored('asteroids.musicTrack')) === 'megapop' && (await a.words()).includes('MEGAPOP'));
   await a.tap('track', { zone: '<' });
   check('the < button goes back (Original)', (await a.stored('asteroids.musicTrack')) === 'original');
   check('the audio page changed no other setting (haptics untouched, nothing saved for them)', (await a.stored('asteroids.haptics')) === null);

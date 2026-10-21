@@ -168,8 +168,8 @@ describe('PhaserMusicTrack: a loaded track', () => {
 
   it('pause and resume use the same sound; volume and rate changes reach it without a restart', () => {
     const { manager, track, cache } = setup();
-    cache('megaman');
-    track.setSource('megaman');
+    cache('megapop');
+    track.setSource('megapop');
     track.play();
     const sound = manager.sounds[0] as FakeSound;
     track.pause();
@@ -218,23 +218,23 @@ describe('PhaserMusicTrack: switching tracks', () => {
   it('fades the old sound out, then destroys it; the new track plays and only one sound is live', () => {
     const { manager, track, cache } = setup();
     cache('original');
-    cache('megaman');
+    cache('megapop');
     track.setSource('original');
     track.play();
     const old = manager.sounds[0] as FakeSound;
 
     track.stop();
-    track.setSource('megaman');
+    track.setSource('megapop');
     track.play();
 
     expect(old.volumeNode.gain.ramps).toEqual([[0, 10 + MUSIC_FADE_SECONDS]]);
     expect(old.destroyed).toBe(false);
     expect(track.fadingCount).toBe(1);
-    expect(track.instance?.key).toBe('music-megaman');
+    expect(track.instance?.key).toBe('music-megapop');
     vi.advanceTimersByTime(MUSIC_FADE_SECONDS * 1000 + 25);
     expect(old.destroyed).toBe(true);
     expect(track.fadingCount).toBe(0);
-    expect(manager.sounds.map((s) => s.key)).toEqual(['music-megaman']);
+    expect(manager.sounds.map((s) => s.key)).toEqual(['music-megapop']);
   });
 
   it('a paused sound is destroyed straight away (nothing audible to fade)', () => {
@@ -263,7 +263,7 @@ describe('PhaserMusicTrack: switching tracks', () => {
     const { manager, track, cache } = setup();
     track.play();
     for (let i = 0; i < 30; i++) {
-      const id = (['megaman', 'gatekeeper', 'original'] as const)[i % 3] as MusicTrackId;
+      const id = (['megapop', 'gatekeeper', 'original'] as const)[i % 3] as MusicTrackId;
       cache(id); // (the player drops decoded tracks beyond two; here every track is always at hand)
       track.stop();
       track.setSource(id);
@@ -288,25 +288,25 @@ describe('PhaserMusicTrack: switching tracks', () => {
 describe('PhaserMusicTrack: tracks that are not loaded yet', () => {
   it('downloads the file at its relative path once, caches the decoded audio under its key, then plays it', async () => {
     const { manager, track } = setup();
-    track.setSource('megaman');
+    track.setSource('megapop');
     track.play();
     track.play();
     track.resume();
-    expect(downloads.map((d) => d.url)).toEqual(['audio/music/megaman.mp3']);
+    expect(downloads.map((d) => d.url)).toEqual(['audio/music/megapop.mp3']);
     expect(track.loading).toBe(true);
     expect(manager.sounds).toHaveLength(0);
 
     downloads[0]?.finish({ ok: true });
     await flush();
-    expect(manager.cached.has('music-megaman')).toBe(true);
-    expect(manager.sounds.map((s) => s.key)).toEqual(['music-megaman']);
+    expect(manager.cached.has('music-megapop')).toBe(true);
+    expect(manager.sounds.map((s) => s.key)).toEqual(['music-megapop']);
     expect(track.loading).toBe(false);
     expect(downloads).toHaveLength(1);
   });
 
   it('reuses audio that is already decoded: switching back to a track does not download it again', async () => {
     const { manager, track } = setup();
-    track.setSource('megaman');
+    track.setSource('megapop');
     track.play();
     downloads[0]?.finish({ ok: true });
     await flush();
@@ -315,17 +315,17 @@ describe('PhaserMusicTrack: tracks that are not loaded yet', () => {
     manager.cached.set('music', {});
     track.play();
     track.stop();
-    track.setSource('megaman');
+    track.setSource('megapop');
     track.play();
     vi.advanceTimersByTime(100);
     expect(downloads).toHaveLength(1);
-    expect(manager.sounds.map((s) => s.key)).toEqual(['music-megaman']);
+    expect(manager.sounds.map((s) => s.key)).toEqual(['music-megapop']);
   });
 
   it('abandons the download of a track that was replaced before it arrived, without a sound or a failure report', async () => {
     const { manager, track, cache, unavailable } = setup();
     cache('original');
-    track.setSource('megaman');
+    track.setSource('megapop');
     track.play();
     track.stop();
     track.setSource('original');
@@ -334,7 +334,7 @@ describe('PhaserMusicTrack: tracks that are not loaded yet', () => {
     expect(downloads[0]?.signal?.aborted).toBe(true);
     downloads[0]?.finish({ ok: true });
     await flush();
-    expect(manager.cached.has('music-megaman')).toBe(false);
+    expect(manager.cached.has('music-megapop')).toBe(false);
     expect(manager.sounds.map((s) => s.key)).toEqual(['music']);
     expect(unavailable).toEqual([]);
     expect(track.loading).toBe(false);
@@ -356,13 +356,13 @@ describe('PhaserMusicTrack: tracks that are not loaded yet', () => {
 
   it('paused while downloading: nothing plays on arrival, and resuming then plays it', async () => {
     const { manager, track } = setup();
-    track.setSource('megaman');
+    track.setSource('megapop');
     track.play();
     track.pause();
     downloads[0]?.finish({ ok: true });
     await flush();
     expect(manager.sounds).toHaveLength(0);
-    expect(manager.cached.has('music-megaman')).toBe(true);
+    expect(manager.cached.has('music-megapop')).toBe(true);
     track.resume();
     expect(manager.sounds).toHaveLength(1);
     expect(downloads).toHaveLength(1);
@@ -370,7 +370,7 @@ describe('PhaserMusicTrack: tracks that are not loaded yet', () => {
 
   it('muted/stopped while downloading: nothing plays on arrival', async () => {
     const { manager, track } = setup();
-    track.setSource('megaman');
+    track.setSource('megapop');
     track.play();
     track.stop();
     downloads[0]?.finish({ ok: true });
@@ -382,35 +382,35 @@ describe('PhaserMusicTrack: tracks that are not loaded yet', () => {
 describe('PhaserMusicTrack: failures', () => {
   it('a missing file (404) is reported once, and pausing / resuming does not download it again', async () => {
     const { manager, track, unavailable } = setup();
-    track.setSource('megaman');
+    track.setSource('megapop');
     track.play();
     downloads[0]?.finish({ ok: false, status: 404 });
     await flush();
-    expect(unavailable).toEqual(['megaman']);
+    expect(unavailable).toEqual(['megapop']);
     expect(manager.sounds).toHaveLength(0);
     track.pause();
     track.resume();
     track.play();
     await flush();
     expect(downloads).toHaveLength(1);
-    expect(unavailable).toEqual(['megaman']);
+    expect(unavailable).toEqual(['megapop']);
   });
 
   it('choosing the broken track again tries again', async () => {
     const { track, unavailable } = setup();
-    track.setSource('megaman');
+    track.setSource('megapop');
     track.play();
     downloads[0]?.finish('network-error');
     await flush();
     track.stop();
     track.setSource('original');
-    track.setSource('megaman');
+    track.setSource('megapop');
     track.play();
     expect(downloads).toHaveLength(2);
     downloads[1]?.finish({ ok: true });
     await flush();
-    expect(unavailable).toEqual(['megaman']);
-    expect(track.instance?.key).toBe('music-megaman');
+    expect(unavailable).toEqual(['megapop']);
+    expect(track.instance?.key).toBe('music-megapop');
   });
 
   it('a file that cannot be decoded is reported and leaves nothing in the cache', async () => {
@@ -431,10 +431,10 @@ describe('PhaserMusicTrack: failures', () => {
     const { track, unavailable } = setup();
     const plain = { game: { cache: { audio: { exists: () => false, add: () => undefined, remove: () => undefined } } }, locked: false };
     const noWebAudio = new PhaserMusicTrack(plain as unknown as Phaser.Sound.BaseSoundManager, (id) => unavailable.push(id));
-    noWebAudio.setSource('megaman');
+    noWebAudio.setSource('megapop');
     noWebAudio.play();
     await flush();
-    expect(unavailable).toEqual(['megaman']);
+    expect(unavailable).toEqual(['megapop']);
     expect(downloads).toHaveLength(0);
     expect(track.instance).toBeNull();
   });
@@ -443,13 +443,13 @@ describe('PhaserMusicTrack: failures', () => {
 describe('PhaserMusicTrack: memory', () => {
   it(`keeps at most ${MAX_DECODED_MUSIC_TRACKS} decoded tracks, always including the playing one`, () => {
     const { manager, track, cache } = setup();
-    for (const id of ['original', 'megaman', 'gatekeeper'] as const) cache(id);
-    for (const id of ['original', 'megaman', 'gatekeeper'] as const) {
+    for (const id of ['original', 'megapop', 'gatekeeper'] as const) cache(id);
+    for (const id of ['original', 'megapop', 'gatekeeper'] as const) {
       track.stop();
       track.setSource(id);
       track.play();
     }
-    expect([...manager.cached.keys()].sort()).toEqual(['music-gatekeeper', 'music-megaman']);
+    expect([...manager.cached.keys()].sort()).toEqual(['music-gatekeeper', 'music-megapop']);
     expect(track.instance?.key).toBe('music-gatekeeper');
   });
 });
@@ -459,21 +459,21 @@ describe('MusicController + PhaserMusicTrack', () => {
     const { manager, track, cache } = setup();
     cache('original');
     const warnings: string[] = [];
-    const music = new MusicController(track, { choice: 'megaman', warn: (m) => warnings.push(m) });
+    const music = new MusicController(track, { choice: 'megapop', warn: (m) => warnings.push(m) });
     // The player's callback is wired like in AudioDirector.
     (track as unknown as { onUnavailable: (id: MusicTrackId) => void }).onUnavailable = (id) => music.reportUnavailable(id);
 
     music.start();
-    expect(downloads.map((d) => d.url)).toEqual(['audio/music/megaman.mp3']);
+    expect(downloads.map((d) => d.url)).toEqual(['audio/music/megapop.mp3']);
     downloads[0]?.finish({ ok: false, status: 404 });
     await flush();
     vi.advanceTimersByTime(100);
 
     expect(music.currentTrack).toBe('original');
-    expect(music.choice).toBe('megaman');
+    expect(music.choice).toBe('megapop');
     expect(manager.sounds.map((s) => s.key)).toEqual(['music']);
     expect(manager.sounds[0]?.config.volume).toBe(trackMusicGain(0.8, 'original'));
-    expect(warnings[0]).toMatch(/Mega Man/);
+    expect(warnings[0]).toMatch(/MegaPop/);
   });
 
   it('switching tracks through the controller ends with a single sound at the new track level', async () => {
@@ -495,7 +495,7 @@ describe('MusicController + PhaserMusicTrack', () => {
 
   it('Random picks per run; the sound stays the same through pause / resume of that run', async () => {
     const { manager, track, cache } = setup();
-    for (const id of ['original', 'megaman', 'gatekeeper'] as const) cache(id);
+    for (const id of ['original', 'megapop', 'gatekeeper'] as const) cache(id);
     const music = new MusicController(track, { choice: 'random', track: 'original', rng: () => 0.7 });
     music.start();
     music.beginRun(); // keeps the start-up pick

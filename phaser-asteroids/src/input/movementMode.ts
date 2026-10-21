@@ -1,18 +1,25 @@
 /**
  * Which way the player flies the ship on a touch screen. Three choices, offered side by side on the CONTROLS page:
  *
- *   classic      the fixed D-pad: rotate left / right, thrust forward (the original controls, unchanged; the default).
+ *   classic      the fixed D-pad: rotate left / right, thrust forward (the original controls, unchanged).
  *   pointToFly   the floating stick names the heading the ship should face; it turns toward it and flies along its nose.
- *   assisted     the same stick names where to travel; the nose turns toward it and the flight direction is steered there faster.
+ *   assisted     the same stick names where to travel; the nose turns toward it and the flight direction is steered there faster
+ *                (the default: it won the on-device comparison).
  *
  * The choice is remembered in localStorage (`asteroids.touchMovement`); anything else in storage is ignored, so a stale or
  * hand-edited value can never leave the game with no way to steer. Blocked storage (private windows) just means the choice is not
  * remembered.
  *
+ * What a player starts with, in order (first match wins):
+ *   1. a valid `asteroids.touchMovement`            -> exactly that (an explicit choice, in any of the three modes, is never overridden);
+ *   2. otherwise a legacy `asteroids.touchSteering` -> Classic D-Pad (the migration below);
+ *   3. otherwise (a fresh profile, or only junk)    -> `DEFAULT_MOVEMENT`, Assisted Flight.
+ *
  * Migration. Before this experiment the choice was `asteroids.touchSteering` = `dpad` | `joystick`, where `joystick` was a *relative*
  * analogue stick (left / right rotates, up thrusts). That is not either of the new absolute-direction stick modes, so it is never
- * reinterpreted as one: a saved `joystick` (and a saved `dpad`) both start as Classic D-Pad, the experiment's control group (see
- * `migrateLegacySteering`). The old key is left alone, not read again and not deleted, so a build that still uses it is unaffected.
+ * reinterpreted as one: a saved `joystick` (and a saved `dpad`) both start as Classic D-Pad (see `migrateLegacySteering`). Such a
+ * player did choose something, so the new default does not replace it. The old key is left alone, not deleted, so a build that
+ * still uses it is unaffected; nothing is written until the player picks a mode.
  *
  * Same shape as `InputModeController`: a tiny holder with `set`, `onChange` and no DOM or Phaser, unit tested with a fake storage.
  */
@@ -28,8 +35,8 @@ export const MOVEMENT_STORAGE_KEY = 'asteroids.touchMovement';
 /** The key the D-pad / relative-joystick choice was saved under before the movement experiment. Read for documentation and tests only. */
 export const LEGACY_STEERING_STORAGE_KEY = 'asteroids.touchSteering';
 
-/** What a player who has never chosen gets: the original D-pad, so the new modes are opt-in while they are being compared. */
-export const DEFAULT_MOVEMENT: MovementMode = 'classic';
+/** What a player who has never chosen (and has no legacy steering preference) gets: Assisted Flight. */
+export const DEFAULT_MOVEMENT: MovementMode = 'assisted';
 
 /** What the CONTROLS page prints for each mode: the button caption and the one-line explanation of the lit one. */
 export const MOVEMENT_LABELS: Readonly<Record<MovementMode, { name: string; blurb: string }>> = {
@@ -87,7 +94,7 @@ export class MovementController {
     }
   }
 
-  /** Only consulted when nothing is saved under the new key. Nothing is written back, so the legacy value stays as it was. */
+  /** Only consulted when no valid value is saved under the new key. Nothing is written back, so the legacy value stays as it was. */
   private readLegacy(): MovementMode | null {
     try {
       const raw = this.storage?.getItem(LEGACY_STEERING_STORAGE_KEY);

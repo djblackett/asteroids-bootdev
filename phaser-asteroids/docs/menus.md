@@ -63,7 +63,7 @@ used by the keyboard and the controller alike.
 | Setting | Was | Now |
 | --- | --- | --- |
 | Music on / off | M key, a switch on the touch screens | AUDIO > MUSIC ON / OFF (M still works everywhere) |
-| Music track (Original, Mega Man, Gatekeeper, Random) | Track row on the title / pause screen; X on a controller | AUDIO > MUSIC TRACK (X on a controller still steps it on the title screen) |
+| Music track (Original, MegaPop, Gatekeeper, Random) | Track row on the title / pause screen; X on a controller | AUDIO > MUSIC TRACK (X on a controller still steps it on the title screen) |
 | Music volume, SFX volume | Rows on the title / pause screen; arrow keys; D-pad | AUDIO > MUSIC VOLUME / SOUND EFFECTS |
 | Haptic feedback, TEST VIBRATION | Switches on the touch title / pause screens | CONTROLS (touch mode) > HAPTIC FEEDBACK ON / OFF, TEST VIBRATION |
 | Movement mode: Classic D-Pad / Point-to-Fly / Assisted Flight | Selector on the touch title / pause screens | CONTROLS (touch mode) > MOVEMENT (see [movement-modes.md](movement-modes.md)) |
@@ -94,7 +94,7 @@ Every device drives the same state machine (`menuController.ts`):
   within 300 ms is not a confirmation). It exists only on the title screen's CONTROLS page: the mode cannot change during a run.
 - **A way back that cannot be missed.** On a touch-capable device in keyboard mode the title screen has a large green **TOUCH CONTROLS: OFF / TAP TO TURN ON** button top right, and the CONTROLS page starts with a full-width
   green bar. Switching modes rebuilds the page in place (no scene restart) and clears every held input.
-- **Classic D-Pad is the default movement mode** (an experiment, see [movement-modes.md](movement-modes.md)); Point-to-Fly and Assisted Flight are one tap away in CONTROLS (also from the pause menu); a saved choice is never overridden. The old relative JOYSTICK choice is no longer offered.
+- **Assisted Flight is the default movement mode** (chosen after on-device testing, see [movement-modes.md](movement-modes.md)); Classic D-Pad and Point-to-Fly are one tap away in CONTROLS (also from the pause menu); a saved choice is never overridden, and a player with only an old `touchSteering` preference stays on Classic D-Pad. The old relative JOYSTICK choice is no longer offered.
 - **RETURN TO MENU needs two presses** on every device, and it is the only way out of a run in progress: Escape and BACK only pause, resume and go back.
 - Portrait still covers everything with the rotate prompt and pauses the run.
 

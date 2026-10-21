@@ -335,7 +335,7 @@ export class AudioDirector {
     return this.parts.music.currentTrack;
   }
 
-  /** Steps the soundtrack setting one entry (Original, Mega Man, Gatekeeper, Random): saved at once, and a track starts playing. */
+  /** Steps the soundtrack setting one entry (Original, MegaPop, Gatekeeper, Random): saved at once, and a track starts playing. */
   cycleMusicChoice(direction: 1 | -1): MusicChoice {
     return this.parts.music.cycleChoice(direction);
   }

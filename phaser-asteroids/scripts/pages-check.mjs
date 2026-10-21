@@ -97,9 +97,10 @@ const audioFiles = fs.existsSync(path.join(dist, 'audio'))
   : [];
 if (audioFiles.length === 0) throw new Error('dist/audio has no .ogg files; the build is incomplete.');
 // The two extra soundtracks are not loaded at start-up (only the saved / default one is); they download when somebody picks them.
-const onDemandMusic = ['audio/music/megaman.mp3', 'audio/music/gatekeeper.mp3'];
+const onDemandMusic = ['audio/music/megapop.mp3', 'audio/music/gatekeeper.mp3'];
 for (const f of onDemandMusic) if (!fs.existsSync(path.join(dist, f))) throw new Error(`dist/${f} is missing; the build is incomplete.`);
-// A new visitor's soundtrack is Random, so a plain visit downloads exactly ONE of the three music files (which one varies); the effects always load.
+if (fs.existsSync(path.join(dist, 'audio/music/megaman.mp3'))) throw new Error('dist/audio/music/megaman.mp3 is still published; the old Mega Man file name must be gone.');
+// A new visitor's soundtrack is MegaPop, so a plain visit downloads exactly ONE of the three music files (megapop.mp3); the effects always load.
 const musicFiles = ['audio/music/retro-bgmusic.ogg', ...onDemandMusic];
 const sfxFiles = audioFiles.filter((f) => !musicFiles.includes(f));
 
@@ -141,7 +142,7 @@ async function checkMount(mount) {
       check(`${label} canvas is created and the page has no errors`, problems.length === 0, problems.join(' | '));
       check(`${label} all ${sfxFiles.length} sound effects load (200) from the base path`, missing.length === 0, `missing: ${missing.join(', ')}`);
       const music = musicFiles.filter((f) => ok.has(`${mount}${f}`));
-      check(`${label} only one of the three soundtracks is downloaded at start-up (the default is Random)`, music.length === 1, `loaded: ${music.join(', ')}`);
+      check(`${label} only one of the three soundtracks is downloaded at start-up, and it is the default, MegaPop (megapop.mp3)`, music.length === 1 && music[0] === 'audio/music/megapop.mp3', `loaded: ${music.join(', ')}`);
       const secure = await page.evaluate(() => ({ secure: window.isSecureContext, pads: typeof navigator.getGamepads === 'function' }));
       check(`${label} Gamepad API is available in this (secure) context`, secure.secure && secure.pads, JSON.stringify(secure));
       await page.close();
@@ -169,7 +170,7 @@ async function checkMount(mount) {
     // 2b. The soundtrack selector: a track picked on the title screen is fetched from under the base path and plays; a saved choice survives a reload.
     {
       const { page, problems, ok } = await open();
-      // Start from Original so Right steps to Mega Man, then Gatekeeper (a new visitor would be on Random).
+      // Start from Original so Right steps to MegaPop, then Gatekeeper (a new visitor starts on MegaPop).
       await page.addInitScript(() => {
         try {
           if (localStorage.getItem('asteroids.musicTrack') === null) localStorage.setItem('asteroids.musicTrack', 'original');
@@ -188,7 +189,7 @@ async function checkMount(mount) {
         }
       };
       for (const [i, file] of onDemandMusic.entries()) {
-        const key = i === 0 ? 'music-megaman' : 'music-gatekeeper';
+        const key = i === 0 ? 'music-megapop' : 'music-gatekeeper';
         if (i === 0) {
           await focusOn('audio');
           await page.keyboard.press('Enter');

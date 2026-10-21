@@ -1,7 +1,8 @@
 # Touch movement experiment: Classic D-Pad, Point-to-Fly, Assisted Flight
 
 An **experiment**, not a redesign: three ways to fly the ship on a phone, selectable on the CONTROLS page (also from the pause menu),
-so they can be compared on a real device and by friends and family. Classic D-Pad stays the default. Nothing here touches the
+so they can be compared on a real device and by friends and family. **Assisted Flight is the default for new players** (2026-10-21: after testing on a Samsung Galaxy S25 both stick modes
+were clearly better than Classic D-Pad and Assisted Flight felt best); Classic D-Pad and Point-to-Fly stay one tap away. Nothing here touches the
 keyboard, the gamepad, the simulation's difficulty, the desktop game or the deployed site.
 
 ## The ship has no inertia (and no screen wrapping)
@@ -21,9 +22,9 @@ The decision was to keep those physics in all three modes and not add a velocity
 
 | Mode | Control | What the thumb does | What the ship does |
 |---|---|---|---|
-| **Classic D-Pad** (default) | Fixed D-pad, bottom left | Left / Right rotate, Up thrusts (eight sectors, unchanged) | Exactly as before |
+| **Classic D-Pad** | Fixed D-pad, bottom left | Left / Right rotate, Up thrusts (eight sectors, unchanged) | Exactly as before |
 | **Point-to-Fly** | Floating joystick | Names the heading the ship should face (absolute, on screen) | Nose turns toward it by the shortest way at a limited rate; thrusts along its **nose** the whole time the stick is engaged |
-| **Assisted Flight** | The same joystick | Names where to travel (same mapping) | Nose turns exactly as in Point-to-Fly, but it **flies along a travel direction that chases the stick faster than the nose can turn** |
+| **Assisted Flight** (default) | The same joystick | Names where to travel (same mapping) | Nose turns exactly as in Point-to-Fly, but it **flies along a travel direction that chases the stick faster than the nose can turn** |
 
 Both stick modes share the joystick's look, placement, 15 % radius and dead zone. FIRE, LASER, BOOST and PAUSE are untouched.
 The ship still shoots from its nose (no independent aim, no auto-aim).
@@ -75,8 +76,13 @@ slow behind the thumb (Point-to-Fly especially); widen `DIRECTION_DEAD_ZONE` if 
 
 ## Saved choice and legacy preferences
 
-- Key `asteroids.touchMovement` = `classic` | `pointToFly` | `assisted`. Anything else (including empty, `dpad`, `joystick`) is ignored and means Classic.
-  Blocked storage still works for the visit. Nothing is written until the player taps a choice.
+- Key `asteroids.touchMovement` = `classic` | `pointToFly` | `assisted`. Anything else (including empty, `dpad`, `joystick`) is ignored: it is not a choice, so the rules below decide.
+  Blocked storage still works for the visit. Nothing is written until the player taps a choice (the default is applied, never saved).
+- **What a player starts with**, first match wins (`MovementController` in `src/input/movementMode.ts`):
+  1. a valid `asteroids.touchMovement` -> exactly that. Any explicit choice, Classic D-Pad included, is kept for good;
+  2. otherwise any `asteroids.touchSteering` -> Classic D-Pad (the migration below: such a player chose something once, and the old relative stick is not Assisted Flight);
+  3. otherwise (a fresh profile, or only junk under the new key) -> **Assisted Flight** (`DEFAULT_MOVEMENT`).
+  A returning tester who never touched the MOVEMENT choice has nothing saved, so they now start on Assisted Flight too. Tapping the mode that is already active changes nothing and saves nothing.
 - Before this experiment the choice was `asteroids.touchSteering` = `dpad` | `joystick`, and `joystick` was a *relative* stick (left / right
   rotates, up thrusts). It is **not** reinterpreted as either new stick mode: a saved `joystick` and a saved `dpad` both start as **Classic D-Pad**.
   The old key is left exactly as it was (not read again once the new key exists, never written, never deleted). `migrateLegacySteering` in

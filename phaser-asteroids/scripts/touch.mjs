@@ -379,11 +379,11 @@ async function runDpad() {
   // =====================================================================================================
   // D1. Title screen: the choice, the Fullscreen pill, layout
   // =====================================================================================================
-  const t = await mobilePage(844, 390, { steering: null }); // a first-time visitor
+  const t = await mobilePage(844, 390, { steering: 'classic' }); // a player who chose Classic D-Pad (a first-time visitor gets Assisted Flight, see D7)
   await t.start();
   let texts = await t.texts('StartScene');
-  check('the title screen shows the D-pad in its controls reference (the default), and no movement switch of its own', texts.includes('D-PAD') && texts.includes('Move and turn') && !texts.includes('MOVEMENT') && !texts.includes('POINT-TO-FLY'), texts.join(' | ').slice(0, 200));
-  check('a player who never chose gets Classic D-Pad (the default), with nothing saved yet', (await movementOf(t)) === 'classic' && (await savedMovement(t)) === null);
+  check('the title screen shows the D-pad in its controls reference (Classic D-Pad saved), and no movement switch of its own', texts.includes('D-PAD') && texts.includes('Move and turn') && !texts.includes('MOVEMENT') && !texts.includes('POINT-TO-FLY'), texts.join(' | ').slice(0, 200));
+  check('a player with Classic D-Pad saved keeps it (the Assisted Flight default does not replace an explicit choice)', (await movementOf(t)) === 'classic' && (await savedMovement(t)) === 'classic');
   const pill = await t.rect('.tc-sys-btn');
   const pillText = await t.page.evaluate(() => document.querySelector('.tc-sys-btn').textContent);
   check('the title screen shows the Fullscreen control, at least 44 CSS px tall, inside the screen, top right', (await t.rect('.tc-system')).display === 'block' && pillText === 'FULLSCREEN' && pill.height >= 44 && pill.right <= 844 && pill.top >= 0 && pill.left > 422 && pill.top < 30, `${pillText} ${Math.round(pill.width)}x${Math.round(pill.height)} at ${Math.round(pill.left)},${Math.round(pill.top)}`);
@@ -685,10 +685,33 @@ async function runDpad() {
   // =====================================================================================================
   // D7. Persistence across sessions, in both directions, on a fresh page
   // =====================================================================================================
-  const first = await mobilePage(844, 390, { steering: null });
+  const first = await mobilePage(844, 390, { steering: null }); // a fresh profile: neither asteroids.touchMovement nor asteroids.touchSteering
+  await first.start();
+  check('a fresh profile gets Assisted Flight, and nothing is saved until they choose (no movement key, no legacy steering key)', (await movementOf(first)) === 'assisted' && (await savedMovement(first)) === null && (await first.page.evaluate(() => localStorage.getItem('asteroids.touchSteering'))) === null);
+  const firstTitle = await first.texts('StartScene');
+  check('the title screen control reference describes Assisted Flight (STICK, Point to travel) and not the D-pad', firstTitle.includes('STICK') && firstTitle.includes('Point to travel') && !firstTitle.includes('D-PAD'), firstTitle.join(' | ').slice(0, 200));
+  await first.tapItem('controls');
+  const firstLit = await first.page.evaluate(`(() => { const sc = window.__game.scene.getScene('StartScene'); const out = []; const walk = (list) => { for (const c of list) { if (c.type === 'Text' && ['CLASSIC D-PAD', 'POINT-TO-FLY', 'ASSISTED FLIGHT'].includes(c.text)) out.push([c.text, c.style.color]); if (c.list) walk(c.list); } }; walk(sc.children.list); return out; })()`);
+  const litColor = (name) => firstLit.find(([text]) => text === name)?.[1];
+  check('the Controls menu highlights ASSISTED FLIGHT (and only that one) on a fresh profile', firstLit.length === 3 && litColor('ASSISTED FLIGHT') !== litColor('CLASSIC D-PAD') && litColor('CLASSIC D-PAD') === litColor('POINT-TO-FLY'), JSON.stringify(firstLit));
+  check('and the page explains Assisted Flight', (await first.texts('StartScene')).some((x) => /steers its flight toward it/.test(x)));
+  await first.tapItem('back');
   await first.start();
   await first.play();
-  check('a first-time visitor starts their first run with Classic D-Pad (the pad is shown, no joystick zone)', (await first.rect('.tc-dpad')).display !== 'none' && (await first.rect('.tc-zone')).display === 'none' && (await first.rect('.tc-hint')).display === 'none');
+  check('a first-time visitor starts their first run with Assisted Flight (the joystick zone is shown, no pad)', (await first.rect('.tc-zone')).display === 'block' && (await first.rect('.tc-dpad')).display === 'none' && (await first.rect('.tc-hint')).display !== 'none');
+  // Switching modes from the pause menu works from the new default too, and the run is untouched.
+  const firstRun = await first.sim();
+  const firstPause = await first.centre('.tc-pause');
+  await first.finger.down(1, firstPause.x, firstPause.y);
+  await first.finger.up(1);
+  await sleep(250);
+  await first.tapItem('controls', { scene: 'GameScene' });
+  await first.tapItem('movement', { zone: 'CLASSIC D-PAD', scene: 'GameScene' });
+  check('from the pause menu a fresh-profile player can switch Assisted Flight -> Classic D-Pad: applied and saved, run still paused and unchanged', (await movementOf(first)) === 'classic' && (await savedMovement(first)) === 'classic' && (await first.sim()).paused === true && (await first.sim()).x === firstRun.x && (await first.sim()).lives === firstRun.lives);
+  await first.tapItem('back', { scene: 'GameScene' });
+  await first.tapItem('resume', { scene: 'GameScene' });
+  await sleep(150);
+  check('after RESUME the D-pad is on screen and the joystick zone is gone', (await first.rect('.tc-dpad')).display !== 'none' && (await first.rect('.tc-zone')).display === 'none');
   await first.context.close();
 
   // Legacy migration: the old relative JOYSTICK preference (asteroids.touchSteering) is not reinterpreted as either new stick mode.
@@ -721,12 +744,18 @@ async function runDpad() {
   await fresh.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
   await sleep(250);
   check('a saved POINT-TO-FLY choice is applied on a brand-new visit', (await movementOf(fresh)) === 'pointToFly');
+  await fresh.page.evaluate(() => localStorage.setItem('asteroids.touchMovement', 'classic'));
+  await fresh.page.reload();
+  await fresh.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
+  await sleep(250);
+  check('a saved CLASSIC D-PAD choice stays Classic on a brand-new visit (it is not replaced by the Assisted Flight default)', (await movementOf(fresh)) === 'classic');
+  await fresh.page.evaluate(() => localStorage.setItem('asteroids.touchMovement', 'pointToFly'));
   for (const junk of ['nonsense', 'joystick', 'dpad', '']) {
     await fresh.page.evaluate((v) => localStorage.setItem('asteroids.touchMovement', v), junk);
     await fresh.page.reload();
     await fresh.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
     await sleep(250);
-    check(`an unsupported saved value (${JSON.stringify(junk)}) falls back to Classic D-Pad`, (await movementOf(fresh)) === 'classic');
+    check(`an unsupported saved value (${JSON.stringify(junk)}) falls back to Assisted Flight`, (await movementOf(fresh)) === 'assisted');
   }
   await fresh.context.close();
 
@@ -739,11 +768,11 @@ async function runDpad() {
     Object.defineProperty(window, 'localStorage', { get: boom, configurable: true });
   });
   await priv.start();
-  check('with storage blocked a first-time visitor still gets Classic D-Pad', (await movementOf(priv)) === 'classic');
+  check('with storage blocked a first-time visitor still gets Assisted Flight', (await movementOf(priv)) === 'assisted');
   await priv.tapItem('controls');
-  await priv.tapItem('movement', { zone: 'ASSISTED FLIGHT' });
+  await priv.tapItem('movement', { zone: 'CLASSIC D-PAD' });
   await sleep(200);
-  check('with storage blocked Assisted Flight can still be chosen for the visit and nothing crashes', (await movementOf(priv)) === 'assisted' && priv.problems.filter((x) => !/SecurityError/.test(x)).length === 0, priv.problems.join(' | '));
+  check('with storage blocked Classic D-Pad can still be chosen for the visit and nothing crashes', (await movementOf(priv)) === 'classic' && priv.problems.filter((x) => !/SecurityError/.test(x)).length === 0, priv.problems.join(' | '));
   await priv.context.close();
 
   // =====================================================================================================
@@ -1404,7 +1433,7 @@ process.exit(failures ? 1 : 0);
 /** One mobile-emulated page with a multi-touch emulator and the usual helpers. */
 /**
  * `steering`: the touch steering choice a returning player has already saved. The sections written when the joystick was the only control
- * (and the default) seed 'joystick' so they keep testing it; pass `null` for a first-time visitor, who gets the D-pad. A seeded value is only
+ * (and the default) seed 'joystick' so they keep testing it; pass `null` for a first-time visitor, who gets Assisted Flight. A seeded value is only
  * written when nothing is saved, so choices made during the test (and reloads) are never overwritten.
  */
 async function mobilePage(width, height, { query = '?debug', mobile = true, touch = true, steering = 'joystick' } = {}) {
@@ -1412,16 +1441,19 @@ async function mobilePage(width, height, { query = '?debug', mobile = true, touc
   // 'classic' | 'pointToFly' | 'assisted': a movement choice the player already saved. 'joystick' (the default) is not a choice any more:
   // it puts the retired relative stick on screen through the compatibility seam in `start()`, for the sections that test the stick
   // zone's multi-touch and lifecycle rules. null: a first-time visitor.
-  if (steering && steering !== 'joystick') {
+  // 'joystick' is the retired relative stick: Classic's stick style plus the `setSteering` seam in `start()`. The default movement mode is Assisted Flight
+  // now (a different stick style), so those sections seed Classic explicitly instead of depending on the default.
+  const seeded = steering === 'joystick' ? 'classic' : steering;
+  if (seeded) {
     await context.addInitScript((value) => {
       try {
         if (localStorage.getItem('asteroids.touchMovement') === null) localStorage.setItem('asteroids.touchMovement', value);
       } catch {
         // storage blocked: nothing to seed
       }
-    }, steering);
+    }, seeded);
   }
-  // A new visitor's soundtrack is Random now; this suite's checks are about the Original track's level and key, so it starts on Original (the music suite covers the default).
+  // A new visitor's soundtrack is MegaPop now; this suite's checks are about the Original track's level and key, so it starts on Original (the music suite covers the default).
   await context.addInitScript(() => {
     try {
       if (localStorage.getItem('asteroids.musicTrack') === null) localStorage.setItem('asteroids.musicTrack', 'original');

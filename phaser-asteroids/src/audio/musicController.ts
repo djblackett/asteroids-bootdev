@@ -36,7 +36,7 @@ export interface MusicControllerOptions {
   volume?: number;
   megaPowerSpeedup?: boolean;
   megaPowerSpeed?: number;
-  /** The soundtrack setting (saved by the owner). The controller itself defaults to Original; the game's default for new players is `DEFAULT_MUSIC_CHOICE` (Random), applied where settings are loaded. */
+  /** The soundtrack setting (saved by the owner). The controller itself defaults to Original; the game's default for new players is `DEFAULT_MUSIC_CHOICE` (MegaPop), applied where settings are loaded. */
   choice?: MusicChoice;
   /** The track the first game plays when that was already decided (Random picked early, so the right file could be loaded). */
   track?: MusicTrackId;
@@ -169,7 +169,7 @@ export class MusicController {
     else this.switchTo(choice);
   }
 
-  /** Steps through Original, Mega Man, Gatekeeper, Random (wrapping). Returns the new setting. */
+  /** Steps through Original, MegaPop, Gatekeeper, Random (wrapping). Returns the new setting. */
   cycleChoice(direction: 1 | -1): MusicChoice {
     this.setChoice(cycleChoice(this.soundtrack, direction));
     return this.soundtrack;

@@ -6,7 +6,7 @@ gameplay; this folder is self-contained and does not touch it.
 - Phaser **4.2.1** (pinned, stable), TypeScript (strict), Vite, Vitest.
 - 1280×720 logical playfield, scaled to the window with the aspect ratio preserved.
 - Keyboard, gamepad **and touchscreen** (landscape phone prototype, one player): see [docs/mobile-touch.md](docs/mobile-touch.md).
-- Everything on screen is drawn procedurally; the only assets are three music tracks (selectable: Original, Mega Man, Gatekeeper or Random,
+- Everything on screen is drawn procedurally; the only assets are three music tracks (selectable: Original, MegaPop, Gatekeeper or Random; MegaPop by default,
   see [docs/music-tracks.md](docs/music-tracks.md)), 9 sound effects copied from `../music` and `../sound-effects`, and the favicon.
 
 ## Run it
@@ -78,7 +78,7 @@ what blocks a deploy, troubleshooting, rollback, gamepad checks and the custom-d
 The title screen answers three things first: how to start (**PLAY**, big and green; Space), how to steer (the controls that are active now: key caps, a controller's buttons, or the on-screen
 touch controls) and what the pick-ups do (a compact power-up legend that opens a guide with one sentence each). Settings are one step away:
 
-- **AUDIO** (title and pause): music on / off, the soundtrack (Original, Mega Man, Gatekeeper, Random), music volume, sound effects volume. Saved in the browser; changes apply at once.
+- **AUDIO** (title and pause): music on / off, the soundtrack (Original, MegaPop, Gatekeeper, Random; MegaPop by default), music volume, sound effects volume. Saved in the browser; changes apply at once.
 - **CONTROLS** (title and pause): on a phone the movement mode (Classic D-Pad, Point-to-Fly or Assisted Flight), haptic feedback with TEST VIBRATION, and the way to the keyboard; with a keyboard the key map, the controllers and
   who each one drives, the controller layout and (two players) Player 2's keys. A touch-capable device in keyboard mode always has a large green way back to touch controls.
 - **CO-OP** (title, two players): lives, friendly fire and each player's speed (the L, F, S, D keys still work).
@@ -132,9 +132,9 @@ recovered Python mapping are in `docs/implementation-progress.md` (Phase 5).
 ### Touchscreen (phone / tablet prototype, one player, landscape)
 
 On a device whose primary pointer is a finger the game starts in touch mode (`?touch=1` / `?touch=0` forces it; the CONTROLS button on the
-CONTROLS page's SWITCH TO KEYBOARD (two taps) and the green TOUCH CONTROLS button switch and remember). Left side: a digital **D-pad** by default (**CLASSIC D-PAD**: up = forward, down = back, left / right turn, corners do both with one thumb) or, in an ongoing
-experiment, a floating joystick that names a direction on the screen: **POINT-TO-FLY** (the ship turns to face it and flies) or **ASSISTED FLIGHT** (it also steers its flight
-toward it); pick with the **MOVEMENT** choice on the CONTROLS page (title and pause menu; your choice is remembered). See [docs/movement-modes.md](docs/movement-modes.md). A **FULLSCREEN** button (title and pause screens) hides the browser's
+CONTROLS page's SWITCH TO KEYBOARD (two taps) and the green TOUCH CONTROLS button switch and remember). Left side: by default a floating joystick that names a direction on the screen, **ASSISTED FLIGHT** (the ship turns toward it and steers its flight there; what a new player gets),
+or, as chosen with the **MOVEMENT** choice on the CONTROLS page (title and pause menu; your choice is remembered), **POINT-TO-FLY** (the ship turns to face it and flies) or a digital
+**D-pad** (**CLASSIC D-PAD**: up = forward, down = back, left / right turn, corners do both with one thumb). See [docs/movement-modes.md](docs/movement-modes.md). A **FULLSCREEN** button (title and pause screens) hides the browser's
 address bar where the browser allows it; on iPhone Safari, which does not, it offers a short Add-to-Home-Screen tip instead. Right side: **FIRE** (hold; works while steering), **LASER** (tap) and **BOOST** (tap); **PAUSE** top right.
 Menus, pause, volume and game over all work by touch. **HAPTIC FEEDBACK** (CONTROLS page, **on by default**, a saved OFF is kept) makes an Android phone vibrate briefly for Boost, Laser, damage and death, with a TEST VIBRATION button ([docs/haptics.md](docs/haptics.md)). In portrait a "Rotate your phone to play." prompt covers the game and pauses it.
 Desktop keyboard, controller and two-player play are unchanged. It has been tested in Chromium's touch emulation only: layout, input

@@ -84,7 +84,7 @@ process.exit(failures ? 1 : 0);
 
 async function run(browser) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-  // A new visitor's soundtrack is Random now; this suite's checks are about the Original track's level and key, so it starts on Original (the music suite covers the default).
+  // A new visitor's soundtrack is MegaPop now; this suite's checks are about the Original track's level and key, so it starts on Original (the music suite covers the default).
   await page.addInitScript(() => {
     try {
       if (localStorage.getItem('asteroids.musicTrack') === null) localStorage.setItem('asteroids.musicTrack', 'original');

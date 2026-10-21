@@ -23,7 +23,7 @@ export const MUSIC_KEY = 'music';
 
 // --- Soundtracks -------------------------------------------------------------------------------------
 
-export type MusicTrackId = 'original' | 'megaman' | 'gatekeeper';
+export type MusicTrackId = 'original' | 'megapop' | 'gatekeeper';
 /** What the player picks: one track, or `random` (a different track chosen at the start of every new game). */
 export type MusicChoice = MusicTrackId | 'random';
 
@@ -38,7 +38,7 @@ export interface MusicTrackDef {
   /**
    * Level of this track relative to the original at the same Music setting (the original is 1 and must stay 1, it is the
    * approved mix). The music master gain (`MUSIC_MAX_GAIN`) is untouched; this only evens out how the files were mastered.
-   * Measured with ffmpeg ebur128 (integrated loudness, K-weighted): Original -9.9 LUFS, Mega Man -14.3 LUFS, Gatekeeper
+   * Measured with ffmpeg ebur128 (integrated loudness, K-weighted): Original -9.9 LUFS, MegaPop -14.3 LUFS, Gatekeeper
    * -13.8 LUFS, i.e. 4.4 and 3.9 LU quieter, which is x1.66 and x1.57. Rounded down a little (-0.1 dB) so a track is never
    * the louder one; true peaks stay below 0 dBFS even at a Music setting of 100 %. Subjective balance is for a listening test.
    */
@@ -47,13 +47,14 @@ export interface MusicTrackDef {
 
 export const MUSIC_TRACKS: readonly MusicTrackDef[] = [
   { id: 'original', label: 'Original', file: 'audio/music/retro-bgmusic.ogg', key: MUSIC_KEY, gain: 1 },
-  { id: 'megaman', label: 'Mega Man', file: 'audio/music/megaman.mp3', key: 'music-megaman', gain: 1.65 },
+  { id: 'megapop', label: 'MegaPop', file: 'audio/music/megapop.mp3', key: 'music-megapop', gain: 1.65 },
   { id: 'gatekeeper', label: 'Gatekeeper', file: 'audio/music/gatekeeper.mp3', key: 'music-gatekeeper', gain: 1.55 },
 ];
 
+/** The fall-back when a track cannot be loaded (and the music controller's own default). It is not what a new player gets, see `DEFAULT_MUSIC_CHOICE`. */
 export const DEFAULT_MUSIC_TRACK: MusicTrackId = 'original';
-/** What a player with no saved choice gets: a different track each game. (`DEFAULT_MUSIC_TRACK` is the fall-back when a track cannot be loaded.) */
-export const DEFAULT_MUSIC_CHOICE: MusicChoice = 'random';
+/** What a player with no valid saved choice gets: MegaPop. */
+export const DEFAULT_MUSIC_CHOICE: MusicChoice = 'megapop';
 
 /** Decoded music is large (about 0.4 MB per second). Only this many decoded tracks stay in memory: the playing one and the last one. */
 export const MAX_DECODED_MUSIC_TRACKS = 2;
@@ -202,5 +203,11 @@ export const MEGA_POWER_MUSIC_SPEEDUP_ENABLED = false;
 export const MUSIC_MUTE_STORAGE_KEY = 'asteroids.musicMuted';
 export const MUSIC_VOLUME_STORAGE_KEY = 'asteroids.musicVolume';
 export const SFX_VOLUME_STORAGE_KEY = 'asteroids.sfxVolume';
-/** `original`, `megaman`, `gatekeeper` or `random`; anything else is ignored. */
+/**
+ * `original`, `megapop`, `gatekeeper` or `random`; anything else is ignored (and means `DEFAULT_MUSIC_CHOICE`).
+ * MegaPop used to be saved as `megaman` (see `LEGACY_MUSIC_TRACK_IDS`).
+ */
 export const MUSIC_TRACK_STORAGE_KEY = 'asteroids.musicTrack';
+
+/** Track ids that were saved by earlier builds and now mean another id. A saved `megaman` is the track now called MegaPop. */
+export const LEGACY_MUSIC_TRACK_IDS: Readonly<Record<string, MusicTrackId>> = { megaman: 'megapop' };
