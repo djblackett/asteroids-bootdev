@@ -65,10 +65,11 @@ class Clock {
   }
 }
 
-function setup(enabled = true) {
+/** `enabled`: what the player saved (`'1'` / `'0'`). Pass `null` for a brand-new player, who has saved nothing and gets the default. */
+function setup(enabled: boolean | null = true) {
   const adapter = new FakeVibration();
   const storage = new MemoryStorage();
-  if (enabled) storage.data.set(HAPTICS_STORAGE_KEY, '1');
+  if (enabled !== null) storage.data.set(HAPTICS_STORAGE_KEY, enabled ? '1' : '0');
   const settings = new HapticSettings(storage);
   const clock = new Clock();
   const manager = new HapticManager({ adapter, settings, clock: clock.read });
@@ -383,11 +384,39 @@ describe('cooldowns', () => {
 // --- settings ----------------------------------------------------------------
 
 describe('HAPTICS ON / OFF', () => {
-  it('is OFF for a new player and nothing is written until they choose', () => {
-    const { storage, settings } = setup(false);
-    expect(DEFAULT_HAPTICS_ENABLED).toBe(false);
-    expect(settings.enabled).toBe(false);
+  it('is ON for a new player and nothing is written until they choose', () => {
+    const { storage, settings, manager } = setup(null);
+    expect(DEFAULT_HAPTICS_ENABLED).toBe(true);
+    expect(settings.enabled).toBe(true);
+    expect(manager.enabled).toBe(true);
     expect(storage.data.size).toBe(0);
+  });
+
+  it('a saved OFF stays OFF: the new default never overrides an explicit choice, and nothing is rewritten', () => {
+    const { storage, settings, manager } = setup(false);
+    expect(storage.data.get(HAPTICS_STORAGE_KEY)).toBe('0');
+    expect(settings.enabled).toBe(false);
+    expect(manager.enabled).toBe(false);
+    expect(manager.handle([gameOver])).toBe('disabled');
+    expect(storage.data.get(HAPTICS_STORAGE_KEY)).toBe('0');
+    expect(storage.data.size).toBe(1);
+  });
+
+  it('a saved ON stays ON', () => {
+    const { settings } = setup(true);
+    expect(settings.enabled).toBe(true);
+  });
+
+  it('opening a menu, or constructing the manager, never vibrates by itself', () => {
+    const { adapter } = setup(null);
+    expect(adapter.calls).toEqual([]);
+  });
+
+  it('a new player who turns it off is remembered as OFF', () => {
+    const { storage, settings } = setup(null);
+    settings.set(false);
+    expect(storage.data.get(HAPTICS_STORAGE_KEY)).toBe('0');
+    expect(new HapticSettings(storage).enabled).toBe(false);
   });
 
   it('OFF suppresses every gameplay effect', () => {
@@ -425,14 +454,14 @@ describe('HAPTICS ON / OFF', () => {
     expect(settings.toggle()).toBe(true);
   });
 
-  it('ignores invalid stored values and falls back to OFF', () => {
+  it('ignores invalid stored values and falls back to the default (ON)', () => {
     expect(parseStoredHaptics('1')).toBe(true);
     expect(parseStoredHaptics('0')).toBe(false);
     for (const junk of ['true', 'ON', '2', '', ' 1', 'null', undefined, null]) {
       expect(parseStoredHaptics(junk)).toBeNull();
       const storage = new MemoryStorage();
       if (typeof junk === 'string') storage.data.set(HAPTICS_STORAGE_KEY, junk);
-      expect(new HapticSettings(storage).enabled).toBe(false);
+      expect(new HapticSettings(storage).enabled).toBe(DEFAULT_HAPTICS_ENABLED);
     }
   });
 
@@ -446,10 +475,10 @@ describe('HAPTICS ON / OFF', () => {
       },
     };
     const settings = new HapticSettings(boom);
-    expect(settings.enabled).toBe(false);
-    expect(() => settings.set(true)).not.toThrow();
     expect(settings.enabled).toBe(true);
-    expect(new HapticSettings(null).enabled).toBe(false);
+    expect(() => settings.set(false)).not.toThrow();
+    expect(settings.enabled).toBe(false);
+    expect(new HapticSettings(null).enabled).toBe(true);
   });
 
   it('is independent of the audio settings: it reads and writes only its own key', () => {

@@ -1,7 +1,9 @@
 /**
  * The HAPTICS: ON / OFF choice. Remembered in localStorage (`asteroids.haptics`, "1" / "0", the same convention as the music mute);
- * anything else in storage is ignored, and blocked storage just means the choice is not remembered. It is OFF until the player
- * deliberately turns it on (an experimental feature, and a phone that buzzes unasked is a bad surprise).
+ * anything else in storage is ignored, and blocked storage just means the choice is not remembered. It is ON for a player who has
+ * never chosen (after real-phone testing the feedback is a clear improvement) and a saved choice always wins: someone who turned it OFF
+ * stays OFF, and nothing is ever written to storage until the player actually changes the switch. Nothing buzzes just because a menu is
+ * on screen: only gameplay events (touch mode, a run in progress) and the TEST VIBRATION button ask for a vibration.
  *
  * Same shape as `SteeringController`: a tiny holder with `set`, `onChange`, no DOM and no Phaser.
  */
@@ -10,7 +12,8 @@ import type { StorageLike } from '../audio/audioSettings';
 
 export const HAPTICS_STORAGE_KEY = 'asteroids.haptics';
 
-export const DEFAULT_HAPTICS_ENABLED = false;
+/** What a player who has never chosen gets. */
+export const DEFAULT_HAPTICS_ENABLED = true;
 
 export function parseStoredHaptics(raw: string | null | undefined): boolean | null {
   if (raw === '1') return true;

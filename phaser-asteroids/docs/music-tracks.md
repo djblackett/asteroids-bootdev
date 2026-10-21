@@ -96,7 +96,7 @@ starting point only. **The final balance, including against the effects, is a li
 | `src/audio/musicTracks.ts` | pure helpers: validation, cycling, persistence, `pickRandomTrack`, start-up resolution |
 | `src/audio/musicController.ts` | the state machine: choice, current track, `beginRun`, fall-back; unchanged pause / mute / rate logic |
 | `src/audio/phaserAudio.ts` | `PhaserMusicTrack` (one sound, lazy download + decode, fade, cleanup, memory cap) and `AudioDirector` |
-| `src/ui/volumePanel.ts`, `src/ui/touchMenus.ts` (`TrackSelector`) | the keyboard / mouse / gamepad row and the touch control |
+| `src/ui/menu/pages/audio.ts` (`MUSIC TRACK` row, a `MenuStepper`) | the keyboard / mouse / touch control, on the AUDIO page of the title and pause menus ([menus.md](menus.md)); X on a controller still steps it on the title screen |
 | `src/scenes/BootScene.ts` | loads the effects and only the needed music file |
 
 ## Tests

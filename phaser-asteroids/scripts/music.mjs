@@ -200,6 +200,36 @@ async function open({ query = '?debug', touch = false, size, pad = false, seed =
         return out;
       }, sceneKey),
     key: (k) => page.keyboard.press(k),
+    /** Where every menu button is (game px): the title screen's menu, or the pause menu in a run. */
+    menu: (sceneKey = 'StartScene') => page.evaluate((k) => window.__game.scene.getScene(k)[k === 'StartScene' ? 'menuSnapshot' : 'pauseMenuSnapshot'](), sceneKey),
+    /** Moves the keyboard focus onto an item with Down (wrapping), as a keyboard player would. */
+    async focusOn(id, sceneKey = 'StartScene') {
+      for (let i = 0; i < 12; i++) {
+        if ((await t.menu(sceneKey)).focus === id) return true;
+        await page.keyboard.press('ArrowDown');
+        await sleep(70);
+      }
+      return false;
+    },
+    /** From the title page or the pause menu: opens AUDIO. */
+    async openAudio(sceneKey = 'StartScene') {
+      await t.focusOn('audio', sceneKey);
+      await page.keyboard.press('Enter');
+      await sleep(300);
+    },
+    /** Opens AUDIO and puts the focus on the music track row. */
+    async toTrack(sceneKey = 'StartScene') {
+      await t.openAudio(sceneKey);
+      await t.focusOn('track', sceneKey);
+    },
+    /** A real click or touch on a menu item (or one named part of it: '<', '>', 'name'). */
+    async tapItem(id, zone = null, sceneKey = 'StartScene') {
+      const item = (await t.menu(sceneKey)).items.find((i) => i.id === id);
+      if (!item) throw new Error(`no menu item ${id}`);
+      const r = zone ? item.zones.find((z) => z.name === zone) : item;
+      await t.tap(r.x + r.w / 2, r.y + r.h / 2);
+      await sleep(80);
+    },
     /** Tags the live music sound so a later check can tell whether it is the same object (not restarted). */
     tag: (name) => page.evaluate((n) => { window.__game.registry.get('audio').musicSound.__tag = n; }, name),
     /** Page coordinates of a point inside the game canvas, given game coordinates. */
@@ -281,10 +311,13 @@ async function run() {
   const wantFile = { original: 'retro-bgmusic.ogg', megaman: 'megaman.mp3', gatekeeper: 'gatekeeper.mp3' }[s.current];
   check("only the first game's track was downloaded to show the title screen", fresh.musicRequests.length === 1 && fresh.musicRequests[0] === wantFile, JSON.stringify({ req: fresh.musicRequests, current: s.current }));
   check('the audio is locked and nothing plays before the first key press', s.locked === true && s.count === 0 && s.state === 'stopped', JSON.stringify({ locked: s.locked, count: s.count }));
-  check('the title screen shows the Track row with Random', (await fresh.texts('StartScene')).some((x) => /Track\s*<\s*Random\s*>/.test(x)));
   await fresh.key('Shift');
   s = await fresh.playing(KEY_OF[s.current]);
   check('the first key press plays that track once, looping, at its level', !s.locked && s.count === 1 && s.sounds[0]?.playing && s.sounds[0]?.loop === true && near(s.sounds[0]?.volume, GAIN[s.sounds[0]?.key], 1e-6), JSON.stringify(s.sounds));
+  await fresh.openAudio();
+  check('the AUDIO page shows the track as RANDOM', (await fresh.texts('StartScene')).includes('RANDOM'));
+  await fresh.key('Escape');
+  await sleep(250);
   await fresh.start();
   s = await fresh.settled();
   check('starting the game keeps that track (no switch at the first game)', s.count === 1 && s.sounds[0]?.key === KEY_OF[s.current], JSON.stringify(s.sounds));
@@ -307,7 +340,7 @@ async function run() {
   check('with Original saved, only the Original music file is downloaded to show the title screen', s.choice === 'original' && a.musicRequests.length === 1 && a.musicRequests[0] === 'retro-bgmusic.ogg', JSON.stringify(a.musicRequests));
   check('the audio is locked and nothing plays before the first key press', s.locked === true && s.count === 0 && s.state === 'stopped', JSON.stringify({ locked: s.locked, count: s.count }));
   const titleTexts = await a.texts('StartScene');
-  check('the title screen shows the Track row with Original', titleTexts.some((x) => /Track\s*<\s*Original\s*>/.test(x)), JSON.stringify(titleTexts.filter((x) => /Track|Music|SFX/.test(x))));
+  check('the title screen has no music controls of its own (they live in AUDIO)', !titleTexts.some((x) => /^MUSIC|ORIGINAL|VOLUME/.test(x)) && titleTexts.includes('PLAY') && titleTexts.includes('AUDIO'), JSON.stringify(titleTexts.slice(0, 12)));
   await a.shot('title');
 
   // The first key press both unlocks the audio and (here) selects the Track row: it must not start a game.
@@ -315,17 +348,20 @@ async function run() {
   s = await a.playing('music');
   check('the first key press unlocks audio and plays Original, once, looping, at the unchanged level', !s.locked && s.count === 1 && s.sounds[0]?.playing && s.sounds[0]?.loop === true && near(s.sounds[0]?.volume, GAIN.music, 1e-6), JSON.stringify(s.sounds));
   check('that key press did not start a game', (await a.scene()) === 'StartScene');
+  await a.openAudio();
+  check('the AUDIO page shows the track as ORIGINAL', (await a.texts('StartScene')).includes('ORIGINAL'));
+  await a.shot('audio');
 
   // =====================================================================================================
   // 2. Keyboard on the title screen
   // =====================================================================================================
   console.log('\n--- keyboard: title screen ---');
-  await a.key('ArrowDown'); // Track row selected
+  await a.focusOn('track'); // the music track row of the AUDIO page
   await a.key('ArrowRight');
   s = await a.playing('music-megaman');
   check('Right on the Track row selects Mega Man: saved, downloaded on demand, plays', s.choice === 'megaman' && s.stored === 'megaman' && s.current === 'megaman' && a.musicRequests.includes('megaman.mp3') && s.sounds.length === 1 && s.sounds[0]?.key === 'music-megaman' && s.sounds[0]?.playing, JSON.stringify({ s: s.sounds, req: a.musicRequests }));
   check('only one music sound exists (Original was released), at the Mega Man level', s.count === 1 && near(s.sounds[0]?.volume, GAIN['music-megaman'], 1e-6) && s.sounds[0]?.loop === true, JSON.stringify(s.sounds));
-  check('the title screen shows Mega Man and is still the title screen', (await a.texts('StartScene')).some((x) => /Track\s*<\s*Mega Man\s*>/.test(x)) && (await a.scene()) === 'StartScene');
+  check('the AUDIO page shows MEGA MAN and is still the title screen', (await a.texts('StartScene')).includes('MEGA MAN') && (await a.scene()) === 'StartScene');
   await a.shot('title-megaman');
 
   await a.key('ArrowRight');
@@ -351,15 +387,15 @@ async function run() {
   console.log('\n--- mouse: title screen ---');
   await a.key('ArrowRight'); // Random -> Original
   await a.playing('music');
-  const row = await a.textBounds('StartScene', 'Track');
-  check('the Track row has a sensible size on the title screen', row !== null && row.w > 150 && row.h >= 16, JSON.stringify(row));
-  await a.tap(row.x + row.w * 0.85, row.y + row.h / 2);
+  const row = (await a.menu()).items.find((i) => i.id === 'track');
+  check('the track row is a full-size target on the AUDIO page, with < and > buttons', row && row.h >= 90 && row.w > 600 && row.zones.some((z) => z.name === '<' && z.w >= 90) && row.zones.some((z) => z.name === '>' && z.w >= 90), JSON.stringify(row));
+  await a.tapItem('track', '>');
   s = await a.playing('music-megaman');
-  check('clicking the right half of the row selects the next track (Mega Man)', s.choice === 'megaman' && s.stored === 'megaman' && s.sounds.length === 1 && s.sounds[0]?.key === 'music-megaman', JSON.stringify({ choice: s.choice, sounds: s.sounds }));
+  check('clicking > selects the next track (Mega Man)', s.choice === 'megaman' && s.stored === 'megaman' && s.sounds.length === 1 && s.sounds[0]?.key === 'music-megaman', JSON.stringify({ choice: s.choice, sounds: s.sounds }));
   check('...and does not start the game', (await a.scene()) === 'StartScene');
-  await a.tap(row.x + row.w * 0.12, row.y + row.h / 2);
+  await a.tapItem('track', '<');
   s = await a.playing('music');
-  check('clicking the left half selects the previous track (Original)', s.choice === 'original' && s.count === 1 && s.sounds[0]?.key === 'music', JSON.stringify({ choice: s.choice, sounds: s.sounds }));
+  check('clicking < selects the previous track (Original)', s.choice === 'original' && s.count === 1 && s.sounds[0]?.key === 'music', JSON.stringify({ choice: s.choice, sounds: s.sounds }));
   check('...and still does not start the game', (await a.scene()) === 'StartScene');
   check('console clean through all of the title-screen selection', a.problems.length === 0, a.problems.join(' | '));
   await a.context.close();
@@ -379,11 +415,10 @@ async function run() {
   await sleep(200);
   s = await g.audio();
   check('pausing pauses the same music sound', (await g.paused()) && s.sounds.length === 1 && s.sounds[0]?.paused === true && s.sounds[0]?.tag === 'run-1' && s.state === 'paused');
-  const pauseTexts = await g.texts('GameScene');
-  check('the pause screen shows the Track row', pauseTexts.some((x) => /Track\s*<\s*Mega Man\s*>/.test(x)), JSON.stringify(pauseTexts.filter((x) => /Track|Music|SFX/.test(x))));
   await g.shot('pause');
-  await g.key('ArrowDown');
-  await g.key('ArrowDown');
+  await g.toTrack('GameScene');
+  const pauseTexts = await g.texts('GameScene');
+  check('the pause menu\'s AUDIO page shows the track as MEGA MAN', pauseTexts.includes('MEGA MAN'), JSON.stringify(pauseTexts));
   await g.key('ArrowRight'); // -> Gatekeeper
   s = await g.settled();
   check('changing the track while paused releases the old sound and does not play the new one yet', (await g.paused()) && s.choice === 'gatekeeper' && s.stored === 'gatekeeper' && !s.sounds.some((x) => x.playing) && s.state === 'stopped', JSON.stringify({ sounds: s.sounds, state: s.state }));
@@ -411,7 +446,8 @@ async function run() {
   await g.key('KeyM');
   await sleep(120);
   await g.key('KeyP'); // pause so the arrows act on the menu
-  await g.key('ArrowRight'); // Gatekeeper -> Random (Track row is still selected)
+  await g.toTrack('GameScene');
+  await g.key('ArrowRight'); // Gatekeeper -> Random
   await g.key('ArrowRight'); // Random -> Original
   s = await g.settled();
   check('changing the track while muted starts nothing', s.muted && s.choice === 'original' && !s.sounds.some((x) => x.playing), JSON.stringify({ muted: s.muted, sounds: s.sounds }));
@@ -423,13 +459,14 @@ async function run() {
 
   // volume with a boosted track
   await g.key('KeyP');
+  await g.toTrack('GameScene');
   await g.key('ArrowRight'); // Original -> Mega Man
   await g.key('KeyP');
   s = await g.playing('music-megaman');
   await g.tag('vol');
   await g.key('KeyP');
-  await g.key('ArrowUp');
-  await g.key('ArrowUp'); // Music row
+  await g.openAudio('GameScene');
+  await g.focusOn('music-volume', 'GameScene');
   await g.key('ArrowLeft');
   s = await g.audio();
   check('lowering Music to 70 % reaches the playing Mega Man sound at once, scaled by its track level, without a restart', near(s.sounds[0]?.requested, 0.7 * 0.7 * 1.65, 1e-6) && s.sounds[0]?.tag === 'vol' && s.count === 1 && s.storedMusicVolume === '0.7', JSON.stringify({ sounds: s.sounds, stored: s.storedMusicVolume }));
@@ -458,7 +495,8 @@ async function run() {
   await g.page.reload();
   await g.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
   s = await g.audio();
-  check('after a reload the selection is restored (and nothing but that track was downloaded again)', s.choice === 'megaman' && (await g.texts('StartScene')).some((x) => /Track\s*<\s*Mega Man\s*>/.test(x)), JSON.stringify({ choice: s.choice }));
+  await g.openAudio();
+  check('after a reload the selection is restored (and nothing but that track was downloaded again)', s.choice === 'megaman' && (await g.texts('StartScene')).includes('MEGA MAN'), JSON.stringify({ choice: s.choice }));
   check('console clean through a whole run with soundtrack changes', g.problems.length === 0, g.problems.join(' | '));
   await g.context.close();
 
@@ -563,21 +601,21 @@ async function run() {
     const f = await open();
     await f.page.route('**/audio/music/megaman.mp3', handler);
     await f.goto();
-    await f.key('ArrowDown');
-    await f.key('ArrowDown');
+    await f.toTrack();
     await f.key('ArrowRight'); // Mega Man
     s = await f.playing('music');
     await sleep(500);
     s = await f.settled();
     check(`Mega Man unavailable (${mode}): the game falls back to Original, playing, one sound`, s.current === 'original' && s.count === 1 && s.sounds[0]?.key === 'music' && s.sounds[0]?.playing && near(s.sounds[0]?.volume, GAIN.music, 1e-6), JSON.stringify({ current: s.current, sounds: s.sounds }));
     check(`...the player's choice is kept, a diagnostic is logged, and the title screen still works`, s.choice === 'megaman' && s.stored === 'megaman' && f.warnings.some((w) => /Mega Man.*could not be loaded.*Original/.test(w)) && (await f.scene()) === 'StartScene', JSON.stringify({ warnings: f.warnings }));
+    await f.key('Escape');
+    await sleep(250);
     await f.start();
     s = await f.settled();
     check('...and a game can be played with it, without trying the broken file over and over', (await f.scene()) === 'GameScene' && s.count === 1 && s.sounds[0]?.playing && f.musicRequests.filter((x) => x === 'megaman.mp3').length <= 2, JSON.stringify({ req: f.musicRequests }));
     // a later choice of a working track still works
     await f.key('KeyP');
-    await f.key('ArrowDown');
-    await f.key('ArrowDown');
+    await f.toTrack('GameScene');
     await f.key('ArrowRight'); // Gatekeeper
     await f.key('KeyP');
     s = await f.playing('music-gatekeeper');
@@ -604,20 +642,26 @@ async function run() {
   await pd.padTap(2);
   s = await pd.settled();
   check('X again cycles Gatekeeper, Random, Original', s.choice === 'original' && s.count === 1, JSON.stringify({ choice: s.choice }));
-  await pd.padTap(15); // D-pad right = two players, not the music
+  await pd.padTap(15); // D-pad right on PLAY: nothing to the right, and never the music
+  await pd.padTap(13); // down: the 1 / 2 PLAYERS switch
+  await pd.padTap(15); // right: two players
   s = await pd.audio();
-  check('D-pad left / right still choose one or two players, not the music', s.choice === 'original' && (await pd.texts('StartScene')).some((x) => /PLAYER 2/.test(x)));
-  await pd.padTap(14);
+  const players = () => pd.page.evaluate(() => window.__game.registry.get('gameSetup').game.playerCount);
+  check('D-pad right on the PLAYERS switch chooses two players, and never changes the music', s.choice === 'original' && (await players()) === 2 && (await pd.texts('StartScene')).some((x) => /^PLAYER 2/.test(x)));
+  await pd.padTap(14); // left: one player
+  check('D-pad left chooses one player again', (await players()) === 1);
+  await pd.padTap(12); // up: back on PLAY
   await pd.padTap(0); // A: start
   await pd.page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
   await sleep(300);
   await pd.padTap(9); // START: pause
   check('START pauses the game', await pd.paused());
-  await pd.padTap(13);
-  await pd.padTap(13); // Track row
+  await pd.padTap(13); // down: AUDIO
+  await pd.padTap(0); // A: open it
+  await pd.padTap(13); // down: the track row
   await pd.padTap(15); // right: Mega Man
   s = await pd.settled();
-  check('D-pad down, down, right on the pause screen changes the track (game stays paused, nothing plays yet)', s.choice === 'megaman' && s.stored === 'megaman' && (await pd.paused()) && !s.sounds.some((x) => x.playing), JSON.stringify({ choice: s.choice, sounds: s.sounds }));
+  check('D-pad and A on the pause menu open AUDIO and change the track (game stays paused, nothing plays yet)', s.choice === 'megaman' && s.stored === 'megaman' && (await pd.paused()) && !s.sounds.some((x) => x.playing), JSON.stringify({ choice: s.choice, sounds: s.sounds }));
   await pd.padTap(9);
   s = await pd.playing('music-megaman');
   check('START resumes with the new track, one sound', !(await pd.paused()) && s.count === 1 && s.sounds[0]?.playing, JSON.stringify(s.sounds));
@@ -631,31 +675,36 @@ async function run() {
   const th = await open({ touch: true });
   await th.goto();
   const metrics = await th.toPage(0, 0);
-  check('the touch title screen is the touch menu', (await th.texts('StartScene')).some((x) => x === 'TAP TO PLAY'));
-  const names = await th.texts('StartScene');
-  check('it shows MUSIC: ORIGINAL with arrows', names.includes('MUSIC: ORIGINAL') && names.includes('<') && names.includes('>'), JSON.stringify(names.filter((x) => /MUSIC|^<|^>/.test(x))));
+  const titleLabels = (await th.menu()).items.map((i) => i.label);
+  check('the touch title screen offers PLAY, AUDIO and CONTROLS (and no players switch)', ['PLAY', 'AUDIO', 'CONTROLS'].every((l) => titleLabels.includes(l)) && !titleLabels.includes('PLAYERS'), JSON.stringify(titleLabels));
   await th.shot('touch-title');
+  await th.tapItem('audio');
+  await sleep(300);
+  const names = await th.texts('StartScene');
+  check('its AUDIO page shows the track as ORIGINAL with < and > buttons', names.includes('ORIGINAL') && names.includes('<') && names.includes('>'), JSON.stringify(names.filter((x) => /ORIGINAL|^<|^>/.test(x))));
+  await th.shot('touch-audio');
   check('the selector buttons are comfortably tappable: at least 44 CSS px tall and the arrows wide enough', 90 * metrics.scale >= 44 && 96 * metrics.scale >= 44, `scale ${metrics.scale.toFixed(3)} -> ${Math.round(90 * metrics.scale)} x ${Math.round(96 * metrics.scale)} CSS px`);
-  // TrackSelector at (320, 664), width 560: arrows at 320 +- 232
-  await th.tap(320 + 232, 664);
+  await th.tapItem('track', '>');
   s = await th.playing('music-megaman');
   check('tapping > selects Mega Man: saved, playing; the game did not start', s.choice === 'megaman' && s.stored === 'megaman' && s.count === 1 && s.sounds[0]?.playing && (await th.scene()) === 'StartScene', JSON.stringify({ choice: s.choice, scene: await th.scene() }));
-  await th.tap(320, 664);
+  await th.tapItem('track', 'name');
   s = await th.playing('music-gatekeeper');
-  check('tapping the name steps forward (Gatekeeper)', s.choice === 'gatekeeper' && s.count === 1 && (await th.texts('StartScene')).includes('MUSIC: GATEKEEPER'));
-  await th.tap(320 - 232, 664);
+  check('tapping the name steps forward (Gatekeeper)', s.choice === 'gatekeeper' && s.count === 1 && (await th.texts('StartScene')).includes('GATEKEEPER'));
+  await th.tapItem('track', '<');
   s = await th.playing('music-megaman');
   check('tapping < goes back to Mega Man', s.choice === 'megaman' && s.count === 1, JSON.stringify({ choice: s.choice }));
-  await th.tap(320 + 232, 664);
-  await th.tap(320 + 232, 664);
+  await th.tapItem('track', '>');
+  await th.tapItem('track', '>');
   s = await th.settled();
-  check('> twice: Gatekeeper then Random; Random is shown and saved', s.choice === 'random' && s.stored === 'random' && (await th.texts('StartScene')).includes('MUSIC: RANDOM'), JSON.stringify({ choice: s.choice }));
-  await th.tap(320 + 232, 664);
-  await th.tap(320 + 232, 664);
+  check('> twice: Gatekeeper then Random; Random is shown and saved', s.choice === 'random' && s.stored === 'random' && (await th.texts('StartScene')).includes('RANDOM'), JSON.stringify({ choice: s.choice }));
+  await th.tapItem('track', '>');
+  await th.tapItem('track', '>');
   s = await th.playing('music-megaman');
   check('then Original and Mega Man again (the wrap works)', s.choice === 'megaman', JSON.stringify({ choice: s.choice }));
   check('no tap on the selector started the game', (await th.scene()) === 'StartScene');
-  await th.tap(940, 155); // TAP TO PLAY
+  await th.tapItem('back');
+  await sleep(300);
+  await th.tapItem('play'); // PLAY
   await th.page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
   s = await th.playing('music-megaman');
   check('PLAY starts the game on the selected track', s.current === 'megaman' && s.count === 1 && s.sounds[0]?.playing, JSON.stringify(s.sounds));
@@ -665,14 +714,17 @@ async function run() {
   await th.page.touchscreen.tap(pauseBtn.left + pauseBtn.width / 2, pauseBtn.top + pauseBtn.height / 2);
   await sleep(500);
   check('the PAUSE button opens the pause menu', await th.paused());
-  const pt = await th.texts('GameScene');
-  check('the pause menu shows MUSIC: MEGA MAN with arrows', pt.includes('MUSIC: MEGA MAN') && pt.includes('<') && pt.includes('>'), JSON.stringify(pt));
   await th.shot('touch-pause');
-  await th.tap(940 + 232, 610);
+  await th.tapItem('audio', null, 'GameScene');
+  await sleep(300);
+  const pt = await th.texts('GameScene');
+  check('the pause menu\'s AUDIO page shows MEGA MAN with < and > buttons', pt.includes('MEGA MAN') && pt.includes('<') && pt.includes('>'), JSON.stringify(pt));
+  await th.shot('touch-pause-audio');
+  await th.tapItem('track', '>', 'GameScene');
   s = await th.settled();
   check('tapping > on the pause menu picks Gatekeeper; the game stays paused and no new sound plays', (await th.paused()) && s.choice === 'gatekeeper' && s.stored === 'gatekeeper' && !s.sounds.some((x) => x.playing), JSON.stringify({ choice: s.choice, sounds: s.sounds }));
-  await th.tap(940, 610);
-  await th.tap(940 - 232, 610);
+  await th.tapItem('track', 'name', 'GameScene');
+  await th.tapItem('track', '<', 'GameScene');
   s = await th.settled();
   check('further taps keep working while paused: now Random -> Gatekeeper; still paused; still in the game', (await th.paused()) && (await th.scene()) === 'GameScene' && s.choice === 'gatekeeper', JSON.stringify({ choice: s.choice }));
   // orientation while paused
@@ -689,8 +741,9 @@ async function run() {
   check('a fullscreen-style resize does not duplicate or restart music either', (await th.paused()) && s.count <= 1 && s.choice === 'gatekeeper', JSON.stringify({ count: s.count }));
   await th.page.setViewportSize({ width: 844, height: 390 });
   await sleep(400);
-  // RESUME button (340, 300)
-  await th.tap(340, 300);
+  await th.tapItem('back', null, 'GameScene');
+  await sleep(300);
+  await th.tapItem('resume', null, 'GameScene'); // RESUME
   await sleep(300);
   s = await th.playing('music-gatekeeper');
   check('RESUME continues with the chosen track: one sound, playing', !(await th.paused()) && s.count === 1 && s.sounds[0]?.playing && s.current === 'gatekeeper', JSON.stringify({ sounds: s.sounds }));
@@ -701,7 +754,9 @@ async function run() {
   const small = await open({ touch: true, size: { width: 740, height: 360 } });
   await small.goto();
   const sm = await small.toPage(0, 0);
-  const rect = await small.textBounds('StartScene', '^MUSIC: ');
-  check('on a 740 x 360 phone the selector is inside the screen and its buttons are at least 44 CSS px tall', rect !== null && rect.y + rect.h <= 720 && 90 * sm.scale >= 44, `scale ${sm.scale.toFixed(3)} -> ${Math.round(90 * sm.scale)} CSS px, label at y ${Math.round(rect?.y ?? -1)}`);
+  await small.tapItem('audio');
+  await sleep(300);
+  const rect = (await small.menu()).items.find((i) => i.id === 'track');
+  check('on a 740 x 360 phone the selector is inside the screen and its buttons are at least 44 CSS px tall', rect && rect.y + rect.h <= 720 && rect.h * sm.scale >= 44 && rect.zones.every((z) => z.w * sm.scale >= 44), `scale ${sm.scale.toFixed(3)} -> ${Math.round(rect.h * sm.scale)} CSS px tall, row at y ${Math.round(rect?.y ?? -1)}`);
   await small.context.close();
 }

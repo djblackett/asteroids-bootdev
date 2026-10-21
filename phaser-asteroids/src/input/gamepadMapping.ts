@@ -167,12 +167,12 @@ export const PAD_MAPPING_LINES: readonly string[] = [
   'RT or A  -  Shoot (hold to keep firing)',
   'X  -  Laser Beam         B  -  Boost',
   'START  -  Pause / Resume',
-  'BACK  -  Main Menu (while paused or after Game Over)',
-  'A  -  Retry after Game Over',
+  'Paused: D-PAD moves, A selects, B goes back, BACK = Main Menu',
+  'After Game Over: A  -  Retry        BACK  -  Main Menu',
 ];
 
 export const PAD_MENU_LINES: readonly string[] = [
   'Any button wakes a controller; then press:',
-  'LB = Player 1      RB = Player 2      A = join / start',
-  'D-PAD LEFT / RIGHT = 1 or 2 players      X = next music track      Y = this screen',
+  'LB = Player 1      RB = Player 2      A = join, or press the lit button',
+  'D-PAD = move around the menu      B = back      X = next music track      Y = Controls',
 ];

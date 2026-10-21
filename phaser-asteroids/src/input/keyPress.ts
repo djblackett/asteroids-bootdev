@@ -16,11 +16,19 @@ export type KeyHandlers = Readonly<Record<string, () => void>>;
  * ignores auto-repeat. (Continuous controls are polled through `Key.isDown` and are not affected.)
  */
 export function createKeyPressDispatcher(handlers: KeyHandlers): (event: KeyEventLike) => void {
+  return createKeyPressRouter((code) => handlers[code]?.());
+}
+
+/**
+ * The same once-per-physical-press filter as `createKeyPressDispatcher`, for code that decides what a key means itself (a menu whose
+ * pages have different hotkeys): `onPress` gets the `KeyboardEvent.code` of each genuine press.
+ */
+export function createKeyPressRouter(onPress: (code: string) => void): (event: KeyEventLike) => void {
   const handled = new WeakSet<object>();
   return (event) => {
     if (handled.has(event)) return;
     handled.add(event);
     if (event.repeat) return;
-    handlers[event.code]?.();
+    onPress(event.code);
   };
 }

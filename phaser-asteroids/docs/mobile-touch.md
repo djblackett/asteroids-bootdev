@@ -28,9 +28,13 @@ Status: automated checks pass (below); both were tried on an Android phone (D-pa
 
 ## What the player sees
 
-**Title screen (touch mode):** a short how-to, the five power-ups, a big **TAP TO PLAY** button, Music / SFX volume with `-` / `+`
-buttons and a music on / off button, a row of three switches under the volume rows (**MUSIC ON | HAPTICS OFF | TEST VIBRATION**: see [haptics.md](haptics.md)), the **MUSIC: ORIGINAL** track selector (`<` / `>` arrows at the bottom left under the power-ups; see [music-tracks.md](music-tracks.md)), the **STEERING: JOYSTICK | D-PAD** choice, a **CONTROLS: TOUCH (tap for keyboard)** button (it takes **two taps**: the first only asks "TAP AGAIN TO SWITCH TO KEYBOARD CONTROLS", the question lapses after 3 s, and a touch within 300 ms of the first one, such as a second finger or a bounce, does not count), and a small **FULLSCREEN** button at the top right. There is deliberately no "tap anywhere to
-start": a stray touch must not begin a run.
+**Title screen (touch mode):** reorganised in the menu redesign pass, see [menus.md](menus.md). A big green **PLAY**, a **HOW TO PLAY** reference of the on-screen controls in their in-game colours
+(**D-PAD** or **STICK**, **FIRE**, **LASER**, **BOOST**, **PAUSE**), a tappable power-up legend (opens a guide with one sentence each), and two secondary buttons: **AUDIO** (music on / off, track, music volume,
+sound effects) and **CONTROLS** (STEERING D-PAD | JOYSTICK, HAPTIC FEEDBACK ON | OFF with TEST VIBRATION and a hint about silent phones, and **SWITCH TO KEYBOARD**), plus the small **FULLSCREEN** button at the
+top right. The keyboard switch takes **two taps**: the first only asks "TAP AGAIN TO SWITCH TO KEYBOARD CONTROLS", the question lapses after 3 s, and a touch within 300 ms of the first one, such as a second finger
+or a bounce, does not count. There is deliberately no "tap anywhere to start": a stray touch must not begin a run. A touch-capable device in keyboard mode gets a large green **TOUCH CONTROLS: OFF / TAP TO TURN ON**
+button top right of the title screen and a full-width one on the CONTROLS page; its PLAY button is keys-only ("PLAY WITH KEYBOARD").
+Haptic feedback is **on by default** for new players ([haptics.md](haptics.md)).
 
 **During play (landscape):**
 
@@ -52,7 +56,8 @@ start": a stray touch must not begin a run.
 | **BOOST** | above FIRE (about 70 CSS px) | Boost, one activation per press. Shows READY, or the seconds left while active / cooling down. |
 | **PAUSE** | top right (52 CSS px) | Pauses. It fires on *release* of a tap, so brushing it does nothing. |
 
-**Pause screen:** RESUME, MAIN MENU (two taps: the first asks "TAP AGAIN TO QUIT TO THE MAIN MENU"), the STEERING choice, Music and SFX `-` / `+`, the MUSIC / HAPTICS / TEST VIBRATION switches, the music track selector (bottom right), and the FULLSCREEN button. **Game over:** RETRY (disabled for the short delay
+**Pause screen:** RESUME, AUDIO, CONTROLS and RETURN TO MENU (two taps: the first asks "QUIT THIS RUN? PRESS OR TAP AGAIN"), and the FULLSCREEN button. AUDIO and CONTROLS are the title screen's own pages, opened on top of the pause menu
+(the run stays paused; BACK returns to the pause menu); STEERING, HAPTIC FEEDBACK and TEST VIBRATION are on CONTROLS (the keyboard switch is not: the mode cannot change mid-run). **Game over:** RETRY (disabled for the short delay
 after the ship is lost, as with the R key) and MAIN MENU. The on-screen controls are only drawn while a run is actually being
 played, so the canvas gets every tap in menus. The HUD at the top left is drawn 1.4x larger in touch mode (`TOUCH_HUD_SCALE`) so it is
 readable at phone size; desktop is unchanged.
@@ -137,7 +142,7 @@ lower left inside the safe-area inset, clear of the HUD text, FIRE, LASER, BOOST
 
 ## Choosing the steering control
 
-- **Where:** the **STEERING: JOYSTICK | D-PAD** row on the title screen (below the volume controls) and on the pause screen (below MAIN MENU). Both
+- **Where:** the **STEERING: D-PAD | JOYSTICK** row of the **CONTROLS** page, reachable from the title screen and from the pause menu. Both
   options are always visible, the chosen one is lit green with a gold outline, and a switch is one tap that applies at once.
 - **Remembered:** `localStorage` key `asteroids.touchSteering` (`joystick` or `dpad`). Anything else in storage is ignored. With storage blocked (a private window)
   the choice still applies for the visit and is just not remembered. **The default is the D-pad** (`DEFAULT_STEERING` in `src/input/steeringMode.ts`; after a phone test it
@@ -277,7 +282,7 @@ event type at the moment of the call and asserts both.
 - **iOS Safari (iPhone)** has no Fullscreen API for pages: there is no Fullscreen button there, only a tip about Add to Home Screen. Whether a Home Screen launch really hides
   the bar depends on the iOS version and on the standalone configuration that is *not* added yet ([standalone-web-app.md](standalone-web-app.md)). **Android Chrome** goes
   fullscreen through the button (tried on a phone over the LAN; not yet on the HTTPS Pages build).
-- Audio needs a real touch: the first tap (TAP TO PLAY) unlocks it, via Phaser's own touchend unlock. Verified in Chromium; **iOS Safari is the browser most likely to behave differently, and the silent switch / ringer mode can mute Web Audio there.**
+- Audio needs a real touch: the first tap (PLAY, or any menu button) unlocks it, via Phaser's own touchend unlock. Verified in Chromium; **iOS Safari is the browser most likely to behave differently, and the silent switch / ringer mode can mute Web Audio there.**
 - Mobile browsers may reserve edge swipes (back / forward gestures, notification shade). FIRE sits 18 px (plus safe area) from the right edge to stay clear; a system gesture
   cancels the touch, which the game treats as a release.
 - Browser touch emulation does not reproduce palm rejection, finger size, multi-touch limits of real hardware (some budget phones track 5 fingers) or latency.
@@ -287,8 +292,8 @@ event type at the moment of the call and asserts both.
 - The Fullscreen button is only offered on the title and pause screens, not during play; there is no automatic fullscreen and no orientation lock.
 - The two-player and controller-assignment screens are not reachable in touch mode (switch CONTROLS to keyboard).
 - The HUD's top-right corner can be close to the PAUSE button on 16:9 screens (the combo readout sits at x ~ 1030 +/- 120 game px, y 78-150).
-- **The pause screen's lower-left buttons sit where the steering thumb was during play.** MAIN MENU now needs two taps, so one habitual press cannot lose the run, but
-  *repeated deliberate* presses more than 300 ms apart would still confirm it (the yellow "TAP AGAIN TO QUIT" is the warning). The **JOYSTICK** steering button is also under the
+- **The pause menu is centred, clear of both thumbs** (menu redesign pass): after an automatic pause a habitual tap where the D-pad or FIRE was lands on empty space and does nothing (checked at 667 x 375 and 740 x 360).
+  RETURN TO MENU still needs two presses, and *repeated deliberate* presses more than 300 ms apart would still confirm it (the red "QUIT THIS RUN?" is the warning). The historical note that follows described the earlier layout, where the **JOYSTICK** steering button was also under the
   D-pad's lower-left on every phone size, so a habitual press there switches the steering to the joystick (visible on the pause screen and one tap to undo; it cannot lose the run).
   Moving the pause buttons clear of both thumbs is a layout change left for later (see Suggested next steps).
 - In keyboard mode on a phone, the green **TOUCH CONTROLS: OFF / TAP TO TURN ON** button is large, but its caption is small (about 11 CSS px on a 390 px tall screen).
@@ -374,7 +379,7 @@ Do not merge to `main` until you are happy: that is what publishes it.
 
 What to check on **Android Chrome** and **iPhone Safari** (landscape):
 
-- [ ] **First load:** the title screen says TOUCH; text is readable; TAP TO PLAY starts; the music starts after the tap (iPhone: check the ringer / silent switch is not on).
+- [ ] **First load:** the title screen shows the on-screen controls (D-PAD or STICK, FIRE, LASER, BOOST, PAUSE); the type is readable at arm's length; PLAY starts; the music starts after the tap (iPhone: check the ringer / silent switch is not on).
 - [ ] **Control comfort:** can you hold the phone for a few minutes? Do both thumbs reach everything without moving your grip?
 - [ ] **Joystick responsiveness:** does the stick appear under your thumb and track it without lag? Is the turning too twitchy or too sluggish
       (full turn takes about a thumb's width)? Do small thumb drifts cause turning while you meant to go straight?
@@ -384,11 +389,11 @@ What to check on **Android Chrome** and **iPhone Safari** (landscape):
 - [ ] **HUD legibility:** score, lives, laser, boost and clock readable at arm's length; nothing hidden under a thumb, the notch or the rounded corners.
 - [ ] **Safe area (notched phones):** controls inside the curved / notched edges; canvas not cut off.
 - [ ] **Rotation:** turn to portrait mid-game: the prompt appears, the game is paused. Turn back: paused, RESUME works, nothing fires by itself.
-- [ ] **Pause / restart:** PAUSE, change the volume, RESUME; die, RETRY, MAIN MENU.
+- [ ] **Pause / restart:** PAUSE, AUDIO (change the volume), BACK, CONTROLS, BACK, RESUME; die, RETRY, MAIN MENU.
 - [ ] **Browser interruptions:** pull down the notification shade, take a call / switch apps, lock the screen, swipe from the edge: the game must pause and nothing may stay held on return.
 - [ ] **Page behaviour:** no scrolling, pull-to-refresh, zoom on double-tap, text selection or long-press menu while playing; the address bar does not jump around.
 - [ ] **Performance under intense combat:** let a few minutes of asteroids build up, use Mega Power: any stutter, heat, or slow-motion feel?
-- [ ] **Audio:** music and effects balance as on desktop; volume buttons on the pause screen work; mute works; no double music after rotating or retrying.
+- [ ] **Audio:** music and effects balance as on desktop; the volume controls on the AUDIO page (open it from the pause menu) work; mute works; no double music after rotating or retrying.
 - [ ] **Mode switch:** on the title screen CONTROLS asks "TAP AGAIN" first, and a second tap switches to the keyboard screen; there the big green TOUCH CONTROLS button brings touch back, tapping elsewhere does not start a game; the choice survives a reload.
 
 Please report: phone model, browser and version, what felt wrong, and (if you can) a screenshot.
@@ -400,10 +405,10 @@ Serve the build to the phone exactly as in [Manual testing](#manual-testing-on-a
 
 **A. D-pad (5 minutes)**
 
-1. On the title screen find **STEERING** (below the volume controls). **D-PAD is lit by default** (green with a gold outline; the how-to text on the left says
-   "D-PAD: UP = forward ..."), unless you saved the joystick earlier: your saved choice is kept. Tap **JOYSTICK** and back to **D-PAD** to see it switch; reload the
+1. On the title screen open **CONTROLS** and find **STEERING**. **D-PAD is lit by default** (green; the how-to reference on the title screen says "D-PAD  Move and turn"), unless you saved the
+   joystick earlier: your saved choice is kept. Tap **JOYSTICK** and back to **D-PAD** to see it switch (the reference says "STICK  Drag to steer" while the joystick is chosen); reload the
    page and the last one you tapped should still be lit.
-2. Tap **TAP TO PLAY**. The lower left shows a round pad with four arms; there is no STEER ring.
+2. Go **BACK** and tap **PLAY**. The lower left shows a round pad with four arms; there is no STEER ring.
 3. *Directions.* Tap and hold **Up**: the ship flies forward. Tap **Left** / **Right**: it turns. While it faces some other way, hold Up again: it must fly the way
    it is *facing*, not toward your thumb.
 4. *Diagonals with one thumb.* Put the thumb between Up and Left, then between Up and Right: the ship should thrust **and** turn, and exactly the two neighbouring
@@ -417,7 +422,7 @@ Serve the build to the phone exactly as in [Manual testing](#manual-testing-on-a
 8. *Sizing.* Is the pad big enough / too big? Does it cover anything you need (asteroids at the lower left, the HUD)? Do your thumbs reach FIRE and the pad without shifting your grip?
 9. *Let go.* Lift the thumb mid-turn: turning stops immediately, nothing stays held.
 
-**B. Joystick (still available, unchanged, 2 minutes)** Pause (top right), tap **JOYSTICK** under MAIN MENU, **RESUME**. The STEER ring is back; drag as before. It should feel exactly as it did
+**B. Joystick (still available, unchanged, 2 minutes)** Pause (top right), **CONTROLS**, tap **JOYSTICK**, **BACK**, **RESUME**. The STEER ring is back; drag as before. It should feel exactly as it did
 before. Switch back and forth a couple of times from the pause screen: nothing should stay held, and each switch should hide the other control.
 
 **C. Fullscreen (Android Chrome)**
@@ -444,11 +449,12 @@ Report: phone and browser versions, which scheme you preferred and why, anything
 The pieces added after the Android test, which only a person on a phone can confirm. Android Chrome, landscape, ideally once over the LAN and once on HTTPS.
 
 1. **Fresh visit:** in a private / incognito tab (no saved settings) the title screen says CONTROLS: TOUCH and **D-PAD** is lit; the first run shows the pad.
-2. **Keyboard switch is hard to hit by accident:** tap **CONTROLS: TOUCH** once: it only asks "TAP AGAIN ...", and goes back by itself after 3 s. Rest your palm or two fingers on it: still only asks.
+2. **Keyboard switch is hard to hit by accident:** open **CONTROLS** and tap **SWITCH TO KEYBOARD** once: it only asks "TAP AGAIN ...", and goes back by itself after 3 s. Rest your palm or two fingers on it: still only asks.
    Tap it twice on purpose (a normal pause between the taps): the keyboard screen appears.
-3. **The way back:** on the keyboard screen, tapping empty space does **not** start a game. The big green **TOUCH CONTROLS: OFF** button brings the touch screen back with one tap. Reload: the last choice is kept.
+3. **The way back:** after the switch you are still on the CONTROLS page, now with a full-width green **TOUCH CONTROLS ARE OFF - TAP HERE TO TURN THEM ON** bar on top; BACK shows the title screen with a big green
+   **TOUCH CONTROLS: OFF / TAP TO TURN ON** button top right. Tapping empty space or **PLAY WITH KEYBOARD** does **not** start a game. One tap on the green button brings the touch screen back. Reload: the last choice is kept.
 4. **Pause safety:** in a run, rotate to portrait and back (or pull the notification shade down and up). The game is paused. Put your thumb back on the pad as you would to play:
-   MAIN MENU only asks "TAP AGAIN TO QUIT"; RESUME continues the same run. Check whether your thumb also lands on JOYSTICK (see Known issues).
+   nothing happens (the buttons are in the middle); RETURN TO MENU only asks "QUIT THIS RUN?"; RESUME continues the same run.
 5. **Thumb held through a rotation:** hold the pad and FIRE, rotate to portrait and back, lift: nothing turns or fires on its own; RESUME works.
 6. **Fullscreen + rotation:** enter FULLSCREEN, rotate twice, exit with a back swipe: same run, paused when expected, music still playing once (not doubled).
 7. **D-pad sliding off:** while turning, drift the thumb off the pad: it keeps turning until you lift. Say if that ever surprised you.

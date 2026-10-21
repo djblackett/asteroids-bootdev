@@ -1,11 +1,12 @@
 # Mobile haptics (Phase 8)
 
 A small, optional, **presentation-only** vibration layer for the touch version: four important gameplay moments buzz the phone through the
-standard browser Vibration API (`navigator.vibrate`). It is **OFF by default**, only the **touch UI** uses it, and it never changes what the
-game does (damage, cooldowns, lives, scoring, boost and laser behaviour, audio) or how it is drawn.
+standard browser Vibration API (`navigator.vibrate`). It is **ON by default for new players** (it was OFF until a real-phone test on a Samsung Galaxy S25 showed it is worth having),
+a saved OFF is always kept, only the **touch UI** uses it, and it never changes what the game does (damage, cooldowns, lives, scoring, boost and laser behaviour, audio) or how it is drawn.
 
-Status: built and tested in Chromium's touch emulation with a recording spy in place of `navigator.vibrate`. **Nobody has felt it on a real
-phone yet**: the durations below are starting guesses, and whether they feel good is the one open question (see "Android test").
+Status: built and tested in Chromium's touch emulation with a recording spy in place of `navigator.vibrate`, and felt once on a Samsung Galaxy S25 (Android Chrome), which is why it now
+defaults to ON. The durations below are still the original guesses (see "Android test"). One real-phone finding: **Samsung's Silent mode can suppress browser vibration even though
+`navigator.vibrate()` returns `true`**, so the CONTROLS page says so in one line (see below).
 
 ## The four effects
 
@@ -48,14 +49,18 @@ If that top effect is refused (for example it is in its cooldown) the step stays
 
 ## Settings and menus
 
-- **HAPTICS: ON / OFF**, saved in `localStorage` as `asteroids.haptics` (`1` / `0`, like the music mute). Anything else stored is ignored; blocked storage means "not remembered", never an error.
-  **Default OFF.** It does not touch the music mute or either volume.
-- **Where:** the **touch title screen** and the **touch pause screen**, in the row of three switches under the Music / SFX rows (the old full-width music button was split to make room):
-  `MUSIC ON | HAPTICS ON | TEST VIBRATION`. HAPTICS is lit (green, gold outline) when on. Every switch is 90 game px tall, about 49 CSS px on an 844 x 390 phone.
-  The keyboard / controller screens have no haptics control.
+- **HAPTIC FEEDBACK: ON / OFF**, saved in `localStorage` as `asteroids.haptics` (`1` / `0`, like the music mute). Anything else stored is ignored; blocked storage means "not remembered", never an error.
+  **Default ON** (`DEFAULT_HAPTICS_ENABLED`). The default only applies to a player who has never chosen: a saved `0` stays OFF, a saved `1` stays ON, nothing is migrated or rewritten, and nothing is written
+  until the player changes the switch. Nothing vibrates because a menu opened: only gameplay events (touch UI, a run in progress) and the TEST VIBRATION button ask for a buzz.
+  It does not touch the music mute or either volume, and it is not the same thing as muting audio.
+- **Where:** **CONTROLS** (touch mode), on the title screen and on the pause menu: `HAPTIC FEEDBACK  [ ON | OFF ]`, then `TEST VIBRATION`, then a one-line hint (below). It used to be a row of three
+  switches on the title and pause screens; the menus were reorganised in the menu redesign pass ([menus.md](menus.md)). Every target is 90 game px tall, about 47-49 CSS px on a phone.
+  The keyboard / controller screens have no haptics control (the CONTROLS page shows it only in touch mode, where it has an effect).
+- **The hint:** "Nothing buzzing? A silent phone or its vibration settings can block it." sits under TEST VIBRATION and nowhere else (no warning on the main screen).
+  Without `navigator.vibrate` (iPhone Safari) the TEST VIBRATION button is not offered and the line reads "This browser cannot vibrate."; the saved choice can still be changed and nothing errors.
 - **TEST VIBRATION:** a deliberate double pulse (80, 60, 80 ms; unlike any gameplay effect), sent from inside the tap itself. It works whether HAPTICS is on or off (it exists to tell
   "this phone cannot" from "the game did not ask"), ignores cooldowns, and reports what the *browser* did, not what the phone did:
-  `SENT - FELT IT?` (accepted), `NOT SUPPORTED` (no `navigator.vibrate`), `BLOCKED - TAP AGAIN` (the browser refused). The label reverts after 2.5 s.
+  `SENT - FELT IT?` (accepted), `BLOCKED - TAP AGAIN` (the browser refused); where there is no `navigator.vibrate` the button is not shown at all. The label reverts after 2.5 s.
   Detecting the API does not prove there is a motor, and the button never claims it does.
 - There is no intensity slider (the API has no intensity) and no pattern editor.
 
@@ -71,7 +76,7 @@ If that top effect is refused (for example it is in its cooldown) the step stays
 | `src/haptics/hapticSettings.ts` | The saved ON / OFF choice (same shape as `SteeringController`) |
 | `src/haptics/gameHaptics.ts` | `installHaptics(game)` (one manager in the registry, created in `BootScene`) and `getHaptics(scene)` |
 | `src/scenes/GameScene.ts` | Passes each step's events to the manager **only when the touch UI is active**, tells it the pause state, resets it on scene start and shutdown |
-| `src/ui/touchMenus.ts`, `touchStartMenu.ts` | The three-switch row (`TouchVolumeBlock`) on the title and pause screens |
+| `src/ui/menu/pages/controls.ts` | The HAPTIC FEEDBACK row, TEST VIBRATION and the hint, on the touch CONTROLS page (title and pause) |
 
 Controller rumble can later be a second `VibrationAdapter` fed by the same `hapticKindsOf` mapping; **not implemented** in this pass.
 
@@ -104,22 +109,22 @@ The existing mute-by-touch check moved to the new position of the music switch (
 
 - Untested on a real phone; the durations are guesses. A single pulse is the only shape used so far; death differs from damage only in length (110 vs 65 ms).
 - Android only. `vibrate` has no strength control and some phones ignore very short pulses (under about 20-30 ms), or are quieter in battery-saver or "touch vibration off" system settings.
-- The touch pause screen has no room for a separate caption, so the switches are two-line labels.
 - A shield absorbing a hit is silent by design (it is not a lost life).
 
 ## Android test (about 5 minutes)
 
 Open the build on the phone (`npm run preview:lan`, or the deployed Pages site once it is published). Landscape, Android Chrome, system touch vibration and "do not disturb" off.
 
-1. **Enable:** title screen, bottom row of the right column: **HAPTICS: OFF**. Tap it: it turns green / gold, **HAPTICS ON**, and nothing buzzes by itself. Reload: still ON.
+1. **Default:** on a fresh browser profile open **CONTROLS** from the title screen: **HAPTIC FEEDBACK** already says **ON** (green) and nothing buzzed on its own. Tap **OFF**, reload, open CONTROLS again: still OFF; **ON** and reload: still ON.
+   An existing saved OFF must still be OFF after this update.
 2. **TEST VIBRATION:** tap it. Expect a *double* pulse (buzz-pause-buzz) and the label `SENT - FELT IT?`. `BLOCKED - TAP AGAIN`: tap again. `NOT SUPPORTED`: this browser has no API (not an iPhone test).
    If TEST works but gameplay does not, the integration is at fault; if TEST is silent, the phone / browser is.
-3. **Boost:** TAP TO PLAY, tap BOOST: one **very short tick** (30 ms). Tap BOOST again while it is running or cooling down: nothing.
+3. **Boost:** PLAY, tap BOOST: one **very short tick** (30 ms). Tap BOOST again while it is running or cooling down: nothing.
 4. **Laser:** tap LASER: one short **thump** (55 ms), once, not while the beam is on screen. Spend all 15 charges to check, then tap with 0 left: nothing.
 5. **Damage:** fly into an asteroid (no shield): one firm **bump** (65 ms). Pick a Shield first and hit again: no buzz (shield absorbs it).
 6. **Death:** lose the last life: one **longer thud** (110 ms), and **no** double buzz with the damage one.
 7. **Cooldown:** tap LASER rapidly: the buzz is spaced out, never a continuous drone (at most one per 200 ms).
-8. **Turn it off:** pause, tap **HAPTICS ON**: it goes to OFF; play on, nothing buzzes. TEST VIBRATION still buzzes.
+8. **Turn it off:** pause, **CONTROLS**, tap **OFF**: play on, nothing buzzes. TEST VIBRATION still buzzes. If TEST is silent on a phone that supports it, check Silent / Do-not-disturb and the system "vibration" and "touch feedback" settings (the hint says the same).
 9. **Pause while buzzing:** TEST VIBRATION, then immediately tap PAUSE (and, in a run, die and pause at once): the buzz stops at once.
 10. **Switch apps:** during play, swipe to another app and back: the game is paused, nothing buzzes on return and no stale buzz arrives.
 11. **Fullscreen / rotation:** enter and leave FULLSCREEN, rotate to portrait and back: no vibration from the transitions.

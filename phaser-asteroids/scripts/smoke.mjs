@@ -142,6 +142,27 @@ async function run(browser) {
   const place = (x, y, rotation) =>
     page.evaluate(([x, y, r]) => { const p = window.__game.scene.getScene('GameScene').sim.player; p.position.x = x; p.position.y = y; p.rotation = r; p.velocity = { x: 0, y: 0 }; }, [x, y, rotation]);
 
+  // The menus are made of Phaser Texts inside containers: this walks the whole display list for the visible ones.
+  const deepTexts = (sceneName = 'GameScene') =>
+    page.evaluate(`(() => { const out = []; const walk = (list, visible) => { for (const c of list) { const v = visible && c.visible; if (c.type === 'Text' && v && c.text) out.push(c.text); if (c.list) walk(c.list, v); } }; walk(window.__game.scene.getScene('${sceneName}').children.list, true); return out; })()`);
+  const menuSnap = (sceneName = 'GameScene') => page.evaluate(`window.__game.scene.getScene('${sceneName}').${sceneName === 'StartScene' ? 'menuSnapshot' : 'pauseMenuSnapshot'}()`);
+  /** Moves the focus onto the item with this id with the Down key, as a keyboard player would. */
+  const focusOn = async (id, sceneName = 'GameScene') => {
+    for (let i = 0; i < 10; i++) {
+      if ((await menuSnap(sceneName)).focus === id) return true;
+      await page.keyboard.press('ArrowDown');
+      await sleep(70);
+    }
+    return false;
+  };
+  /** Opens the AUDIO page from the pause menu or the title page with the keyboard. */
+  const openAudio = async (sceneName = 'GameScene') => {
+    await focusOn('audio', sceneName);
+    await page.keyboard.press('Enter');
+    await sleep(250);
+    return (await menuSnap(sceneName)).page === 'audio';
+  };
+
   // --- start-up, engine, audio lock -------------------------------------------------------------------
   await page.goto(`${BASE}?debug`);
   await page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
@@ -270,8 +291,10 @@ async function run(browser) {
   await sleep(200);
   a = await audio();
   check('pausing the game pauses the music', a.music?.paused === true && a.musicState === 'paused', JSON.stringify(a.music));
-  const overlayText = await page.evaluate(`${scene()}.children.list.filter((c) => c.type === 'Container' && c.visible).flatMap((c) => c.list.filter((t) => t.type === 'Text').map((t) => t.text))`);
-  check('pause overlay shows PAUSED and the music toggle', overlayText.includes('PAUSED') && overlayText.some((t) => t.startsWith('Press M to Toggle Music')), JSON.stringify(overlayText));
+  const overlayText = await deepTexts();
+  const pauseItems = (await menuSnap()).items.map((i) => i.label);
+  check('pause menu shows PAUSED with RESUME, AUDIO, CONTROLS and RETURN TO MENU (and no volume rows: those live in AUDIO)', overlayText.includes('PAUSED') && JSON.stringify(pauseItems) === JSON.stringify(['RESUME', 'AUDIO', 'CONTROLS', 'RETURN TO MENU']) && !overlayText.some((t) => /VOLUME|SOUND EFFECTS/.test(t)), JSON.stringify({ overlayText, pauseItems }));
+  await shot('10-pause-menu');
   await page.keyboard.press('KeyP');
   await sleep(200);
   a = await audio();
@@ -308,9 +331,11 @@ async function run(browser) {
 
   await page.keyboard.press('KeyP');
   await sleep(200);
-  const pausedTexts = await hudText();
-  check('pause screen shows Music and SFX rows with the keys to use', pausedTexts.some((t) => t.startsWith('> Music') && t.includes('80%')) && pausedTexts.some((t) => t.startsWith('  SFX') && t.includes('80%')) && pausedTexts.some((t) => t.includes('Left/Right')), JSON.stringify(pausedTexts.filter((t) => /Music|SFX|Left/.test(t))));
+  check('AUDIO opens from the paused menu with the keyboard, and the game stays paused', (await openAudio()) && (await page.evaluate(`${scene()}.paused`)) === true);
+  const pausedTexts = await deepTexts();
+  check('the AUDIO page shows Music on / off, the track, Music volume and Sound effects, each at its level', ['MUSIC', 'MUSIC TRACK', 'MUSIC VOLUME', 'SOUND EFFECTS', 'BACK'].every((t) => pausedTexts.includes(t)) && pausedTexts.filter((t) => t === '80%').length === 2 && pausedTexts.some((t) => t.startsWith('UP / DOWN')), JSON.stringify(pausedTexts));
   await shot('11-pause-volume');
+  await focusOn('music-volume');
   await page.keyboard.press('ArrowLeft');
   await sleep(80);
   await page.keyboard.press('ArrowLeft');
@@ -319,7 +344,7 @@ async function run(browser) {
   check('Left x2 lowers Music to 60 %: applied to the playing track, one instance, still paused', near(a.vm, 0.6, 1e-9) && near(a.music?.requested, 0.42) && a.musicInstances === 1 && a.music?.paused === true, JSON.stringify({ vm: a.vm, requested: a.music?.requested, inst: a.musicInstances }));
   check('...saved, SFX untouched', (await stored('asteroids.musicVolume')) === '0.6' && near(a.vs, 0.8, 1e-9) && (await stored('asteroids.sfxVolume')) === null);
 
-  await page.keyboard.press('ArrowDown'); // select SFX
+  await focusOn('sfx-volume');
   await sleep(80);
   await page.keyboard.press('ArrowRight');
   await sleep(80);
@@ -328,12 +353,12 @@ async function run(browser) {
   check('Down + Right x2 raises SFX to 100 % and plays a sample shot at that level', near(a.vs, 1, 1e-9) && a.sfxVolumes.some((v) => near(v, 0.28)), JSON.stringify({ vs: a.vs, sfx: a.sfxVolumes }));
   check('...saved, Music untouched', (await stored('asteroids.sfxVolume')) === '1' && near(a.vm, 0.6, 1e-9));
   await sleep(500);
-  const pausedRows = (await hudText()).filter((t) => /^[> ] (Music|SFX)/.test(t));
-  check('rows redraw with the new values and selection', pausedRows.some((t) => t.startsWith('  Music') && t.includes('60%')) && pausedRows.some((t) => t.startsWith('> SFX') && t.includes('100%')), JSON.stringify(pausedRows));
+  const pausedRows = await deepTexts();
+  check('the AUDIO rows redraw with the new values', pausedRows.includes('60%') && pausedRows.includes('100%') && !pausedRows.includes('80%'), JSON.stringify(pausedRows.filter((t) => /%/.test(t))));
 
   await page.keyboard.press('KeyM'); // mute while paused, then adjust Music
   await sleep(100);
-  await page.keyboard.press('ArrowUp');
+  await focusOn('music-volume'); // (Down wraps round from the last row)
   await sleep(80);
   await page.keyboard.press('ArrowLeft');
   await sleep(150);
@@ -455,11 +480,17 @@ async function run(browser) {
   a = await audio();
   check('music keeps playing on the title screen, at the same level', a.music?.playing === true && a.musicInstances === 1 && near(a.music?.gain, 0.42) && near(a.vm, 0.6, 1e-9));
   await shot('10-start-with-powerups');
-  check('title screen shows the volume rows', (await page.evaluate(`window.__game.scene.getScene('StartScene').children.list.filter((c) => c.type === 'Text').map((t) => t.text)`)).some((t) => t.startsWith('> Music') && t.includes('60%')));
+  const titleTexts = await deepTexts('StartScene');
+  check('the title screen has no volume rows: just PLAY, AUDIO and CONTROLS', !titleTexts.some((t) => /VOLUME|SOUND EFFECTS|^MUSIC/.test(t)) && ['PLAY', 'AUDIO', 'CONTROLS'].every((t) => titleTexts.includes(t)), JSON.stringify(titleTexts.slice(0, 20)));
+  check('AUDIO opens from the title screen and shows Music at 60 %', (await openAudio('StartScene')) && (await deepTexts('StartScene')).includes('60%'));
+  await focusOn('music-volume', 'StartScene');
   await page.keyboard.press('ArrowRight');
   await sleep(120);
   a = await audio();
-  check('Right on the title screen raises Music to 70 % (live and saved)', near(a.vm, 0.7, 1e-9) && near(a.music?.gain, 0.49) && (await stored('asteroids.musicVolume')) === '0.7' && a.musicInstances === 1);
+  check('Right on the title screen\'s AUDIO page raises Music to 70 % (live and saved)', near(a.vm, 0.7, 1e-9) && near(a.music?.gain, 0.49) && (await stored('asteroids.musicVolume')) === '0.7' && a.musicInstances === 1);
+  await page.keyboard.press('Escape');
+  await sleep(200);
+  check('Escape goes back to the title page (not into a game)', (await menuSnap('StartScene')).page === 'title' && (await page.evaluate(() => window.__game.scene.isActive('StartScene'))));
   await page.keyboard.press('Space');
   await page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 3000 });
   check('can start again; still one music instance', (await audio()).musicInstances === 1);

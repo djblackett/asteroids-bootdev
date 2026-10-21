@@ -30,7 +30,6 @@ import {
 } from '../src/audio/musicTracks';
 import { seededRng } from '../src/core/rng';
 import { FakeBackend, FakeStorage, FakeTrack } from './audioFakes';
-import { trackRowText } from '../src/ui/volumePanel';
 
 const PUBLIC = resolve(import.meta.dirname, '..', 'public');
 
@@ -236,13 +235,12 @@ describe('Random selection', () => {
   });
 });
 
-describe('Track row text', () => {
-  it('has the same width for every choice and marks the selected row', () => {
-    const widths = new Set(MUSIC_CHOICES.map((c) => trackRowText(c, false).length));
-    expect(widths.size).toBe(1);
-    expect(trackRowText('megaman', true)).toBe('> Track <  Mega Man  >');
-    expect(trackRowText('random', false)).toBe('  Track <   Random   >');
-    expect(trackRowText('gatekeeper', false)).toBe('  Track < Gatekeeper >');
+describe('the AUDIO menu music track names', () => {
+  it('lists every soundtrack and Random, in the order the arrows step through them, short enough for the track box', () => {
+    const names = MUSIC_CHOICES.map((c) => choiceLabel(c).toUpperCase());
+    expect(names).toEqual(['ORIGINAL', 'MEGA MAN', 'GATEKEEPER', 'RANDOM']);
+    // The stepper's name box is about 380 game px wide and draws 32 px Courier (19 px a character).
+    for (const name of names) expect(name.length * 19).toBeLessThan(380);
   });
 });
 

@@ -179,9 +179,22 @@ async function checkMount(mount) {
       });
       await page.goto(url('?debug'));
       await page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
+      // The track is chosen on the AUDIO page: move the keyboard focus onto AUDIO (title page), open it, then onto the track row.
+      const focusOn = async (id) => {
+        for (let n = 0; n < 12; n++) {
+          if ((await page.evaluate(() => window.__game.scene.getScene('StartScene').menuSnapshot().focus)) === id) return;
+          await page.keyboard.press('ArrowDown');
+          await new Promise((r) => setTimeout(r, 60));
+        }
+      };
       for (const [i, file] of onDemandMusic.entries()) {
         const key = i === 0 ? 'music-megaman' : 'music-gatekeeper';
-        if (i === 0) await page.keyboard.press('ArrowDown'), await page.keyboard.press('ArrowDown');
+        if (i === 0) {
+          await focusOn('audio');
+          await page.keyboard.press('Enter');
+          await new Promise((r) => setTimeout(r, 300));
+          await focusOn('track');
+        }
         await page.keyboard.press('ArrowRight');
         await page.waitForFunction((k) => window.__game.registry.get('audio').musicSound?.key === k && window.__game.registry.get('audio').musicSound.isPlaying, key, { timeout: 15000 }).catch(() => {});
         const now = await page.evaluate(() => {

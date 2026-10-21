@@ -111,27 +111,36 @@ async function runDpad() {
   const t = await mobilePage(844, 390, { steering: null }); // a first-time visitor
   await t.start();
   let texts = await t.texts('StartScene');
-  check('the title screen offers STEERING: JOYSTICK | D-PAD', texts.includes('STEERING') && texts.includes('JOYSTICK') && texts.includes('D-PAD'), texts.join(' | ').slice(0, 200));
-  check('a player who never chose gets the D-pad (the default), with nothing saved yet', (await steeringOf(t)) === 'dpad' && (await t.page.evaluate(() => localStorage.getItem('asteroids.touchSteering'))) === null && (await t.texts('StartScene')).some((x) => x.startsWith('D-PAD: UP')));
+  check('the title screen shows the D-pad in its controls reference (the default), and no steering switch of its own', texts.includes('D-PAD') && texts.includes('Move and turn') && !texts.includes('STEERING') && !texts.includes('JOYSTICK'), texts.join(' | ').slice(0, 200));
+  check('a player who never chose gets the D-pad (the default), with nothing saved yet', (await steeringOf(t)) === 'dpad' && (await t.page.evaluate(() => localStorage.getItem('asteroids.touchSteering'))) === null);
   const pill = await t.rect('.tc-sys-btn');
   const pillText = await t.page.evaluate(() => document.querySelector('.tc-sys-btn').textContent);
   check('the title screen shows the Fullscreen control, at least 44 CSS px tall, inside the screen, top right', (await t.rect('.tc-system')).display === 'block' && pillText === 'FULLSCREEN' && pill.height >= 44 && pill.right <= 844 && pill.top >= 0 && pill.left > 422 && pill.top < 30, `${pillText} ${Math.round(pill.width)}x${Math.round(pill.height)} at ${Math.round(pill.left)},${Math.round(pill.top)}`);
-  const playBtn = await gameRectCss(t, 700, 105, 1180, 205);
-  check('the Fullscreen control does not cover the TAP TO PLAY button', !overlaps(pill, playBtn), JSON.stringify({ pill: [pill.left, pill.bottom], play: [playBtn.right, playBtn.top] }));
-  const selectorButtons = [await gameRectCss(t, 662, 523, 938, 613), await gameRectCss(t, 946, 523, 1222, 613)];
-  check('both steering buttons are at least 44 CSS px tall and 100 wide (thumb-sized)', selectorButtons.every((r) => r.height >= 44 && r.width >= 100), selectorButtons.map((r) => `${Math.round(r.width)}x${Math.round(r.height)}`).join(' '));
+  const playBtn = await t.itemRect('play');
+  check('the Fullscreen control does not cover the PLAY button, and PLAY is big (at least 100 CSS px wide, 60 tall)', !overlaps(pill, playBtn) && playBtn.width >= 100 && playBtn.height >= 60, JSON.stringify({ pill: [pill.left, pill.bottom], play: [playBtn.right, playBtn.top, playBtn.width, playBtn.height] }));
+  const doors = [await t.itemRect('audio'), await t.itemRect('controls'), await t.itemRect('powerups')];
+  check('AUDIO, CONTROLS and the power-up legend are thumb-sized targets (at least 44 CSS px tall), inside the screen, and nothing overlaps', doors.every((r) => r.height >= 44 && r.left >= 0 && r.right <= 844 && r.bottom <= 390) && !overlaps(doors[0], doors[1]) && !overlaps(doors[0], playBtn) && !overlaps(doors[2], playBtn), doors.map((r) => `${Math.round(r.width)}x${Math.round(r.height)}`).join(' '));
   await t.shot('dpad-title');
 
-  // the joystick is one tap away, and applies at once
-  await t.tapGame(798, 568);
-  await sleep(250);
-  check('tapping JOYSTICK selects it, applies it at once, saves it and the how-to text says what the joystick does', (await steeringOf(t)) === 'joystick' && (await t.page.evaluate(() => localStorage.getItem('asteroids.touchSteering'))) === 'joystick' && (await t.texts('StartScene')).some((x) => x.startsWith('LEFT SIDE')));
+  // the steering choice is on CONTROLS: one tap away, and it applies at once
+  await t.tapItem('controls');
+  texts = await t.texts('StartScene');
+  check('the CONTROLS page offers STEERING: D-PAD | JOYSTICK, with D-PAD lit', (await t.menu()).page === 'controls' && texts.includes('STEERING') && texts.includes('JOYSTICK') && texts.includes('D-PAD'), texts.join(' | ').slice(0, 200));
+  const segs = [await t.itemRect('steering', { zone: 'D-PAD' }), await t.itemRect('steering', { zone: 'JOYSTICK' })];
+  check('both steering buttons are at least 44 CSS px tall and 100 wide (thumb-sized)', segs.every((r) => r.height >= 44 && r.width >= 100), segs.map((r) => `${Math.round(r.width)}x${Math.round(r.height)}`).join(' '));
+  await t.shot('dpad-controls-page');
+  await t.tapItem('steering', { zone: 'JOYSTICK' });
+  check('tapping JOYSTICK selects it, applies it at once and saves it', (await steeringOf(t)) === 'joystick' && (await t.page.evaluate(() => localStorage.getItem('asteroids.touchSteering'))) === 'joystick');
   await t.shot('dpad-title-joystick-selected');
-  await t.tapGame(1082, 568);
-  await sleep(250);
-  check('tapping D-PAD selects it again, applies it at once and the how-to text says what the D-pad does', (await steeringOf(t)) === 'dpad' && (await t.texts('StartScene')).some((x) => x.startsWith('D-PAD: UP')), (await t.texts('StartScene')).filter((x) => /LEFT SIDE|D-PAD:/.test(x)).join('|'));
+  await t.tapItem('back');
+  check('back on the title screen, the how-to reference says what the joystick does', (await t.menu()).page === 'title' && (await t.texts('StartScene')).includes('STICK') && (await t.texts('StartScene')).includes('Drag to steer'));
+  await t.tapItem('controls');
+  await t.tapItem('steering', { zone: 'D-PAD' });
+  check('tapping D-PAD selects it again and applies it at once', (await steeringOf(t)) === 'dpad');
   check('the choice is saved in localStorage', (await t.page.evaluate(() => localStorage.getItem('asteroids.touchSteering'))) === 'dpad');
   await t.shot('dpad-title-dpad-selected');
+  await t.tapItem('back');
+  check('...and the reference says what the D-pad does once D-PAD is chosen again', (await t.texts('StartScene')).includes('D-PAD') && (await t.texts('StartScene')).includes('Move and turn'));
   await t.page.reload();
   await t.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
   await sleep(300);
@@ -307,17 +316,21 @@ async function runDpad() {
   await t.finger.up(14);
   await sleep(250);
   check('pausing with the thumb on the pad releases it, hides the controls and pauses', (await t.sim()).paused === true && JSON.stringify(await t.cmd()) === NEUTRAL_CMD && !(await t.overlayShown()));
-  check('the pause screen offers the steering choice with D-PAD lit, and the Fullscreen control', (await t.texts()).includes('STEERING') && (await t.texts()).includes('D-PAD') && (await t.rect('.tc-system')).display === 'block');
+  check('the pause menu offers CONTROLS, and the Fullscreen control', (await t.texts()).includes('CONTROLS') && (await t.rect('.tc-system')).display === 'block');
   await t.shot('dpad-pause');
   await t.finger.up(13);
-  await sleep(100);
-
-  // switch to the joystick FROM THE PAUSE MENU (JOYSTICK button), then resume
-  await t.tapGame(218, 610);
-  await sleep(250);
-  check('the pause menu switches to the joystick by touch and remembers it', (await steeringOf(t)) === 'joystick' && (await t.page.evaluate(() => localStorage.getItem('asteroids.touchSteering'))) === 'joystick');
-  await t.tapGame(340, 300); // RESUME
   await sleep(300);
+
+  // switch to the joystick FROM THE PAUSE MENU (CONTROLS -> JOYSTICK), then resume
+  await t.tapItem('controls', { scene: 'GameScene' });
+  check('the pause menu\'s CONTROLS page offers the steering choice with D-PAD lit, and the run stays paused', (await t.texts()).includes('STEERING') && (await t.menu('GameScene')).page === 'controls' && (await t.sim()).paused === true && (await steeringOf(t)) === 'dpad');
+  await t.shot('dpad-pause-controls');
+  await t.tapItem('steering', { zone: 'JOYSTICK', scene: 'GameScene' });
+  check('the pause menu switches to the joystick by touch and remembers it', (await steeringOf(t)) === 'joystick' && (await t.page.evaluate(() => localStorage.getItem('asteroids.touchSteering'))) === 'joystick');
+  check('the pause menu\'s CONTROLS page has no keyboard switch (the mode cannot change mid-run)', !(await t.menu('GameScene')).items.some((i) => i.id === 'to-keyboard'));
+  await t.tapItem('back', { scene: 'GameScene' });
+  await t.tapItem('resume', { scene: 'GameScene' });
+  await sleep(100);
   check('after RESUME the joystick zone is back and the D-pad is gone', (await t.rect('.tc-zone')).display === 'block' && (await t.rect('.tc-dpad')).display === 'none' && (await t.rect('.tc-hint')).display !== 'none');
   await t.finger.down(15, 150, 280);
   await t.finger.move(15, 150 - 45, 280 - 45);
@@ -352,8 +365,8 @@ async function runDpad() {
   await sleep(200);
   check('losing focus releases the pad and pauses', (await t.sim()).paused === true && JSON.stringify(await t.cmd()) === NEUTRAL_CMD);
   await t.finger.up(20);
-  await t.tapGame(340, 300);
-  await sleep(300);
+  await t.tapItem('resume', { scene: 'GameScene' });
+  await sleep(100);
 
   // orientation
   await t.finger.down(21, padPoint(pad, 0).x, padPoint(pad, 0).y);
@@ -366,8 +379,8 @@ async function runDpad() {
   await t.page.setViewportSize({ width: 844, height: 390 });
   await sleep(500);
   check('back in landscape: the same run, still paused, nothing held', (await t.sim()).paused === true && (await t.page.evaluate(`window.__game.scene.getScene('GameScene').sim.__id === window.__simId`)) && JSON.stringify(await t.cmd()) === NEUTRAL_CMD);
-  await t.tapGame(340, 300);
-  await sleep(300);
+  await t.tapItem('resume', { scene: 'GameScene' });
+  await sleep(100);
   pad = await t.rect('.tc-dpad');
   check('after RESUME the pad is in place and neutral', (await t.overlayShown()) && JSON.stringify(await t.cmd()) === NEUTRAL_CMD && pad.width >= 120);
 
@@ -430,7 +443,8 @@ async function runDpad() {
   });
   await priv.start();
   check('with storage blocked a first-time visitor still gets the D-pad', (await steeringOf(priv)) === 'dpad');
-  await priv.tapGame(798, 568);
+  await priv.tapItem('controls');
+  await priv.tapItem('steering', { zone: 'JOYSTICK' });
   await sleep(200);
   check('with storage blocked the joystick can still be chosen for the visit and nothing crashes', (await steeringOf(priv)) === 'joystick' && priv.problems.filter((x) => !/SecurityError/.test(x)).length === 0, priv.problems.join(' | '));
   await priv.context.close();
@@ -496,11 +510,22 @@ async function runDpad() {
     // One habitual press, plus the bounce of a quick double press. (Repeated deliberate taps, more than 300 ms apart, would still
     // confirm: the question is shown in yellow on a paused screen. See docs/mobile-touch.md, "Known limitations".)
     const up = padPoint(pad, 0);
+    const pauseItems = (await p.menu('GameScene')).items;
+    const rects = await Promise.all(pauseItems.map((i) => p.itemRect(i.id, { scene: 'GameScene' })));
+    const upBox = { left: up.x - 1, right: up.x + 1, top: up.y - 1, bottom: up.y + 1 };
     await p.finger.tap(up.x, up.y, 30);
     await p.finger.tap(up.x, up.y, 30);
     await sleep(250);
     const texts = await p.texts();
-    check(`[${w}x${h}] after an automatic pause, a press where the pad's UP arm was lands on MAIN MENU but does not leave the run`, (await p.activeScene()) === 'GameScene' && (await p.sim()).paused === true && texts.some((t) => /^TAP AGAIN TO QUIT/.test(t)), texts.filter((t) => /MENU|QUIT/.test(t)).join(' | '));
+    check(`[${w}x${h}] after an automatic pause, a press where the pad's UP arm was lands on no pause button and does not touch the run`, !rects.some((r) => overlaps(upBox, r)) && (await p.activeScene()) === 'GameScene' && (await p.sim()).paused === true && !texts.some((t) => /QUIT THIS RUN/.test(t)) && (await p.menu('GameScene')).page === 'pause', texts.filter((t) => /MENU|QUIT/.test(t)).join(' | '));
+    // a bouncing double press on RETURN TO MENU itself still only asks
+    const quit = await p.itemRect('menu', { scene: 'GameScene' });
+    const qx = (quit.left + quit.right) / 2;
+    const qy = (quit.top + quit.bottom) / 2;
+    await p.finger.tap(qx, qy, 30);
+    await p.finger.tap(qx, qy, 30);
+    await sleep(250);
+    check(`[${w}x${h}] a quick double press on RETURN TO MENU only asks "QUIT THIS RUN?" and does not leave the run`, (await p.activeScene()) === 'GameScene' && (await p.sim()).paused === true && (await p.texts()).some((t) => /^QUIT THIS RUN\?/.test(t)));
     await p.context.close();
   }
 }
@@ -624,8 +649,8 @@ async function runFullscreen() {
   await tapPill(f); // EXIT FULLSCREEN
   fs = await fsState(f);
   check('EXIT FULLSCREEN calls exitFullscreen(); the run stays paused and is not restarted', fs.exits === 1 && (await pillState(f)).text === 'FULLSCREEN' && (await f.sim()).paused === true && (await f.activeScene()) === 'GameScene');
-  await f.tapGame(340, 300);
-  await sleep(300);
+  await f.tapItem('resume', { scene: 'GameScene' });
+  await sleep(100);
   check('RESUME then works as usual', (await f.sim()).paused === false && (await f.overlayShown()));
   check('(fullscreen) no console errors', f.problems.length === 0, f.problems.join(' | '));
   await f.context.close();
@@ -674,7 +699,7 @@ async function runFullscreen() {
   await ios.finger.tap(ok.x, ok.y, 70);
   await sleep(200);
   check('OK closes the tip, and the title screen is unaffected', !(await ios.page.evaluate(() => document.querySelector('.tc-tip').classList.contains('tc-tip-open'))) && (await ios.activeScene()) === 'StartScene');
-  await ios.tapGame(940, 155);
+  await ios.tapItem('play');
   await ios.page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
   await sleep(300);
   check('the game itself is unaffected by the missing Fullscreen API (starts and plays)', (await ios.overlayShown()) && !(await pillState(ios)).shown);
@@ -764,10 +789,6 @@ const ROCK_ON_SHIP = `(() => { const s = window.__game.scene.getScene('GameScene
 const vibCalls = (p) => p.page.evaluate(() => window.__vib.calls.slice());
 const hapticsOn = (p) => p.page.evaluate(`window.__game.registry.get('haptics').enabled`);
 const savedHaptics = (p) => p.page.evaluate(() => localStorage.getItem('asteroids.haptics'));
-// The three switches under the volume rows: the same place on the title screen and the pause screen.
-const MUTE_AT = [750, 452];
-const HAPTICS_AT = [940, 452];
-const TEST_AT = [1130, 452];
 
 async function runHaptics() {
   console.log('\n--- Haptics ---');
@@ -778,58 +799,66 @@ async function runHaptics() {
   await t.context.addInitScript(VIB_MOCK);
   await t.start();
   const titleTexts = await t.texts('StartScene');
-  check('the title screen offers HAPTICS and TEST VIBRATION beside the music switch', titleTexts.includes('HAPTICS\nOFF') && titleTexts.includes('TEST\nVIBRATION') && titleTexts.includes('MUSIC\nON'), titleTexts.filter((x) => /HAPTICS|TEST|MUSIC/.test(x)).join(' | '));
-  check('a new player has HAPTICS OFF and nothing is saved until they choose', (await hapticsOn(t)) === false && (await savedHaptics(t)) === null);
-  const boxes = [];
-  for (const [x, y] of [MUTE_AT, HAPTICS_AT, TEST_AT]) boxes.push(await gameRectCss(t, x - 90, y - 45, x + 90, y + 45));
-  check('the three switches are thumb-sized (at least 44 CSS px tall and 80 wide), do not overlap and stay on screen', boxes.every((b) => b.height >= 44 && b.width >= 80 && b.right <= 844 && b.bottom <= 390) && !overlaps(boxes[0], boxes[1]) && !overlaps(boxes[1], boxes[2]), boxes.map((b) => `${Math.round(b.width)}x${Math.round(b.height)}`).join(' '));
-  await t.shot('haptics-title-off');
+  check('the title screen has no haptic or vibration controls of its own (they live in CONTROLS)', !titleTexts.some((x) => /HAPTIC|VIBRATION/.test(x)), titleTexts.join(' | ').slice(0, 200));
+  check('a new player has HAPTICS ON by default, and nothing is saved until they choose', (await hapticsOn(t)) === true && (await savedHaptics(t)) === null);
+  check('merely showing the title screen did not vibrate', (await vibCalls(t)).length === 0);
+  await t.tapItem('controls');
+  const controlTexts = await t.texts('StartScene');
+  check('the CONTROLS page offers HAPTIC FEEDBACK ON | OFF, TEST VIBRATION and a one-line hint about silent phones', controlTexts.includes('HAPTIC FEEDBACK') && controlTexts.includes('TEST VIBRATION') && controlTexts.includes('ON') && controlTexts.includes('OFF') && controlTexts.some((x) => /silent phone/.test(x)), controlTexts.join(' | ').slice(0, 220));
+  check('opening the CONTROLS page did not vibrate either', (await vibCalls(t)).length === 0);
+  const boxes = [await t.itemRect('haptics', { zone: 'ON' }), await t.itemRect('haptics', { zone: 'OFF' }), await t.itemRect('test-vibration')];
+  check('the haptic switches are thumb-sized (at least 44 CSS px tall and 80 wide), do not overlap and stay on screen', boxes.every((b) => b.height >= 44 && b.width >= 80 && b.right <= 844 && b.bottom <= 390) && !overlaps(boxes[0], boxes[1]) && !overlaps(boxes[1], boxes[2]), boxes.map((b) => `${Math.round(b.width)}x${Math.round(b.height)}`).join(' '));
+  await t.shot('haptics-controls-on');
 
   const audio0 = await t.audio();
-  await t.tapGame(...HAPTICS_AT);
-  await sleep(250);
-  check('tapping HAPTICS turns it ON, shows it lit, saves "1" and does not buzz by itself', (await hapticsOn(t)) === true && (await savedHaptics(t)) === '1' && (await t.texts('StartScene')).includes('HAPTICS\nON') && (await vibCalls(t)).length === 0);
+  await t.tapItem('haptics', { zone: 'OFF' });
+  check('tapping OFF turns it OFF, saves "0" and does not buzz by itself', (await hapticsOn(t)) === false && (await savedHaptics(t)) === '0' && (await vibCalls(t)).length === 0);
   const audio1 = await t.audio();
   check('the setting does not touch the music mute or either volume', audio1.muted === audio0.muted && audio1.vm === audio0.vm && audio1.vs === audio0.vs, JSON.stringify([audio0, audio1].map((a) => [a.muted, a.vm, a.vs])));
-  await t.shot('haptics-title-on');
+  await t.shot('haptics-controls-off');
+  await t.tapItem('haptics', { zone: 'ON' });
+  check('tapping ON turns it ON again, saves "1" and does not buzz by itself', (await hapticsOn(t)) === true && (await savedHaptics(t)) === '1' && (await vibCalls(t)).length === 0);
 
-  await t.tapGame(...TEST_AT);
-  await sleep(250);
+  await t.tapItem('test-vibration');
   const afterTest = await t.page.evaluate(() => ({ calls: window.__vib.calls.slice(), events: window.__vib.events.slice() }));
   check('TEST VIBRATION sends one short double pulse, from inside the tap itself (a direct user gesture)', JSON.stringify(afterTest.calls) === JSON.stringify([[80, 60, 80]]) && afterTest.events[0] !== null, JSON.stringify(afterTest));
   info(`TEST VIBRATION ran inside a "${afterTest.events[0]}" event`);
-  check('the button then says SENT - FELT IT? (it reports the request, it does not claim the phone moved)', (await t.texts('StartScene')).includes('SENT -\nFELT IT?'));
-  await t.shot('haptics-title-test-sent');
+  check('the button then says SENT - FELT IT? (it reports the request, it does not claim the phone moved)', (await t.texts('StartScene')).includes('SENT - FELT IT?'));
+  await t.shot('haptics-controls-test-sent');
   await sleep(2500);
-  check('and goes back to TEST VIBRATION by itself', (await t.texts('StartScene')).includes('TEST\nVIBRATION'));
+  check('and goes back to TEST VIBRATION by itself', (await t.texts('StartScene')).includes('TEST VIBRATION'));
 
-  await t.tapGame(...HAPTICS_AT);
-  await sleep(200);
-  await t.tapGame(...TEST_AT);
-  await sleep(200);
+  await t.tapItem('haptics', { zone: 'OFF' });
+  await t.tapItem('test-vibration');
   check('TEST VIBRATION works with HAPTICS OFF too (it exists to tell "this phone cannot" from "the game did not ask")', (await hapticsOn(t)) === false && (await vibCalls(t)).filter((c) => Array.isArray(c)).length === 2, JSON.stringify(await vibCalls(t)));
   await t.page.evaluate(() => {
     window.__vib.accept = false;
   });
   await sleep(2500);
-  await t.tapGame(...TEST_AT);
-  await sleep(200);
-  check('a browser that refuses the request is reported as BLOCKED - TAP AGAIN, without errors', (await t.texts('StartScene')).includes('BLOCKED -\nTAP AGAIN') && t.problems.length === 0, t.problems.join(' | '));
+  await t.tapItem('test-vibration');
+  check('a browser that refuses the request is reported as BLOCKED - TAP AGAIN, without errors', (await t.texts('StartScene')).includes('BLOCKED - TAP AGAIN') && t.problems.length === 0, t.problems.join(' | '));
   await t.page.evaluate(() => {
     window.__vib.accept = true;
   });
-  await t.tapGame(...HAPTICS_AT);
-  await sleep(200);
+  await t.tapItem('haptics', { zone: 'ON' });
   check('HAPTICS is ON again', (await hapticsOn(t)) === true && (await savedHaptics(t)) === '1');
   await t.page.reload();
   await t.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
   await sleep(300);
-  check('after a reload HAPTICS is still ON (the preference persists)', (await hapticsOn(t)) === true && (await t.texts('StartScene')).includes('HAPTICS\nON'));
+  check('after a reload HAPTICS is still ON (the preference persists)', (await hapticsOn(t)) === true && (await savedHaptics(t)) === '1');
+  await t.page.evaluate(() => localStorage.setItem('asteroids.haptics', '0'));
+  await t.page.reload();
+  await t.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
+  await sleep(300);
+  check('a saved OFF is kept: the new ON default never overrides an explicit choice, and nothing is rewritten', (await hapticsOn(t)) === false && (await savedHaptics(t)) === '0');
+  await t.tapItem('controls');
+  check('...and the CONTROLS page shows it OFF (an OFF lit, nothing buzzed)', (await hapticsOn(t)) === false && (await vibCalls(t)).length === 0);
+  await t.shot('haptics-controls-saved-off');
   await t.page.evaluate(() => localStorage.setItem('asteroids.haptics', 'maybe'));
   await t.page.reload();
   await t.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
   await sleep(300);
-  check('an invalid stored value falls back to OFF', (await hapticsOn(t)) === false);
+  check('an invalid stored value falls back to the default (ON)', (await hapticsOn(t)) === true);
   await t.page.evaluate(() => localStorage.setItem('asteroids.haptics', '1'));
   await t.page.reload();
   await t.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
@@ -866,24 +895,23 @@ async function runHaptics() {
   // opening / closing the pause menu is not gameplay; the same switches are there
   await t.finger.tap(pauseBtn.x, pauseBtn.y);
   await sleep(300);
-  check('the pause menu offers the same HAPTICS and TEST VIBRATION controls, with HAPTICS lit', (await t.texts()).includes('HAPTICS\nON') && (await t.texts()).includes('TEST\nVIBRATION'));
+  await t.tapItem('controls', { scene: 'GameScene' });
+  check('the pause menu\'s CONTROLS page offers the same haptic controls, with ON lit', (await t.texts()).includes('HAPTIC FEEDBACK') && (await t.texts()).includes('TEST VIBRATION') && (await hapticsOn(t)) === true);
   await t.shot('haptics-pause-on');
-  await t.tapGame(...HAPTICS_AT);
-  await sleep(200);
-  check('HAPTICS can be switched OFF from the pause menu (saved at once)', (await hapticsOn(t)) === false && (await savedHaptics(t)) === '0' && (await t.texts()).includes('HAPTICS\nOFF'));
-  await t.tapGame(...TEST_AT);
-  await sleep(200);
+  await t.tapItem('haptics', { zone: 'OFF', scene: 'GameScene' });
+  check('HAPTICS can be switched OFF from the pause menu (saved at once)', (await hapticsOn(t)) === false && (await savedHaptics(t)) === '0');
+  await t.tapItem('test-vibration', { scene: 'GameScene' });
   check('TEST VIBRATION from the pause menu sends the test pattern', JSON.stringify((await vibCalls(t)).slice(2)) === JSON.stringify([[80, 60, 80]]), JSON.stringify(await vibCalls(t)));
-  await t.tapGame(...HAPTICS_AT);
-  await sleep(200);
+  await t.tapItem('haptics', { zone: 'ON', scene: 'GameScene' });
   check('...and HAPTICS goes back ON', (await hapticsOn(t)) === true);
-  await t.tapGame(340, 300); // RESUME
-  await sleep(300);
+  await t.tapItem('back', { scene: 'GameScene' });
+  await t.tapItem('resume', { scene: 'GameScene' });
+  await sleep(100);
   const beforePause = (await vibCalls(t)).length;
   await t.finger.tap(pauseBtn.x, pauseBtn.y);
-  await sleep(250);
-  await t.tapGame(340, 300);
-  await sleep(250);
+  await sleep(300);
+  await t.tapItem('resume', { scene: 'GameScene' });
+  await sleep(150);
   check('pausing and resuming caused no vibration', (await vibCalls(t)).length === beforePause);
 
   // damage, then death: one vibration each
@@ -982,10 +1010,15 @@ async function runHaptics() {
   await u.context.addInitScript(NO_VIB_MOCK);
   await u.context.addInitScript(SEED_HAPTICS('1'));
   await u.start();
-  check('without navigator.vibrate the menus still show the controls', (await u.texts('StartScene')).includes('HAPTICS\nON') && (await u.page.evaluate(() => typeof navigator.vibrate)) === 'undefined');
-  await u.tapGame(...TEST_AT);
-  await sleep(200);
-  check('TEST VIBRATION says NOT SUPPORTED instead of pretending', (await u.texts('StartScene')).includes('NOT\nSUPPORTED'), (await u.texts('StartScene')).filter((x) => /TEST|SUPPORT|SENT/.test(x)).join('|'));
+  await u.tapItem('controls');
+  const uTexts = await u.texts('StartScene');
+  const uItems = (await u.menu()).items.map((i) => i.id);
+  check('without navigator.vibrate the CONTROLS page still shows the saved HAPTIC FEEDBACK choice, no TEST VIBRATION button, and says why', uTexts.includes('HAPTIC FEEDBACK') && !uItems.includes('test-vibration') && !uTexts.includes('TEST VIBRATION') && uTexts.includes('This browser cannot vibrate.') && (await u.page.evaluate(() => typeof navigator.vibrate)) === 'undefined', uTexts.join(' | ').slice(0, 200));
+  await u.shot('haptics-controls-unsupported');
+  await u.tapItem('haptics', { zone: 'OFF' });
+  await u.tapItem('haptics', { zone: 'ON' });
+  check('switching the setting without the API is silent: no errors', u.problems.length === 0, u.problems.join(' | '));
+  await u.tapItem('back');
   await u.play();
   await u.quiet();
   const ub = await u.centre('.tc-boost');
@@ -1168,6 +1201,27 @@ async function mobilePage(width, height, { query = '?debug', mobile = true, touc
       const p = await api.css(x, y);
       await finger.tap(p.x, p.y);
     },
+    /** Where every menu button is, in game px: the title screen's menu (default) or the pause menu in a run. */
+    menu: (sceneName = 'StartScene') => page.evaluate((k) => window.__game.scene.getScene(k)[k === 'StartScene' ? 'menuSnapshot' : 'pauseMenuSnapshot'](), sceneName),
+    /** A real touch on a menu item (or one named part of it: '+', 'OFF', ...), found through the menu itself, then a pause long enough to clear its page-change lock. */
+    tapItem: async (id, { zone = null, scene = 'StartScene', ms = 70 } = {}) => {
+      const item = (await api.menu(scene)).items.find((i) => i.id === id);
+      if (!item) throw new Error(`no menu item "${id}" on ${scene}`);
+      const r = zone ? item.zones.find((z) => z.name === zone) : item;
+      if (!r) throw new Error(`no zone "${zone}" on ${id}`);
+      const p = await api.css(r.x + r.w / 2, r.y + r.h / 2);
+      await finger.tap(p.x, p.y, ms);
+      await sleep(270);
+    },
+    /** CSS rectangle of a menu item, or of one named part of it. */
+    itemRect: async (id, { zone = null, scene = 'StartScene' } = {}) => {
+      const item = (await api.menu(scene)).items.find((i) => i.id === id);
+      if (!item) return null;
+      const r = zone ? item.zones.find((z) => z.name === zone) : item;
+      return gameRectCss(api, r.x, r.y, r.x + r.w, r.y + r.h);
+    },
+    /** Every visible Text of a scene's menu, one per line of what the player reads. */
+    menuTexts: (sceneName = 'StartScene') => api.texts(sceneName),
     /** Centre of a DOM control, CSS pixels. */
     centre: (selector) =>
       page.evaluate((sel) => {
@@ -1204,9 +1258,9 @@ async function mobilePage(width, height, { query = '?debug', mobile = true, touc
       await page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
       await sleep(250);
     },
-    /** Taps TAP TO PLAY and waits for the run. */
+    /** Taps PLAY and waits for the run. */
     play: async () => {
-      await api.tapGame(940, 155);
+      await api.tapItem('play');
       await page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
       await sleep(350);
     },
@@ -1228,8 +1282,10 @@ async function run() {
   check('loads on a landscape phone viewport (WebGL, 1280x720 logical)', await m.page.evaluate(() => window.__game.renderer.type === 2 && window.__game.scale.width === 1280));
   check('touch mode is selected automatically on a coarse-pointer device', (await m.bodyClasses()).includes('tc-active'));
   const titleTexts = await m.texts('StartScene');
-  check('the title screen is the touch one (TAP TO PLAY, no keyboard instructions)', titleTexts.includes('TAP TO PLAY') && !titleTexts.some((t) => /SPACE|click to start/.test(t)), titleTexts.join(' | ').slice(0, 160));
-  check('the title screen explains the controls briefly and offers volume and a CONTROLS switch', titleTexts.some((t) => t.startsWith('LEFT SIDE')) && titleTexts.some((t) => t.startsWith('FIRE')) && titleTexts.includes('MUSIC') && titleTexts.includes('SFX') && titleTexts.some((t) => t.startsWith('CONTROLS: TOUCH')));
+  const titleItems = (await m.menu()).items.map((i) => i.id);
+  check('the title screen is the touch one (a big PLAY, no keyboard instructions, no players switch)', titleTexts.includes('PLAY') && !titleTexts.some((t) => /SPACE|click to start/.test(t)) && !titleItems.includes('players'), titleTexts.join(' | ').slice(0, 160));
+  check('the title screen shows how to play (the controls with their in-game names), the power-up legend, and AUDIO and CONTROLS doors', ['HOW TO PLAY', 'STICK', 'FIRE', 'LASER', 'BOOST', 'POWER-UPS', 'RAPID FIRE', 'SLOW MOTION'].every((t) => titleTexts.includes(t)) && ['audio', 'controls', 'powerups'].every((i) => titleItems.includes(i)), titleTexts.join(' | ').slice(0, 200));
+  check('no settings clutter on the first screen (no volume rows, haptics, steering or mute switches)', !titleTexts.some((t) => /VOLUME|SFX|HAPTIC|VIBRATION|STEERING|^MUSIC/.test(t)), titleTexts.join(' | ').slice(0, 200));
   check('no touch controls are drawn on the title screen', !(await m.overlayShown()));
   const a0 = await m.audio();
   check('audio starts locked, music not yet playing', a0.locked === true && !a0.playing, JSON.stringify(a0));
@@ -1239,7 +1295,7 @@ async function run() {
   check('the rotate prompt is not shown in landscape', (await m.rect('.tc-rotate')).display === 'none');
 
   await m.play();
-  check('tapping TAP TO PLAY (a real touch) starts a one-player run', (await m.activeScene()) === 'GameScene' && (await m.page.evaluate(`window.__game.scene.getScene('GameScene').sim.players.length`)) === 1);
+  check('tapping PLAY (a real touch) starts a one-player run', (await m.activeScene()) === 'GameScene' && (await m.page.evaluate(`window.__game.scene.getScene('GameScene').sim.players.length`)) === 1);
   const a1 = await m.audio();
   check('that touch unlocks audio and starts exactly one music instance', !a1.locked && a1.playing && a1.instances === 1, JSON.stringify(a1));
   check('the control overlay appears in landscape during play', await m.overlayShown());
@@ -1381,7 +1437,8 @@ async function run() {
   check('pausing released the held steering and FIRE', (await m.cmd()).rotate === 0 && !(await m.cmd()).shoot);
   check('the on-screen controls are hidden while paused', !(await m.overlayShown()));
   const pauseTexts = await m.texts();
-  check('the pause screen is touch-operable (RESUME, MAIN MENU, volume)', pauseTexts.includes('RESUME') && pauseTexts.includes('MAIN MENU') && pauseTexts.includes('MUSIC') && pauseTexts.includes('SFX'), pauseTexts.join(' | ').slice(0, 200));
+  const pauseItems = (await m.menu('GameScene')).items;
+  check('the pause screen is touch-operable (RESUME, AUDIO, CONTROLS, RETURN TO MENU), every button at least 44 CSS px tall', ['RESUME', 'AUDIO', 'CONTROLS', 'RETURN TO MENU'].every((t) => pauseTexts.includes(t)) && pauseItems.length === 4 && (await Promise.all(pauseItems.map((i) => m.itemRect(i.id, { scene: 'GameScene' })))).every((r) => r.height >= 44 && r.width >= 100), pauseTexts.join(' | ').slice(0, 200));
   check('no keyboard-only instructions on the touch pause screen', !pauseTexts.some((t) => /Press P|Press ESC|Press M/.test(t)));
   await m.finger.up(8);
   await m.finger.up(9);
@@ -1390,21 +1447,25 @@ async function run() {
   check('no ghost tap: the game is still paused 600 ms after the PAUSE tap and the lifting of the other fingers', st.paused === true && (await m.activeScene()) === 'GameScene');
   await m.shot('04-pause');
 
-  // volume by touch
+  // volume by touch, in the pause menu's AUDIO page: opens on top of the pause menu, BACK returns to it
   const v0 = await m.audio();
-  await m.tapGame(940 + 240, 250); // music +
-  await sleep(150);
-  await m.tapGame(940 + 30, 250 + 104); // sfx -
-  await sleep(150);
+  await m.tapItem('audio', { scene: 'GameScene' });
+  check('AUDIO opens from the pause menu and the run stays paused', (await m.menu('GameScene')).page === 'audio' && (await m.sim()).paused === true && !(await m.overlayShown()));
+  await m.shot('04b-pause-audio');
+  await m.tapItem('music-volume', { zone: '+', scene: 'GameScene' });
+  await m.tapItem('sfx-volume', { zone: '-', scene: 'GameScene' });
   const v1 = await m.audio();
   check('Music and SFX volume can be changed by touch (and are saved)', Math.abs(v1.vm - (v0.vm + 0.1)) < 1e-9 && Math.abs(v1.vs - (v0.vs - 0.1)) < 1e-9 && (await m.page.evaluate(() => localStorage.length)) > 0, JSON.stringify({ v0: [v0.vm, v0.vs], v1: [v1.vm, v1.vs] }));
-  await m.tapGame(940 - 190, 250 + 2 * 104 - 6); // mute toggle (the left of the three switches; HAPTICS is in the middle)
-  await sleep(150);
-  check('the music can be muted by touch, and unmuted again', (await m.audio()).muted === true && (await (async () => (await m.tapGame(940 - 190, 250 + 2 * 104 - 6), await sleep(150), (await m.audio()).muted === false))()));
+  await m.tapItem('music', { zone: 'OFF', scene: 'GameScene' });
+  const mutedNow = (await m.audio()).muted === true;
+  await m.tapItem('music', { zone: 'ON', scene: 'GameScene' });
+  check('the music can be muted by touch, and unmuted again', mutedNow && (await m.audio()).muted === false);
+  await m.tapItem('back', { scene: 'GameScene' });
+  check('BACK returns to the pause menu, still paused (not resumed, not restarted)', (await m.menu('GameScene')).page === 'pause' && (await m.sim()).paused === true);
 
   const instanceBefore = await m.page.evaluate(`window.__game.scene.getScene('GameScene').sim.time`);
-  await m.tapGame(340, 300); // RESUME
-  await sleep(300);
+  await m.tapItem('resume', { scene: 'GameScene' });
+  await sleep(100);
   st = await m.sim();
   check('RESUME resumes play and brings the controls back', st.paused === false && (await m.overlayShown()), JSON.stringify({ paused: st.paused }));
   check('nothing is held after resuming (no stuck steering, FIRE, LASER or BOOST)', JSON.stringify(await m.cmd()) === JSON.stringify({ rotate: 0, move: 0, shoot: false, laser: false, boost: false }));
@@ -1439,8 +1500,8 @@ async function run() {
   st = await m.sim();
   check('the same run is still there, paused, not restarted, and no input is held', st.paused === true && st.phase === 'playing' && st.lives === 99 && (await m.page.evaluate(`window.__game.scene.getScene('GameScene').sim.__id === window.__simId`)));
   check('the pause screen is shown again after turning back (RESUME needs a tap)', (await m.texts()).includes('RESUME'));
-  await m.tapGame(340, 300);
-  await sleep(300);
+  await m.tapItem('resume', { scene: 'GameScene' });
+  await sleep(100);
   check('RESUME works after a rotation, and controls are neutral', (await m.sim()).paused === false && (await m.overlayShown()) && (await m.cmd()).rotate === 0);
   const rotAudio = await m.audio();
   check('rotating did not create a second music instance', rotAudio.instances === 1 && rotAudio.playing, JSON.stringify(rotAudio));
@@ -1455,8 +1516,8 @@ async function run() {
   await m.page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await sleep(150);
   check('regaining focus leaves it paused with nothing held', (await m.sim()).paused === true && !(await m.cmd()).shoot);
-  await m.tapGame(340, 300);
-  await sleep(300);
+  await m.tapItem('resume', { scene: 'GameScene' });
+  await sleep(100);
   check('RESUME after a focus loss resumes play', (await m.sim()).paused === false && (await m.overlayShown()));
 
   // =====================================================================================================
@@ -1494,7 +1555,7 @@ async function run() {
   await sleep(300);
   await m.tapGame(850, 470);
   await m.page.waitForFunction(() => window.__game.scene.isActive('StartScene'), null, { timeout: 5000 });
-  check('MAIN MENU by touch returns to the touch title screen with no controls drawn', (await m.texts('StartScene')).includes('TAP TO PLAY') && !(await m.overlayShown()));
+  check('MAIN MENU by touch returns to the touch title screen with no controls drawn', (await m.texts('StartScene')).includes('PLAY') && (await m.texts('StartScene')).includes('HOW TO PLAY') && !(await m.overlayShown()));
   const listeners = await m.page.evaluate(`({ touch: window.__game.registry.get('touchControls').listenerCount, blur: window.__game.events.listenerCount('blur'), hidden: window.__game.events.listenerCount('hidden') })`);
   await m.play();
   const listeners2 = await m.page.evaluate(`({ touch: window.__game.registry.get('touchControls').listenerCount, blur: window.__game.events.listenerCount('blur'), hidden: window.__game.events.listenerCount('hidden') })`);
@@ -1503,62 +1564,70 @@ async function run() {
   // =====================================================================================================
   // 6. Input-mode selection
   // =====================================================================================================
-  // back to the title: pause -> MAIN MENU by touch. MAIN MENU throws the run away, so it takes two taps.
+  // back to the title: pause -> RETURN TO MENU by touch. It throws the run away, so it takes two taps.
   const p2 = await m.centre(sel.pause);
   await m.finger.tap(p2.x, p2.y);
-  await sleep(250);
-  await m.tapGame(340, 460);
   await sleep(300);
-  check('ONE tap on the pause screen\'s MAIN MENU does not leave the run: it asks "TAP AGAIN TO QUIT"', (await m.activeScene()) === 'GameScene' && (await m.sim()).paused === true && (await m.texts()).some((t) => /^TAP AGAIN TO QUIT/.test(t)));
-  await m.tapGame(340, 300); // RESUME instead
-  await sleep(300);
-  await m.finger.tap(p2.x, p2.y);
-  await sleep(250);
-  check('the question does not carry over to the next pause (MAIN MENU is back to one plain label)', (await m.texts()).includes('MAIN MENU') && !(await m.texts()).some((t) => /TAP AGAIN/.test(t)));
-  await m.tapGame(340, 460);
-  await sleep(500);
-  await m.tapGame(340, 460); // the deliberate second tap
-  await m.page.waitForFunction(() => window.__game.scene.isActive('StartScene'), null, { timeout: 5000 });
+  await m.tapItem('menu', { scene: 'GameScene' });
+  check('ONE tap on the pause screen\'s RETURN TO MENU does not leave the run: it asks "QUIT THIS RUN?"', (await m.activeScene()) === 'GameScene' && (await m.sim()).paused === true && (await m.texts()).some((t) => /^QUIT THIS RUN\?/.test(t)));
+  await m.tapItem('resume', { scene: 'GameScene' }); // RESUME instead
   await sleep(200);
-  check('a second tap on MAIN MENU goes to the title screen', (await m.texts('StartScene')).includes('TAP TO PLAY'));
+  await m.finger.tap(p2.x, p2.y);
+  await sleep(300);
+  check('the question does not carry over to the next pause (RETURN TO MENU is back to one plain label)', (await m.texts()).includes('RETURN TO MENU') && !(await m.texts()).some((t) => /QUIT THIS RUN/.test(t)));
+  await m.tapItem('menu', { scene: 'GameScene' });
+  await sleep(300);
+  await m.tapItem('menu', { scene: 'GameScene' }); // the deliberate second tap
+  await m.page.waitForFunction(() => window.__game.scene.isActive('StartScene'), null, { timeout: 5000 });
+  await sleep(300);
+  check('a second tap on RETURN TO MENU goes to the title screen', (await m.texts('StartScene')).includes('PLAY') && (await m.texts('StartScene')).includes('HOW TO PLAY'));
   // The keyboard switch takes two taps: one stray thumb must not hide every touch control.
   // Nor may one accidental contact made of two touches: two fingers (or a palm) landing together, or a bouncing thumb.
-  const ctl = await m.css(940, 664);
+  // The switch lives on the CONTROLS page now, below the steering and haptic choices.
+  await m.tapItem('controls');
+  const controlIds = (await m.menu()).items.map((i) => i.id);
+  check('CONTROLS opens a page for this phone: steering, haptic feedback, test vibration, and the way to the keyboard', (await m.menu()).page === 'controls' && ['steering', 'haptics', 'test-vibration', 'to-keyboard', 'back'].every((id) => controlIds.includes(id)), JSON.stringify(controlIds));
+  const sw = await m.itemRect('to-keyboard');
+  check('the switch to keyboard controls is a full-size button (at least 44 CSS px tall)', sw.height >= 44 && sw.width >= 120, JSON.stringify({ w: Math.round(sw.width), h: Math.round(sw.height) }));
+  const ctl = { x: (sw.left + sw.right) / 2, y: (sw.top + sw.bottom) / 2 };
   await m.finger.downMany([[31, ctl.x - 40, ctl.y], [32, ctl.x + 40, ctl.y]]);
   await sleep(70);
   await m.finger.up(31);
   await m.finger.up(32);
   await sleep(400);
-  check('two fingers landing together on CONTROLS do not switch (they count as one tap: it only asks)', (await m.bodyClasses()).includes('tc-active') && (await m.texts('StartScene')).some((t) => /TAP AGAIN TO SWITCH/.test(t)) && (await m.page.evaluate(() => localStorage.getItem('asteroids.inputMode'))) === null);
+  check('two fingers landing together on the switch do not switch (they count as one tap: it only asks)', (await m.bodyClasses()).includes('tc-active') && (await m.texts('StartScene')).some((t) => /TAP AGAIN TO SWITCH/.test(t)) && (await m.page.evaluate(() => localStorage.getItem('asteroids.inputMode'))) === null);
+  await m.shot('07a-controls-tap-again');
   await sleep(3400);
   await m.finger.tap(ctl.x, ctl.y, 30);
   await m.finger.tap(ctl.x, ctl.y, 30); // lands well inside the 300 ms that count as the same contact
   await sleep(400);
   check('a bouncing double contact (two quick taps) does not switch either', (await m.bodyClasses()).includes('tc-active') && (await m.page.evaluate(() => localStorage.getItem('asteroids.inputMode'))) === null);
   await sleep(3400);
-  await m.tapGame(940, 664);
-  await sleep(300);
-  check('ONE tap on the CONTROLS (keyboard) button does not switch: it asks "TAP AGAIN" and touch controls stay on', (await m.bodyClasses()).includes('tc-active') && (await m.texts('StartScene')).some((t) => /TAP AGAIN TO SWITCH/.test(t)) && (await m.page.evaluate(() => localStorage.getItem('asteroids.inputMode'))) === null);
-  await m.shot('07a-title-tap-again');
-  await sleep(3400);
-  check('the question lapses by itself if nobody taps again', (await m.bodyClasses()).includes('tc-active') && !(await m.texts('StartScene')).some((t) => /TAP AGAIN/.test(t)) && (await m.texts('StartScene')).some((t) => t.startsWith('CONTROLS: TOUCH')));
-  await m.tapGame(940, 664);
+  check('the question lapses by itself if nobody taps again', (await m.bodyClasses()).includes('tc-active') && !(await m.texts('StartScene')).some((t) => /TAP AGAIN/.test(t)) && (await m.texts('StartScene')).includes('SWITCH TO KEYBOARD'));
+  await m.tapItem('to-keyboard');
   await sleep(1200);
   check('a tap long after the first one only asks again (still touch mode)', (await m.bodyClasses()).includes('tc-active') && (await m.texts('StartScene')).some((t) => /TAP AGAIN TO SWITCH/.test(t)));
-  await m.tapGame(940, 664); // the confirming tap, inside the window
-  await m.page.waitForFunction(() => window.__game.scene.getScene('StartScene').sys.isActive() && window.__game.scene.getScene('StartScene').children.list.some((c) => c.type === 'Text' && /Press SPACE/.test(c.text)), null, { timeout: 5000 });
-  check('the CONTROLS switch on the title screen turns touch off: the keyboard / controller title screen appears', !(await m.bodyClasses()).includes('tc-active') && (await m.texts('StartScene')).some((t) => /Press SPACE/.test(t)));
+  await m.finger.tap(ctl.x, ctl.y, 70); // the confirming tap, inside the window
+  await m.page.waitForFunction(() => window.__game.scene.getScene('StartScene').menuSnapshot().items.some((i) => i.id === 'touch-on'), null, { timeout: 5000 });
+  await sleep(300);
+  check('the switch turns touch off right where the player is: the CONTROLS page for keyboard and controller appears, with a big way back to touch on top', !(await m.bodyClasses()).includes('tc-active') && (await m.menu()).page === 'controls' && (await m.texts('StartScene')).some((t) => /TOUCH CONTROLS ARE OFF/.test(t)));
   check('the choice is remembered for next time', (await m.page.evaluate(() => localStorage.getItem('asteroids.inputMode'))) === 'desktop');
-  check('a touch-capable device in keyboard mode is still offered a way back', (await m.texts('StartScene')).some((t) => t.startsWith('TOUCH CONTROLS: OFF')));
+  const recover = await m.itemRect('touch-on');
+  check('the way back is a big green button across the top of the page: at least 44 CSS px tall and 300 wide, in words', recover.height >= 44 && recover.width >= 300, JSON.stringify({ w: Math.round(recover.width), h: Math.round(recover.height) }));
+  await m.shot('07b-controls-keyboard-mode');
+  await m.tapItem('back');
+  check('a touch-capable device in keyboard mode is offered the way back on the first screen too', (await m.texts('StartScene')).some((t) => /^TOUCH CONTROLS: OFF\nTAP TO TURN ON$/.test(t)));
   await m.shot('07-title-keyboard-mode');
-  const turnOn = await gameRectCss(m, 940, 3, 1240, 93);
+  const turnOn = await m.itemRect('touch-on');
   const turnOnTexts = await m.texts('StartScene');
-  check('the way back is a big button, not small text: at least 44 CSS px tall and 120 wide, top right, labelled in words', turnOn.height >= 44 && turnOn.width >= 120 && turnOnTexts.some((t) => /^TOUCH CONTROLS: OFF\nTAP TO TURN ON$/.test(t)), JSON.stringify({ w: Math.round(turnOn.width), h: Math.round(turnOn.height), texts: turnOnTexts.filter((t) => /TOUCH/.test(t)) }));
-  check('a phone in keyboard mode says "Press SPACE to start" (a tap does not start it)', turnOnTexts.includes('Press SPACE to start'), turnOnTexts.filter((t) => /Press/.test(t)).join('|'));
-  await m.tapGame(200, 300); // empty space
-  await m.tapGame(640, 630); // on the prompt itself
+  check('the way back is a big button, not small text: at least 44 CSS px tall and 120 wide, top right, labelled in words', turnOn.height >= 44 && turnOn.width >= 120 && turnOn.top < 40 && turnOn.right > 422 && turnOnTexts.some((t) => /^TOUCH CONTROLS: OFF\nTAP TO TURN ON$/.test(t)), JSON.stringify({ w: Math.round(turnOn.width), h: Math.round(turnOn.height), texts: turnOnTexts.filter((t) => /TOUCH/.test(t)) }));
+  const playLabel = (await m.menu()).items.find((i) => i.id === 'play');
+  check('a phone in keyboard mode offers PLAY WITH KEYBOARD, which says it needs SPACE (the green button above is the main thing)', playLabel.label === 'PLAY WITH KEYBOARD' && turnOnTexts.includes('PRESS SPACE ON A KEYBOARD'), turnOnTexts.filter((t) => /PLAY|SPACE/.test(t)).join('|'));
+  await m.tapGame(300, 300); // empty space, over the controls reference
+  await m.tapGame(640, 52); // the title itself
+  await m.tapItem('play'); // a tap on PLAY WITH KEYBOARD: a phone has no keyboard, so a tap alone does not start it either
   await sleep(400);
-  check('a stray tap anywhere on the keyboard title screen of a phone does NOT start a game', (await m.activeScene()) === 'StartScene');
+  check('a stray tap anywhere on the keyboard title screen of a phone, even on PLAY itself, does NOT start a game', (await m.activeScene()) === 'StartScene');
   await m.page.keyboard.press('Space');
   await m.page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
   await sleep(250);
@@ -1573,26 +1642,25 @@ async function run() {
   await m.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
   await sleep(250);
   check('after a reload the remembered choice (keyboard) wins over the automatic guess', !(await m.bodyClasses()).includes('tc-active'));
-  const turnOn2 = await gameRectCss(m, 940, 3, 1240, 93);
-  await m.finger.tap((turnOn2.left + turnOn2.right) / 2, (turnOn2.top + turnOn2.bottom) / 2); // the centre of the big button, on a real touch
-  await sleep(500);
-  check('tapping TOUCH CONTROLS brings the touch screen back', (await m.bodyClasses()).includes('tc-active') && (await m.texts('StartScene')).includes('TAP TO PLAY'));
+  await m.tapItem('touch-on'); // the big button, on a real touch
+  await sleep(300);
+  check('tapping TOUCH CONTROLS brings the touch screen back', (await m.bodyClasses()).includes('tc-active') && (await m.texts('StartScene')).includes('PLAY') && (await m.texts('StartScene')).includes('HOW TO PLAY'));
   await m.context.close();
 
   // ?touch=0 on a phone: the URL decides for the visit
   const forced = await mobilePage(844, 390, { query: '?debug&touch=0' });
   await forced.start();
-  check('?touch=0 forces the keyboard game on a phone', !(await forced.bodyClasses()).includes('tc-active') && (await forced.texts('StartScene')).some((t) => /Press SPACE/.test(t)));
+  check('?touch=0 forces the keyboard game on a phone', !(await forced.bodyClasses()).includes('tc-active') && (await forced.texts('StartScene')).includes('PLAY WITH KEYBOARD'));
   check('...and saves nothing (the URL only decides for this visit)', (await forced.page.evaluate(() => localStorage.getItem('asteroids.inputMode'))) === null);
   // The way back must also survive a clumsy touch: two fingers landing on it together switch once, not twice (back to keyboard).
-  const turnOn3 = await gameRectCss(forced, 940, 3, 1240, 93);
+  const turnOn3 = await forced.itemRect('touch-on');
   const tcy = (turnOn3.top + turnOn3.bottom) / 2;
   await forced.finger.downMany([[41, turnOn3.left + 40, tcy], [42, turnOn3.right - 40, tcy]]);
   await sleep(70);
   await forced.finger.up(41);
   await forced.finger.up(42);
   await sleep(500);
-  check('two fingers landing together on TOUCH CONTROLS still bring the touch screen back', (await forced.bodyClasses()).includes('tc-active') && (await forced.texts('StartScene')).includes('TAP TO PLAY'));
+  check('two fingers landing together on TOUCH CONTROLS still bring the touch screen back', (await forced.bodyClasses()).includes('tc-active') && (await forced.texts('StartScene')).includes('PLAY') && (await forced.texts('StartScene')).includes('HOW TO PLAY'));
   await forced.context.close();
 
   // =====================================================================================================
@@ -1635,7 +1703,8 @@ async function run() {
   const portrait = await mobilePage(390, 844);
   await portrait.start();
   check('opening the page in portrait shows the rotate prompt straight away', (await portrait.rect('.tc-rotate')).display !== 'none');
-  await portrait.tapGame(940, 155); // a tap where PLAY would be must not start a game
+  const playBox = (await portrait.menu()).items.find((i) => i.id === 'play');
+  await portrait.tapGame(playBox.x + playBox.w / 2, playBox.y + playBox.h / 2); // a tap where PLAY is must not start a game
   await sleep(300);
   check('and a tap through the prompt does not start a game', (await portrait.activeScene()) === 'StartScene');
   await portrait.shot('08-portrait-start');
@@ -1656,7 +1725,7 @@ async function run() {
   await dpage.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
   await sleep(250);
   const dtexts = await dpage.evaluate(`(${VISIBLE_TEXTS})(window.__game.scene.getScene('StartScene'))`);
-  check('desktop (fine pointer, no touch): the title screen is the keyboard one, with no touch switch', dtexts.includes('Press SPACE or click to start') && dtexts.includes('[1]  ONE PLAYER') && !dtexts.some((t) => /TOUCH/.test(t)), dtexts.slice(0, 6).join(' | '));
+  check('desktop (fine pointer, no touch): the title screen is the keyboard one (PLAY with SPACE, 1 / 2 players), with no touch switch', dtexts.includes('PLAY') && dtexts.includes('SPACE') && dtexts.includes('1 PLAYER') && dtexts.includes('2 PLAYERS') && !dtexts.some((t) => /TOUCH/.test(t)), dtexts.slice(0, 6).join(' | '));
   const dstate = await dpage.evaluate(() => ({ cls: [...document.body.classList], overlay: getComputedStyle(document.querySelector('.tc-root')).display, rotate: getComputedStyle(document.querySelector('.tc-rotate')).display, touchAction: getComputedStyle(document.body).touchAction, canvas: document.querySelector('canvas').getBoundingClientRect().toJSON() }));
   check('desktop: no touch classes, the overlay and rotate prompt are display:none, no page-wide touch-action', dstate.cls.length === 0 && dstate.overlay === 'none' && dstate.rotate === 'none' && dstate.touchAction === 'auto', JSON.stringify(dstate));
   check('desktop: the canvas still fills the 1280x720 window exactly', Math.round(dstate.canvas.width) === 1280 && Math.round(dstate.canvas.height) === 720 && dstate.canvas.left === 0 && dstate.canvas.top === 0);
@@ -1681,7 +1750,7 @@ async function run() {
   await dpage.keyboard.press('KeyP');
   await sleep(150);
   const dpaused = await dpage.evaluate(`(${VISIBLE_TEXTS})(window.__game.scene.getScene('GameScene'))`);
-  check('desktop: the pause screen is the original keyboard one', dpaused.includes('Press P to Resume') && dpaused.includes('Press ESC for Main Menu') && !dpaused.includes('RESUME'));
+  check('desktop: the pause menu has the same four buttons, plus the keyboard hint line', dpaused.includes('PAUSED') && ['RESUME', 'AUDIO', 'CONTROLS', 'RETURN TO MENU'].every((t) => dpaused.includes(t)) && dpaused.some((t) => /^P: resume/.test(t)));
   check('desktop: no console errors', dproblems.length === 0, dproblems.join(' | '));
   await desktop.close();
 
@@ -1695,7 +1764,7 @@ async function run() {
   const lmedia = await lpage.evaluate(() => ({ coarse: matchMedia('(pointer: coarse)').matches, touchPoints: navigator.maxTouchPoints }));
   info(`touch laptop emulation: ${JSON.stringify(lmedia)}`);
   if (!lmedia.coarse) {
-    check('touch laptop (mouse primary + touch screen): keyboard title screen plus an unobtrusive TOUCH CONTROLS switch', ltexts.includes('Press SPACE or click to start') && ltexts.some((t) => t.startsWith('TOUCH CONTROLS: OFF')));
+    check('touch laptop (mouse primary + touch screen): keyboard title screen plus a TOUCH CONTROLS switch', ltexts.includes('PLAY') && ltexts.includes('SPACE') && ltexts.some((t) => t.startsWith('TOUCH CONTROLS: OFF')));
   } else {
     info('this Chromium reports a coarse pointer for hasTouch, so the touch-laptop case cannot be emulated here (covered by unit tests of the policy)');
   }

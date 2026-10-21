@@ -25,7 +25,6 @@ import { MusicController } from '../src/audio/musicController';
 import { SfxPlayer, type PlayingSound, type SfxBackend } from '../src/audio/sfxPlayer';
 import type { SimEvent } from '../src/core/game';
 import { seededRng } from '../src/core/rng';
-import { volumeBar, volumeRowText } from '../src/ui/volumePanel';
 import { FakeBackend, FakeStorage, FakeTrack } from './audioFakes';
 import { FRAME, hold, quietSim } from './helpers';
 
@@ -121,14 +120,10 @@ describe('volume helpers', () => {
     expect(musicGain(9)).toBeCloseTo(MUSIC_MAX_GAIN); // out-of-range input cannot exceed the ceiling
   });
 
-  it('formats percentages and draws a ten-cell bar', () => {
+  it('formats percentages', () => {
     expect(formatPercent(0.8)).toBe('80%');
     expect(formatPercent(0)).toBe('0%');
-    expect(volumeBar(0.8)).toBe('████████░░');
-    expect(volumeBar(0)).toBe('░░░░░░░░░░');
-    expect(volumeBar(1)).toBe('██████████');
-    expect(volumeRowText('Music', 0.8, true)).toBe('> Music ████████░░  80%');
-    expect(volumeRowText('SFX  ', 1, false)).toBe('  SFX   ██████████ 100%');
+    expect(formatPercent(1)).toBe('100%');
   });
 });
 

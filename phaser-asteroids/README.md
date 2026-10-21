@@ -29,6 +29,8 @@ npm run test:combat   # build, then real-browser tests of combos, kill-streak ba
 npm run test:coop     # build, then real-browser two-player tests: both players on one keyboard, lives, friendly fire, Revive, HUD
 npm run test:gamepad  # build, then real-browser tests with a SIMULATED gamepad (keyboard + controller co-op, hot-plug, focus, pause, restart)
 npm run test:touch    # build, then real-browser touch tests: genuine multi-touch (4 fingers), joystick and D-pad, fullscreen (scripted API + real), mobile viewports, portrait prompt, pause / retry, input-mode switch
+npm run test:music    # build, then real-browser tests of the soundtrack selector (keyboard, mouse, touch, controller), Random mode and failed downloads
+npm run test:menu     # build, then real-browser tests of the title / AUDIO / CONTROLS / pause menus, plus an automated layout review of every page at five phone and five desktop sizes
 npm run test:pages    # build, then check the production build at the Pages URL path and at / (the deployment gate)
 ```
 
@@ -66,16 +68,29 @@ what blocks a deploy, troubleshooting, rollback, gamepad checks and the custom-d
 | E | Laser beam (15 charges, 1 s cooldown) |
 | Shift | Boost (3 s, 8 s cooldown; rams asteroids, no shooting) |
 | M | Mute / unmute music |
-| ↑ / ↓, ← / → (while paused, or on the title screen) | Select Music, SFX or Track; lower / raise a volume in 10 % steps, or step the music track (Original, Mega Man, Gatekeeper, Random). Saved in the browser. Mouse: click the left / right half of the Track row. Controller: X on the title screen, the D-pad on the pause screen. |
+| ↑ / ↓ / ← / → (in a menu: the title screen, AUDIO, CONTROLS, the pause menu) | Move the highlight; ← / → change the highlighted slider or choice. Enter / Space press the highlighted button (Space always means PLAY on the title page). Esc goes back one page. |
 | P | Pause / resume (also happens automatically when the tab or window loses focus) |
 | R, Enter, or click RETRY | Restart after game over (after a 1.5 s delay) |
-| Esc | Back to the title screen (while paused or on the game-over screen) |
+| Esc | Back one menu page; on the pause menu itself, or after game over, back to the title screen |
+
+### Menus
+
+The title screen answers three things first: how to start (**PLAY**, big and green; Space), how to steer (the controls that are active now: key caps, a controller's buttons, or the on-screen
+touch controls) and what the pick-ups do (a compact power-up legend that opens a guide with one sentence each). Settings are one step away:
+
+- **AUDIO** (title and pause): music on / off, the soundtrack (Original, Mega Man, Gatekeeper, Random), music volume, sound effects volume. Saved in the browser; changes apply at once.
+- **CONTROLS** (title and pause): on a phone the steering choice (D-pad or joystick), haptic feedback with TEST VIBRATION, and the way to the keyboard; with a keyboard the key map, the controllers and
+  who each one drives, the controller layout and (two players) Player 2's keys. A touch-capable device in keyboard mode always has a large green way back to touch controls.
+- **CO-OP** (title, two players): lives, friendly fire and each player's speed (the L, F, S, D keys still work).
+- **Pause:** RESUME, AUDIO, CONTROLS, RETURN TO MENU (two presses). AUDIO and CONTROLS leave the run paused and BACK returns to the pause menu.
+
+Details, where every old setting went, the phone safeguards and the tests: [docs/menus.md](docs/menus.md).
 
 ### Two players, one keyboard
 
 Press **2** on the title screen (**1** goes back to the classic game). With two players the title screen also offers
 **L** (independent / shared lives), **F** (friendly fire on / off), **K** (Player 2's keys) and **S** / **D**
-(Player 1 / Player 2 speed handicap). Controls, as in the Python game, except Player 2's boost (see below):
+(Player 1 / Player 2 speed handicap), all of which are also buttons on the **CO-OP** and **CONTROLS** pages. Controls, as in the Python game, except Player 2's boost (see below):
 
 | | Player 1 | Player 2 (arrows) | Player 2 (alternative, press K) |
 | --- | --- | --- | --- |
@@ -93,8 +108,8 @@ and a page cannot stop that, so it is `.` here. If the arrow cluster ghosts on y
 
 The usual setup is **Player 1 on the keyboard, Player 2 on a controller**, as in the Python game. Plug the controller in, press a
 button on it (browsers only reveal a controller after a press), choose **2** players, and press **A** on the controller: it joins
-as Player 2 (the status line at the bottom left of the title screen says so). **LB** gives it to Player 1, **RB** to Player 2
-(also **G**, or a click on its line, to cycle). **C** (or **Y** on the pad) shows the controller layout. A player with a controller
+as Player 2 (the title screen's reference shows "PLAYER 2 + PAD" and the CONTROLS page lists it). **LB** gives it to Player 1, **RB** to Player 2
+(also **G**, or a click on its button on the CONTROLS page, to cycle). **C** shows the controller layout (**Y** on the pad opens CONTROLS). A player with a controller
 keeps their keyboard keys too; where both push the same axis the keyboard wins, buttons are OR-ed.
 
 | Control | Action |
@@ -106,9 +121,9 @@ keeps their keyboard keys too; where both push the same axis the keyboard wins, 
 | X | Laser Beam (once per press) |
 | B | Boost (once per press) |
 | START | Pause / resume |
-| BACK | Main menu (while paused or on the game-over screen) |
-| A | Retry after game over; join / start on the title screen |
-| D-pad on the title screen | Left / right = 1 or 2 players; on the pause screen it adjusts the volumes |
+| BACK | Main menu (on the pause menu itself or on the game-over screen); back one page inside AUDIO / CONTROLS |
+| A | Retry after game over; join an unassigned controller on the title screen; press the highlighted menu button (PLAY by default) |
+| D-pad in a menu | Move the highlight (left / right on the 1 / 2 PLAYERS switch or a slider change it); B goes back, X steps the music track on the title screen |
 
 A controller that is unplugged during play pauses the game and names the player; plugging it back in returns the ship to the pad.
 Buttons held when a controller connects, the window regains focus, or a run (re)starts are ignored until released. Details and the
@@ -117,11 +132,11 @@ recovered Python mapping are in `docs/implementation-progress.md` (Phase 5).
 ### Touchscreen (phone / tablet prototype, one player, landscape)
 
 On a device whose primary pointer is a finger the game starts in touch mode (`?touch=1` / `?touch=0` forces it; the CONTROLS button on the
-title screen switches and remembers). Left side: a digital **D-pad** by default (up = forward, down = back, left / right turn, corners do both with one thumb) or, if you
+CONTROLS page's SWITCH TO KEYBOARD (two taps) and the green TOUCH CONTROLS button switch and remember). Left side: a digital **D-pad** by default (up = forward, down = back, left / right turn, corners do both with one thumb) or, if you
 prefer, a floating joystick (drag anywhere; left / right rotates, up / down flies, proportional with the controller's dead zone); pick with the
-**STEERING: JOYSTICK | D-PAD** buttons on the title and pause screens (your choice is remembered and never overridden). A **FULLSCREEN** button (title and pause screens) hides the browser's
+**STEERING** choice on the CONTROLS page (title and pause menu; your choice is remembered and never overridden). A **FULLSCREEN** button (title and pause screens) hides the browser's
 address bar where the browser allows it; on iPhone Safari, which does not, it offers a short Add-to-Home-Screen tip instead. Right side: **FIRE** (hold; works while steering), **LASER** (tap) and **BOOST** (tap); **PAUSE** top right.
-Menus, pause, volume and game over all work by touch. **HAPTICS** (title and pause screens, off by default) makes an Android phone vibrate briefly for Boost, Laser, damage and death, with a TEST VIBRATION button ([docs/haptics.md](docs/haptics.md)). In portrait a "Rotate your phone to play." prompt covers the game and pauses it.
+Menus, pause, volume and game over all work by touch. **HAPTIC FEEDBACK** (CONTROLS page, **on by default**, a saved OFF is kept) makes an Android phone vibrate briefly for Boost, Laser, damage and death, with a TEST VIBRATION button ([docs/haptics.md](docs/haptics.md)). In portrait a "Rotate your phone to play." prompt covers the game and pauses it.
 Desktop keyboard, controller and two-player play are unchanged. It has been tested in Chromium's touch emulation only: layout, input
 mapping, lifecycle rules, browser tests, what to check by hand on Android Chrome and iPhone Safari, and the known issues are in
 [docs/mobile-touch.md](docs/mobile-touch.md); a possible future installed-web-app configuration is sketched in [docs/standalone-web-app.md](docs/standalone-web-app.md).
@@ -144,12 +159,13 @@ src/
   input/     Held keys (by KeyboardEvent.code), gamepads (GamepadHub, gamepadMapping) and touch (touchModel, touchBinding, touchControls, inputMode, steeringMode, fullscreen) -> the same PlayerInput; one-shot key dispatcher; ?keydebug diagnostics
   haptics/   Optional phone vibration for four events (hapticPatterns, hapticManager, vibrationAdapter, hapticSettings)
   audio/     Pure logic (event -> sound, music state machine, volume settings, mix config) + one Phaser adapter (`AudioDirector`)
-  ui/        HUD, pause / game-over overlays, the Music / SFX volume panel, the title screen's controller status; touch: DOM overlay (touchOverlay.ts, systemOverlay.ts, touch.css) and touch menus
+  ui/        HUD, game-over overlay; touch: DOM overlay (touchOverlay.ts, systemOverlay.ts, touch.css). ui/menu/: the title / AUDIO / CONTROLS / pause menus (docs/menus.md)
 tests/       Vitest suites for src/core and src/audio (no browser, no audio device)
   gameSetup.ts  The title screen's choices (kept in the Phaser registry); the game scene builds a fresh GameSim from them
 scripts/     smoke.mjs: browser smoke test; keyboard.mjs: real-browser keyboard tests; combat.mjs: combo / banner / UFO tests;
-             coop.mjs: two-player tests; gamepad.mjs: keyboard + simulated-gamepad co-op tests; touch.mjs: multi-touch / mobile-viewport tests
-docs/        implementation-progress.md, deployment.md, mobile-touch.md, haptics.md, music-tracks.md, standalone-web-app.md
+             coop.mjs: two-player tests; gamepad.mjs: keyboard + simulated-gamepad co-op tests; touch.mjs: multi-touch / mobile-viewport tests;
+             music.mjs: soundtrack selector; menu.mjs: menus and their layout at every phone size; pages-check.mjs: the deployment gate
+docs/        implementation-progress.md, deployment.md, mobile-touch.md, haptics.md, music-tracks.md, menus.md, standalone-web-app.md
 ```
 
 Design rule: gameplay lives in `src/core` and is driven only by `GameSim.step(dt, input)`; Phaser is used for

@@ -157,6 +157,32 @@ async function run(browser) {
     page.evaluate(`(() => { const h = ${HUB}; return { pads: h.pads().map((p) => ({ index: p.index, name: p.name, layout: p.layout, armed: p.armed })),
       p1: h.padFor(0, 2)?.index ?? null, p2: h.padFor(1, 2)?.index ?? null, solo: h.padFor(0, 1)?.index ?? null, listeners: h.listenerCount, log: [...h.eventLog()] }; })()`);
 
+  const menuItems = () => page.evaluate(`${T}.menuSnapshot()`);
+  /** Moves the keyboard focus onto a title-screen item (Down / Up, then Left / Right along its row) and presses Enter. */
+  const openFromTitle = async (id, press = true) => {
+    for (let i = 0; i < 16; i++) {
+      const snap = await menuItems();
+      const here = snap.items.find((x) => x.id === snap.focus);
+      const there = snap.items.find((x) => x.id === id);
+      if (here.id === id) break;
+      const dy = there.y - here.y;
+      await page.keyboard.press(Math.abs(dy) > 30 ? (dy > 0 ? 'ArrowDown' : 'ArrowUp') : there.x > here.x ? 'ArrowRight' : 'ArrowLeft');
+      await sleep(70);
+    }
+    if (!press) return;
+    await page.keyboard.press('Enter');
+    await sleep(300);
+  };
+  /** The controller rows of the CONTROLS page (opens it from the title screen and comes back). */
+  const controllerRows = async () => {
+    await openFromTitle('controls');
+    const rows = (await menuItems()).items.filter((i) => /^pad-\d/.test(i.id)).map((i) => i.label);
+    const lines = await texts(T);
+    await page.keyboard.press('Escape');
+    await sleep(250);
+    return { rows, lines };
+  };
+
   /** Fresh page at the title screen. */
   const title = async (query = '') => {
     await page.evaluate(() => window.__pads?.slots.fill(null)).catch(() => {});
@@ -203,8 +229,14 @@ async function run(browser) {
   // =====================================================================================================================
   await title();
   let t = await texts(T);
-  check('with no controller the title screen says so, and offers the layout screen', t.some((x) => /No controller detected/.test(x)) && t.some((x) => /C: controller layout/.test(x)), JSON.stringify(t.filter((x) => /ontroller/.test(x))));
-  check('the start prompt is the keyboard one when no controller is assigned', t.includes('Press SPACE or click to start'));
+  check('with no controller the title screen shows the keyboard reference and no controller prompt', t.includes('HOW TO PLAY') && t.includes('SPACE') && !t.some((x) => /CONTROLLER FOUND/.test(x)), JSON.stringify(t.slice(0, 12)));
+  let cr = await controllerRows();
+  check('the CONTROLS page says no controller was found and offers the layout screen', cr.lines.some((x) => /No controller found/.test(x)) && (await menuItems()).items.length > 0 && cr.rows.length === 0, JSON.stringify(cr));
+  await openFromTitle('controls');
+  check('...with a CONTROLLER LAYOUT button', (await menuItems()).items.some((i) => i.label === 'CONTROLLER LAYOUT'));
+  await page.keyboard.press('Escape');
+  await sleep(250);
+  check('PLAY is on the title screen, with SPACE as its key', (await menuItems()).items.some((i) => i.id === 'play') && t.includes('SPACE'));
   await shot('title-no-pad');
   await page.keyboard.press('Digit2');
   await begin();
@@ -237,36 +269,39 @@ async function run(browser) {
   await padEvent('gamepadconnected');
   await sleep(250);
   t = await texts(T);
-  check('a simulated controller is detected and listed as not assigned', t.some((x) => /Controller 1: Xbox 360 Controller -> not assigned/.test(x)), JSON.stringify(t.filter((x) => /ontroller/.test(x))));
+  cr = await controllerRows();
+  check('a simulated controller is detected: the title says CONTROLLER FOUND and the CONTROLS page lists it as not assigned', t.some((x) => /CONTROLLER FOUND/.test(x)) && cr.rows.some((x) => /CONTROLLER 1: NOT ASSIGNED Xbox 360 Controller/.test(x)), JSON.stringify({ t: t.filter((x) => /ONTROLLER/.test(x)), rows: cr.rows }));
   await padPut(0, {});
   await sleep(150);
   await padTap(0, BTN.RT); // not a join button
   t = await texts(T);
-  check('only A / START join: other buttons (RT) leave it unassigned', t.some((x) => /not assigned/.test(x)));
+  check('only A / START join: other buttons (RT) leave it unassigned', t.some((x) => /CONTROLLER FOUND/.test(x)) && (await hub()).solo === null);
   await padTap(0, BTN.A);
   t = await texts(T);
-  check('A on an unassigned pad assigns it (one-player: Player 1) and the prompt mentions A', t.some((x) => /Controller 1: .* -> PLAYER 1/.test(x)) && t.includes('Press SPACE, click or A to start'), JSON.stringify(t.filter((x) => /ontroller|Press/.test(x))));
+  cr = await controllerRows();
+  check('A on an unassigned pad assigns it (one-player: Player 1): the title shows the controller reference, the CONTROLS page lists it', t.includes('HOW TO PLAY  -  CONTROLLER') && t.includes('L-STICK') && t.includes('START') && !t.some((x) => /CONTROLLER FOUND/.test(x)) && cr.rows.some((x) => /CONTROLLER 1: PLAYER 1/.test(x)), JSON.stringify({ t: t.slice(0, 14), rows: cr.rows }));
   await page.keyboard.press('Digit2');
   await sleep(200);
   t = await texts(T);
-  check('choosing two players moves a pad that joined automatically to Player 2 (keyboard stays Player 1)', t.some((x) => /-> PLAYER 2/.test(x)), JSON.stringify(t.filter((x) => /ontroller/.test(x))));
-  check('the two-player page marks which player has the controller (PLAYER 2 + CONTROLLER; Player 1 stays keyboard-only)', t.includes('PLAYER 2  + CONTROLLER') && t.includes('PLAYER 1'), JSON.stringify(t.filter((x) => /^PLAYER/.test(x))));
+  cr = await controllerRows();
+  check('choosing two players moves a pad that joined automatically to Player 2 (keyboard stays Player 1)', cr.rows.some((x) => /-> ?PLAYER 2|: PLAYER 2/.test(x)) && (await hub()).p2 === 0, JSON.stringify(cr.rows));
+  check('the two-player title marks which player has the controller (PLAYER 2 + PAD; Player 1 stays keyboard-only)', t.includes('PLAYER 2 + PAD') && t.includes('PLAYER 1') && !t.includes('PLAYER 1 + PAD'), JSON.stringify(t.filter((x) => /^PLAYER/.test(x))));
   await shot('title-pad-p2');
   await padTap(0, BTN.LB);
   t = await texts(T);
-  check('LB gives the pad to Player 1', t.some((x) => /-> PLAYER 1/.test(x)) && (await hub()).p1 === 0);
+  check('LB gives the pad to Player 1', t.includes('PLAYER 1 + PAD') && (await hub()).p1 === 0);
   await padTap(0, BTN.RB);
   t = await texts(T);
-  check('RB gives it to Player 2', t.some((x) => /-> PLAYER 2/.test(x)) && (await hub()).p2 === 0);
+  check('RB gives it to Player 2', t.includes('PLAYER 2 + PAD') && (await hub()).p2 === 0);
   await page.keyboard.press('KeyG');
   await sleep(150);
   t = await texts(T);
-  check('G cycles the controller (Player 2 -> Player 1 -> none) from the keyboard', t.some((x) => /-> PLAYER 1/.test(x)));
+  check('G cycles the controller (Player 2 -> Player 1 -> none) from the keyboard', t.includes('PLAYER 1 + PAD'));
   await page.keyboard.press('KeyG');
   await page.keyboard.press('KeyG');
   await sleep(150);
   t = await texts(T);
-  check('...and round to Player 2 again', t.some((x) => /-> PLAYER 2/.test(x)));
+  check('...and round to Player 2 again', t.includes('PLAYER 2 + PAD'));
   await page.keyboard.press('KeyC');
   await sleep(200);
   t = await texts(T);
@@ -274,11 +309,11 @@ async function run(browser) {
   await shot('layout');
   await page.keyboard.press('Escape');
   await sleep(150);
-  check('Esc closes the layout screen', !(await texts(T)).includes('CONTROLLER LAYOUT'));
+  check('Esc closes the layout screen and returns to the title page', !(await texts(T)).includes('CONTROLLER LAYOUT') && (await menuItems()).page === 'title');
   await padTap(0, BTN.Y);
-  check('Y on the controller opens it too', (await texts(T)).includes('CONTROLLER LAYOUT'));
+  check('Y on the controller opens the CONTROLS page', (await menuItems()).page === 'controls');
   await padTap(0, BTN.B);
-  check('and B closes it', !(await texts(T)).includes('CONTROLLER LAYOUT'));
+  check('and B goes back to the title page', (await menuItems()).page === 'title');
 
   // =====================================================================================================================
   // 3. Keyboard Player 1 + controller Player 2, playing together
@@ -404,7 +439,7 @@ async function run(browser) {
   await sleep(400);
   const ps1 = await sim();
   let tx = await texts();
-  check('START pauses (even with stick and X held): the ship stops, the overlay offers START to resume', ps0.paused && ps1.paused && near(ps0.p2.y, ps1.p2.y, 0.01) && tx.includes('PAUSED') && tx.includes('Press P or START to Resume'), JSON.stringify(tx.filter((x) => /ress/.test(x))));
+  check('START pauses (even with stick and X held): the ship stops, the overlay offers START to resume', ps0.paused && ps1.paused && near(ps0.p2.y, ps1.p2.y, 0.01) && tx.includes('PAUSED') && tx.some((x) => /START: resume/.test(x)), JSON.stringify(tx.filter((x) => /resume/.test(x))));
   await shot('paused-pad');
   await padPut(0, { axes: { 1: -1 }, buttons: { [BTN.X]: 1, [BTN.START]: 1 } });
   await sleep(150);
@@ -605,7 +640,9 @@ async function run(browser) {
   await page.keyboard.press('Digit1');
   await sleep(250);
   t = await texts(T);
-  check('one-player mode: the Player 2 pad now drives the single ship and is listed as Player 1', t.some((x) => /-> PLAYER 1/.test(x)), JSON.stringify(t.filter((x) => /ontroller/.test(x))));
+  cr = await controllerRows();
+  check('one-player mode: the Player 2 pad now drives the single ship and is listed as Player 1', t.includes('HOW TO PLAY  -  CONTROLLER') && cr.rows.some((x) => /CONTROLLER 1: PLAYER 1/.test(x)), JSON.stringify({ t: t.slice(0, 6), rows: cr.rows }));
+  await openFromTitle('play', false); // coming back from CONTROLS left the focus there; A presses whatever is lit
   await padTap(0, BTN.A);
   await begin('pad');
   st = await sim();
@@ -640,7 +677,8 @@ async function run(browser) {
   await padTap(1, BTN.A, 140, { id: PS });
   h = await hub();
   t = await texts(T);
-  check('two controllers: the first joins Player 2, the second Player 1, listed separately', h.p2 === 0 && h.p1 === 1 && t.some((x) => /Controller 1: .* -> PLAYER 2/.test(x)) && t.some((x) => /Controller 2: .* -> PLAYER 1/.test(x)), JSON.stringify({ h: [h.p1, h.p2], t: t.filter((x) => /ontroller/.test(x)) }));
+  cr = await controllerRows();
+  check('two controllers: the first joins Player 2, the second Player 1, listed separately', h.p2 === 0 && h.p1 === 1 && t.includes('PLAYER 1 + PAD') && t.includes('PLAYER 2 + PAD') && cr.rows.some((x) => /^CONTROLLER 1: PLAYER 2/.test(x)) && cr.rows.some((x) => /^CONTROLLER 2: PLAYER 1/.test(x)), JSON.stringify({ h: [h.p1, h.p2], rows: cr.rows }));
   await shot('title-two-pads');
   await begin();
   await padPut(1, { id: PS });
@@ -686,7 +724,9 @@ async function run(browser) {
   await sleep(300);
   await padTap(0, BTN.A, 140, { mapping: '', id: '1234-5678-Generic USB Joystick', axisCount: 6 });
   t = await texts(T);
-  check('a pad without the standard mapping is flagged on the title screen', t.some((x) => /non-standard layout/.test(x)), JSON.stringify(t.filter((x) => /ontroller/.test(x))));
+  cr = await controllerRows();
+  check('a pad without the standard mapping is flagged on the CONTROLS page', cr.rows.some((x) => /non-standard layout/.test(x)), JSON.stringify(cr.rows));
+  await openFromTitle('play', false);
   await padTap(0, BTN.A, 140, { mapping: '', id: '1234-5678-Generic USB Joystick', axisCount: 6 });
   await begin('pad');
   await sleep(100);
@@ -706,7 +746,8 @@ async function run(browser) {
   await page.evaluate(() => { navigator.getGamepads = undefined; });
   await sleep(300);
   t = await texts(T);
-  check('where the Gamepad API does not exist the title says so instead of "no controller detected"', t.some((x) => /unavailable/.test(x)) && !t.some((x) => /No controller detected/.test(x)), JSON.stringify(t.filter((x) => /ontroller|amepad/.test(x))));
+  cr = await controllerRows();
+  check('where the Gamepad API does not exist the CONTROLS page says so instead of "no controller found"', cr.lines.some((x) => /need https or localhost/.test(x)) && !cr.lines.some((x) => /No controller found/.test(x)), JSON.stringify(cr.lines.filter((x) => /ontroller|amepad/.test(x))));
   await begin();
   await page.keyboard.down('KeyW');
   b0 = await sim();

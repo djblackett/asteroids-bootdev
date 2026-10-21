@@ -134,6 +134,14 @@ process.exit(failures ? 1 : 0);
 
 async function run(browser) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  // A new visitor's soundtrack is Random now; this suite counts music instances, so it starts on Original (the music suite covers the default).
+  await page.addInitScript(() => {
+    try {
+      if (localStorage.getItem('asteroids.musicTrack') === null) localStorage.setItem('asteroids.musicTrack', 'original');
+    } catch {
+      // storage blocked: nothing to seed
+    }
+  });
   const problems = [];
   page.on('console', (m) => m.type() === 'error' && problems.push(m.text()));
   page.on('pageerror', (e) => problems.push(String(e)));
@@ -213,26 +221,59 @@ async function run(browser) {
   // Title screen: choosing the mode
   // =====================================================================================================================
   await title();
-  let t = await page.evaluate(`window.__game.scene.getScene('StartScene').children.list.filter((c) => c.type === 'Text' && c.visible).map((x) => x.text)`);
-  check('the title screen starts in one-player mode: classic controls and power-ups, no co-op options', t.includes('CONTROLS') && t.includes('[1]  ONE PLAYER') && !t.some((x) => /FRIENDLY FIRE/.test(x)) && !t.includes('PLAYER 2'), JSON.stringify(t.slice(0, 6)));
+  // The title screen's pages are Phaser Texts inside a container: read every visible one, and ask the menu where its buttons are.
+  const titleTexts = () =>
+    page.evaluate(`(() => { const out = []; const walk = (list, visible) => { for (const c of list) { const v = visible && c.visible; if (c.type === 'Text' && v && c.text) out.push(c.text); if (c.list) walk(c.list, v); } }; walk(window.__game.scene.getScene('StartScene').children.list, true); return out; })()`);
+  const menuItems = () => page.evaluate(`window.__game.scene.getScene('StartScene').menuSnapshot()`);
+  const menuPage = async () => (await menuItems()).page;
+  /** Moves the keyboard focus onto an item (Down, or Right along a row) and presses Enter, as a keyboard player would. */
+  const openFromTitle = async (id) => {
+    for (let i = 0; i < 16; i++) {
+      const snap = await menuItems();
+      const here = snap.items.find((x) => x.id === snap.focus);
+      const there = snap.items.find((x) => x.id === id);
+      if (here.id === id) break;
+      const dy = there.y - here.y;
+      await page.keyboard.press(Math.abs(dy) > 30 ? (dy > 0 ? 'ArrowDown' : 'ArrowUp') : there.x > here.x ? 'ArrowRight' : 'ArrowLeft');
+      await sleep(70);
+    }
+    await page.keyboard.press('Enter');
+    await sleep(300);
+  };
+  let t = await titleTexts();
+  let items = await menuItems();
+  check('the title screen starts in one-player mode: how to play, the one-player legend, no co-op options', t.includes('HOW TO PLAY') && items.items.some((i) => i.label === 'PLAY') && !items.items.some((i) => i.label === 'CO-OP') && !t.some((x) => /FRIENDLY FIRE/.test(x)) && !t.includes('PLAYER 2') && !t.includes('REVIVE'), JSON.stringify({ t: t.slice(0, 8), items: items.items.map((i) => i.label) }));
   await page.keyboard.press('Digit2');
   await sleep(200);
-  t = await page.evaluate(`window.__game.scene.getScene('StartScene').children.list.filter((c) => c.type === 'Text' && c.visible).map((x) => x.text)`);
-  check('pressing 2 shows the two-player page: both control sets, lives, friendly fire, Player 2 keys, speeds, Revive',
-    t.includes('PLAYER 1') && t.includes('PLAYER 2') && t.some((x) => /LIVES:\s+INDEPENDENT/.test(x)) && t.some((x) => /FRIENDLY FIRE:\s+ON/.test(x)) && t.some((x) => /ARROWS/.test(x)) && t.some((x) => /P1 SPEED/.test(x)) && t.includes('Revive') && !t.includes('CONTROLS'), JSON.stringify(t));
+  t = await titleTexts();
+  items = await menuItems();
+  check('pressing 2 shows the two-player title: both key sets, the lives and friendly-fire summary, a CO-OP button, Revive in the legend',
+    t.includes('PLAYER 1') && t.includes('PLAYER 2') && t.some((x) => /OWN LIVES \(3 EACH\)\s+FRIENDLY FIRE ON/.test(x)) && t.includes('REVIVE') && items.items.some((i) => i.label === 'CO-OP') && t.includes('R-SHIFT'), JSON.stringify(t));
   await shot('menu-2p');
+  await openFromTitle('coop');
+  t = await titleTexts();
+  check('the CO-OP page lists lives, friendly fire and both speeds', (await menuPage()) === 'coop' && ['LIVES  [L]', 'FRIENDLY FIRE  [F]', 'PLAYER 1 SPEED  [S]', 'PLAYER 2 SPEED  [D]'].every((x) => t.includes(x)) && t.includes('INDEPENDENT (3 EACH)'), JSON.stringify(t));
+  await shot('menu-coop');
+  await page.keyboard.press('Escape');
+  await sleep(250);
+  check('Escape returns to the title page with CO-OP still focused', (await menuPage()) === 'title' && (await menuItems()).focus === 'coop');
+  await openFromTitle('controls');
+  t = await titleTexts();
+  check('the CONTROLS page offers Player 2\'s key layout in a two-player game', (await menuPage()) === 'controls' && t.includes('PLAYER 2 KEYS  [K]') && t.includes('ARROWS + ENTER') && t.includes('I J K L + ;'), JSON.stringify(t));
+  await page.keyboard.press('Escape');
+  await sleep(250);
   await page.keyboard.press('KeyL');
   await page.keyboard.press('KeyF');
   await page.keyboard.press('KeyK');
   await page.keyboard.press('KeyS');
   await sleep(200);
-  t = await page.evaluate(`window.__game.scene.getScene('StartScene').children.list.filter((c) => c.type === 'Text' && c.visible).map((x) => x.text)`);
-  check('L / F / K / S change lives, friendly fire, Player 2 keys and the P1 speed on screen',
-    t.some((x) => /LIVES:\s+SHARED/.test(x)) && t.some((x) => /FRIENDLY FIRE:\s+OFF/.test(x)) && t.some((x) => /I J K L/.test(x)) && t.some((x) => /P1 SPEED:\s+125%/.test(x)) && t.some((x) => x.startsWith('I / K')), JSON.stringify(t.filter((x) => /\[/.test(x))));
+  t = await titleTexts();
+  check('L / F / K / S still change lives, friendly fire, Player 2 keys and the P1 speed from the title, and the screen shows it',
+    t.some((x) => /^SHARED LIVES\s+FRIENDLY FIRE OFF\s+SPEED 125\/100%/.test(x)) && ['I', 'K', 'J', 'L', ';'].every((x) => t.includes(x)) && !t.includes('ENTER'), JSON.stringify(t.filter((x) => /LIVES|FIRE/.test(x))));
   await page.keyboard.press('Digit1');
   await sleep(150);
-  t = await page.evaluate(`window.__game.scene.getScene('StartScene').children.list.filter((c) => c.type === 'Text' && c.visible).map((x) => x.text)`);
-  check('pressing 1 brings the classic one-player page back', t.includes('CONTROLS') && !t.includes('PLAYER 2'));
+  t = await titleTexts();
+  check('pressing 1 brings the one-player title back', t.includes('HOW TO PLAY') && !t.includes('PLAYER 2'));
   await page.keyboard.press('Space');
   await page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
   await sleep(300);

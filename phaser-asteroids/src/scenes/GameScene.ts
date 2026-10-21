@@ -8,7 +8,7 @@ import { getHaptics } from '../haptics/gameHaptics';
 import type { HapticManager } from '../haptics/hapticManager';
 import { getGamepadHub } from '../input/gameGamepads';
 import { getHeldKeys } from '../input/gameKeys';
-import { getSteering, getTouchControls } from '../input/gameTouch';
+import { getInputMode, getSteering, getTouchControls } from '../input/gameTouch';
 import type { GamepadHub } from '../input/gamepadHub';
 import type { HeldKeys } from '../input/heldKeys';
 import type { TouchControls } from '../input/touchControls';
@@ -18,15 +18,21 @@ import {
   PHASER_KEY_NAMES,
   type MountedDiagnostics,
 } from '../input/keyDiagnostics';
-import { createKeyPressDispatcher } from '../input/keyPress';
+import { createKeyPressRouter } from '../input/keyPress';
 import { keySchemesFor, type KeyScheme } from '../input/keyboardControls';
 import { readPlayerInputs } from '../input/playerInputs';
 import { drawStarfield, drawWorld } from '../render/worldRenderer';
 import { AbilityHud, ComboHud, Hud, KillStreakBanner, Overlay, playerColor, TeamHud, TOUCH_HUD_SCALE } from '../ui/hud';
 import { addText, COLORS } from '../ui/text';
 import { abilityLabels } from '../ui/touchLabels';
-import { TouchGameOverButtons, TouchPauseMenu } from '../ui/touchMenus';
-import { VolumePanel } from '../ui/volumePanel';
+import type { MenuContext, PageNav } from '../ui/menu/context';
+import type { MenuSnapshot } from '../ui/menu/menuController';
+import { MenuView, type PageBuilder } from '../ui/menu/menuView';
+import { buildAudioPage } from '../ui/menu/pages/audio';
+import { buildControlsPage } from '../ui/menu/pages/controls';
+import { buildPadLayoutPage } from '../ui/menu/pages/padLayout';
+import { buildPausePage } from '../ui/menu/pages/pause';
+import { TouchGameOverButtons } from '../ui/touchMenus';
 import { SCENE_GAME, SCENE_START } from './keys';
 
 const CENTER_X = SCREEN_WIDTH / 2;
@@ -51,7 +57,12 @@ export class GameScene extends Phaser.Scene {
   private teamHud: TeamHud | null = null;
   private comboHud!: ComboHud;
   private streakBanner!: KillStreakBanner;
-  private pauseOverlay!: Overlay;
+  /** Everything the HUD classes drew (score, lives, ability lines, banners). Hidden while a full-width pause page is open. */
+  private hudObjects: Phaser.GameObjects.GameObject[] = [];
+  /** The HUD objects that were showing when the HUD was hidden, so exactly those come back. */
+  private hudHidden: Phaser.GameObjects.GameObject[] = [];
+  /** The dimmed backdrop behind the pause menu (the menu itself is `pauseMenu`). */
+  private pauseDim!: Phaser.GameObjects.Rectangle;
   private gameOverOverlay!: Overlay;
   private retryButton!: Phaser.GameObjects.Rectangle;
   private retryLabel!: Phaser.GameObjects.Text;
@@ -69,17 +80,19 @@ export class GameScene extends Phaser.Scene {
   private audio!: AudioDirector;
   /** Game-wide haptic manager (see haptics/): buzzes the phone for a few important events, in touch mode only. */
   private haptics!: HapticManager;
-  private volumePanel!: VolumePanel;
+  /** The pause menu: RESUME, AUDIO, CONTROLS, RETURN TO MENU (the title screen's own AUDIO and CONTROLS pages on top of it). */
+  private pauseMenu!: MenuView;
+  /** Per player: ignore the cannon until it has been released once (a menu press that resumed play must not also fire a shot). */
+  private shotGuard: boolean[] = [];
+  /** RESUME was just pressed from the menu: the guard is taken at the start of the next frame (see `resumeFromMenu`). */
+  private guardNextFrame = false;
   /** Key scheme of each player, in player order (one for a one-player game). */
   private schemes: readonly KeyScheme[] = [];
   /** Game-wide touch controls (see touchControls.ts): inert and invisible unless touch mode is on. */
   private touch!: TouchControls;
   /** Touch mode for this run: decided when the run starts (the mode can only be changed on the title screen). */
   private touchUi = false;
-  private touchPause: TouchPauseMenu | null = null;
   private touchOver: TouchGameOverButtons | null = null;
-  /** Last pause-menu state shown, so its buttons are only toggled when it changes. */
-  private touchPauseShown = false;
 
   constructor() {
     super(SCENE_GAME);
@@ -98,9 +111,9 @@ export class GameScene extends Phaser.Scene {
     this.lastFrameTime = null;
     this.retryReady = null;
     this.padNote = '';
-    this.touchPause = null;
+    this.shotGuard = [];
+    this.guardNextFrame = false;
     this.touchOver = null;
-    this.touchPauseShown = false;
   }
 
   create(): void {
@@ -110,11 +123,14 @@ export class GameScene extends Phaser.Scene {
     this.touch = getTouchControls(this);
     this.touchUi = this.touch.isActive && players === 1;
     const hudScale = this.touchUi ? TOUCH_HUD_SCALE : 1;
+    const beforeHud = this.children.list.length;
     this.hud = new Hud(this, players, hudScale);
     this.abilityHuds = this.sim.players.map((_, i) => new AbilityHud(this, i, hudScale));
     this.teamHud = players > 1 ? new TeamHud(this) : null;
     this.comboHud = new ComboHud(this, players > 1);
     this.streakBanner = new KillStreakBanner(this);
+    this.hudObjects = this.children.list.slice(beforeHud);
+    this.hudHidden = [];
     this.audio = getAudio(this);
     this.haptics = getHaptics(this);
     // Nothing from an earlier run (a buzz in progress, cooldowns, a pause) carries into this one.
@@ -123,12 +139,13 @@ export class GameScene extends Phaser.Scene {
     this.audio.music.beginRun();
     this.audio.startMusicWhenUnlocked();
 
-    // Touch mode keeps the pause title near the top: its buttons fill the middle of the screen.
-    this.pauseOverlay = new Overlay(this, 0.59, 72, this.touchUi ? 100 : CENTER_Y - 80, 4);
-    this.pauseOverlay.setTitle('PAUSED');
-    // Lines 0 (resume), 1 (music toggle), 2 (menu) and 3 (controller note) are refreshed every frame in updateOverlays.
-    this.volumePanel = new VolumePanel(this, this.audio, CENTER_X, CENTER_Y + 92, 24, 32, 21);
-    this.volumePanel.setVisible(false);
+    this.pauseDim = this.add.rectangle(CENTER_X, CENTER_Y, SCREEN_WIDTH, SCREEN_HEIGHT, 0x000000, 0.78).setDepth(20).setVisible(false);
+    this.pauseMenu = this.createPauseMenu();
+    // The pause screen itself leaves the game faintly visible; AUDIO and CONTROLS are full-width pages and need a calmer backdrop.
+    this.pauseMenu.controller.onPageChange((_page, depth) => {
+      this.pauseDim.setAlpha(depth > 1 ? 0.95 : 0.78);
+      this.setHudHidden(depth > 1);
+    });
 
     this.gameOverOverlay = new Overlay(this, 0.7, 54, CENTER_Y - 250, 6);
     this.gameOverOverlay.setTitle('GAME OVER');
@@ -143,7 +160,6 @@ export class GameScene extends Phaser.Scene {
       .setVisible(false);
 
     if (this.touchUi) {
-      this.touchPause = new TouchPauseMenu(this, this.audio, this.haptics, getSteering(this), { resume: () => this.togglePause(), menu: () => this.toMenu() });
       this.touchOver = new TouchGameOverButtons(this, { retry: () => this.retry(), menu: () => this.toMenu() });
     }
 
@@ -160,6 +176,12 @@ export class GameScene extends Phaser.Scene {
     this.lastFrameTime = time;
 
     this.handlePadPresses();
+    // Taken here, not when RESUME was pressed: Phaser delivers the key event before this game's own held-key tracker has seen it, so
+    // at that moment the key that pressed RESUME (Space, Enter) still reads as up.
+    if (this.guardNextFrame) {
+      this.guardNextFrame = false;
+      this.shotGuard = this.readInputsUnguarded().map((input) => input.shoot);
+    }
     const inputs = sim.isGameOver ? this.schemes.map(() => NO_INPUT) : this.readInputs();
     if (!this.paused) {
       const events = sim.step(dt, inputs[0] ?? NO_INPUT, inputs[1] ?? NO_INPUT);
@@ -184,11 +206,14 @@ export class GameScene extends Phaser.Scene {
 
     drawStarfield(this.starGfx, sim.starfield);
     drawWorld(this.worldGfx, sim, time);
-    this.hud.update(sim);
-    for (const abilities of this.abilityHuds) abilities.update(sim, time);
-    this.teamHud?.update(sim, time);
-    this.comboHud.update(sim);
-    this.streakBanner.update(sim);
+    // While a pause page hides the HUD its objects must not be touched: the game is frozen, so there is nothing new to show.
+    if (this.hudHidden.length === 0) {
+      this.hud.update(sim);
+      for (const abilities of this.abilityHuds) abilities.update(sim, time);
+      this.teamHud?.update(sim, time);
+      this.comboHud.update(sim);
+      this.streakBanner.update(sim);
+    }
     if (this.touchUi) this.updateTouchControls();
     this.haptics.setPaused(this.paused);
     this.audio.music.setGamePaused(this.paused);
@@ -209,6 +234,15 @@ export class GameScene extends Phaser.Scene {
 
   /** One input per player: that player's own keys, merged with the controller assigned to them (if any). */
   private readInputs(): PlayerInput[] {
+    return this.readInputsUnguarded().map((input, i) => {
+      if (!this.shotGuard[i]) return input;
+      if (input.shoot) return { ...input, shoot: false };
+      this.shotGuard[i] = false;
+      return input;
+    });
+  }
+
+  private readInputsUnguarded(): PlayerInput[] {
     return readPlayerInputs(this.held, this.pads, this.schemes, this.touchUi ? this.touch : undefined);
   }
 
@@ -230,22 +264,20 @@ export class GameScene extends Phaser.Scene {
           this.togglePause();
           break;
         case 'a':
-          this.retry();
+          if (this.pauseMenuOpen) this.pauseMenu.controller.pad('a');
+          else this.retry();
+          break;
+        case 'b':
+          if (this.pauseMenuOpen) this.pauseMenu.controller.pad('b');
           break;
         case 'back':
-          this.toMenu();
+          if (!this.pauseMenuOpen || !this.pauseMenu.controller.back()) this.toMenu();
           break;
         case 'up':
-          this.adjustVolumes('ArrowUp');
-          break;
         case 'down':
-          this.adjustVolumes('ArrowDown');
-          break;
         case 'left':
-          this.adjustVolumes('ArrowLeft');
-          break;
         case 'right':
-          this.adjustVolumes('ArrowRight');
+          if (this.pauseMenuOpen) this.pauseMenu.controller.pad(press.button);
           break;
         default:
           break;
@@ -282,20 +314,7 @@ export class GameScene extends Phaser.Scene {
     // One-shot keys go through a dispatcher that ignores replayed events and auto-repeat (see keyPress.ts).
     keyboard.on(
       Phaser.Input.Keyboard.Events.ANY_KEY_DOWN,
-      createKeyPressDispatcher({
-        KeyP: () => this.togglePause(),
-        KeyM: () => this.audio.music.toggleMuted(),
-        ArrowUp: () => this.adjustVolumes('ArrowUp'),
-        ArrowDown: () => this.adjustVolumes('ArrowDown'),
-        ArrowLeft: () => this.adjustVolumes('ArrowLeft'),
-        ArrowRight: () => this.adjustVolumes('ArrowRight'),
-        Escape: () => this.toMenu(),
-        KeyR: () => this.retry(),
-        // Enter is Player 2's cannon in a two-player game, so it only retries a one-player run.
-        Enter: () => {
-          if (this.sim.players.length === 1) this.retry();
-        },
-      }),
+      createKeyPressRouter((code) => this.onKey(code)),
     );
     this.retryButton.setInteractive({ useHandCursor: true });
 
@@ -329,9 +348,80 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** The arrow keys also steer the ship, so they only work the volume controls on the pause screen. */
-  private adjustVolumes(code: string): void {
-    if (this.paused && !this.sim.isGameOver) this.volumePanel.handleKey(code);
+  /**
+   * One-shot keys. P pauses / resumes and M mutes the music anywhere. While the pause menu is open it also takes the arrow keys (which
+   * steer the ship the rest of the time), Enter and Space, and Escape: it closes AUDIO or CONTROLS first, and from the menu itself
+   * leaves for the title screen as it always has. After Game Over, R (and Enter in a one-player game) retries and Escape leaves.
+   */
+  private onKey(code: string): void {
+    if (code === 'KeyP') return this.togglePause();
+    if (code === 'KeyM') return void this.audio.music.toggleMuted();
+    if (this.pauseMenuOpen) {
+      if (this.pauseMenu.controller.key(code)) return;
+      if (code === 'Escape') this.toMenu();
+      return;
+    }
+    if (code === 'Escape') this.toMenu();
+    else if (code === 'KeyR') this.retry();
+    // Enter is Player 2's cannon in a two-player game, so it only retries a one-player run.
+    else if (code === 'Enter' && this.sim.players.length === 1) this.retry();
+  }
+
+  /** AUDIO and CONTROLS are full-width pages: the score and ability lines behind them would only be clutter, so they step aside. */
+  private setHudHidden(hidden: boolean): void {
+    if (hidden === (this.hudHidden.length > 0)) return;
+    if (hidden) {
+      this.hudHidden = this.hudObjects.filter((o) => (o as unknown as { visible: boolean }).visible);
+      for (const o of this.hudHidden) (o as unknown as { setVisible(v: boolean): void }).setVisible(false);
+    } else {
+      for (const o of this.hudHidden) (o as unknown as { setVisible(v: boolean): void }).setVisible(true);
+      this.hudHidden = [];
+    }
+  }
+
+  /** For browser tests: where every pause-menu button is and which page is open. */
+  pauseMenuSnapshot(): MenuSnapshot {
+    return this.pauseMenu.controller.snapshot();
+  }
+
+  private get pauseMenuOpen(): boolean {
+    return this.paused && !this.sim.isGameOver;
+  }
+
+  private createPauseMenu(): MenuView {
+    const setup = () => getSetup(this.registry);
+    const nav: PageNav = { open: (id) => this.pauseMenu.controller.open(id), back: () => void this.pauseMenu.controller.back() };
+    const ctx: MenuContext = {
+      where: 'pause',
+      audio: this.audio,
+      haptics: this.haptics,
+      inputMode: getInputMode(this),
+      steering: getSteering(this),
+      pads: getGamepadHub(this),
+      setup,
+      patchSetup: () => undefined, // the run's rules were fixed when it started
+      setPlayers: () => undefined,
+      now: () => this.time.now,
+      actions: { play: () => undefined, resume: () => this.resumeFromMenu(), toMenu: () => this.toMenu(), switchInputMode: () => undefined },
+    };
+    const builders: Record<string, PageBuilder> = {
+      pause: (kit) => buildPausePage(kit, ctx, nav, () => this.padNote),
+      audio: (kit) => buildAudioPage(kit, ctx, nav),
+      controls: (kit) => buildControlsPage(kit, ctx, nav),
+      padlayout: (kit) => buildPadLayoutPage(kit, ctx, nav),
+    };
+    return new MenuView(this, 22, builders, 'pause');
+  }
+
+  /**
+   * RESUME pressed on the menu. The key or button that pressed it may also be a cannon (Space, Enter, the pad's A): it must not fire a
+   * shot the moment play resumes, so every cannon that is down now stays quiet until it has been released once.
+   */
+  private resumeFromMenu(): void {
+    if (!this.paused) return;
+    this.guardNextFrame = true;
+    this.pads.disarmAll('resumed from the menu');
+    this.togglePause();
   }
 
   private toMenu(): void {
@@ -401,24 +491,17 @@ export class GameScene extends Phaser.Scene {
   private updateOverlays(): void {
     const over = this.sim.isGameOver;
     const showPause = this.paused && !over;
-    this.pauseOverlay.setVisible(showPause);
-    this.volumePanel.setVisible(showPause && !this.touchUi);
+    this.pauseDim.setVisible(showPause);
     // Controller hints appear only while a controller is actually driving a ship in this run.
-    const padActive = (showPause || over) && this.padActive();
-    if (this.touchUi) {
-      if (showPause !== this.touchPauseShown) {
-        this.touchPauseShown = showPause;
-        this.touchPause?.setVisible(showPause);
+    const padActive = over && this.padActive();
+    if (showPause !== this.pauseMenu.isOpen) {
+      if (showPause) this.pauseMenu.show(this.touchUi ? 'touch' : 'keys');
+      else {
+        this.pauseMenu.hide();
+        this.setHudHidden(false);
       }
-      if (showPause) this.touchPause?.update(this.time.now);
-    } else if (showPause) {
-      this.pauseOverlay.setLine(0, padActive ? 'Press P or START to Resume' : 'Press P to Resume', CENTER_Y + 10, COLORS.hint, 28);
-      this.pauseOverlay.setLine(2, padActive ? 'Press ESC or BACK for Main Menu' : 'Press ESC for Main Menu', CENTER_Y + 258, COLORS.dim, 22);
-      this.pauseOverlay.setLine(3, this.padNote, CENTER_Y + 222, '#ff6464', 20);
-      const music = this.audio.music.isMuted ? 'Off' : 'On';
-      this.pauseOverlay.setLine(1, `Press M to Toggle Music (${music})`, CENTER_Y + 55, COLORS.dim, 22);
-      this.volumePanel.update();
     }
+    this.pauseMenu.update(this.time.now);
     this.gameOverOverlay.setVisible(over);
     this.retryButton.setVisible(over && !this.touchUi);
     this.retryLabel.setVisible(over && !this.touchUi);

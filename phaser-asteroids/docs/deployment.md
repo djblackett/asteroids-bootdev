@@ -89,9 +89,9 @@ Nothing has been changed for this: no DNS, no `CNAME` file, no GitHub domain set
 GitHub Pages is HTTPS, a secure context, which the Gamepad API requires.
 
 1. Open the published URL (padlock shown; no `http://`) in Chrome, Edge or Firefox with a controller connected.
-2. Press a button on the controller (browsers hide a pad until it is used). On the title screen the controller line changes
-   from `No controller detected - press a button on it` to `Controller 1: <name> -> PLAYER n`.
-3. If it says `Gamepads unavailable (needs https or localhost)`, the page is not a secure context (typically an `http://` URL).
+2. Press a button on the controller (browsers hide a pad until it is used). The title screen shows `CONTROLLER FOUND / PRESS A TO JOIN` in its top-left corner; press **A** and the
+   how-to reference switches to the controller's buttons. **CONTROLS** lists it as `CONTROLLER 1: PLAYER n` (it says `No controller found.` before a press).
+3. If CONTROLS says `Controllers need https or localhost.`, the page is not a secure context (typically an `http://` URL).
 4. For raw values add `?keydebug` to the URL: the diagnostic panel lists each controller's mapping and live axes/buttons.
    Development-only parameters (`?debug`, `?keydebug`) are inert unless present.
 

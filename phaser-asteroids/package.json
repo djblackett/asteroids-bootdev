@@ -17,6 +17,7 @@
     "test:gamepad": "npm run build && node scripts/gamepad.mjs",
     "test:touch": "npm run build && node scripts/touch.mjs",
     "test:music": "npm run build && node scripts/music.mjs",
+    "test:menu": "npm run build && node scripts/menu.mjs",
     "test:pages": "npm run build && node scripts/pages-check.mjs"
   },
   "dependencies": {

@@ -38,7 +38,7 @@ browser tests). Last updated 2026-10-20 (Phase 8).
   The port implements it with the track's playback rate (same speed + pitch change, same track, no restart) and
   keeps it **off by default**; set `MEGA_POWER_MUSIC_SPEEDUP_ENABLED` in `src/audio/audioConfig.ts` to turn it on.
 
-### Mix and volume controls (`audioConfig.ts`, `audioSettings.ts`, `audioSetup.ts`, `ui/volumePanel.ts`)
+### Mix and volume controls (`audioConfig.ts`, `audioSettings.ts`, `audioSetup.ts`; the volume UI is now the AUDIO page, see Phase 9)
 
 Level of every sound = **user setting (0..1) x mix gain**. The settings are the Music and SFX volumes, adjusted in 10 %
 steps with the arrow keys on the pause screen (and the title screen), saved in `localStorage`
@@ -577,6 +577,23 @@ Full write-up: [haptics.md](haptics.md) (effects, rules, menus, browsers, tests,
   (a Haptics section, plus the mute-by-touch check's tap position).
 - **Not changed:** simulation, scoring, power-ups, controls, audio mix, fullscreen, steering, the Python game, the Pages workflow. Gamepad rumble, iOS workarounds and the other deferred
   haptics (pick-ups, shields, revive, kill streaks, user-configurable durations) are not implemented.
+
+## Phase 9: menu redesign (2026-10-20)
+
+Full write-up: [menus.md](menus.md) (hierarchy, where every setting went, input, phone safeguards, code map, tests, limits).
+
+- **Why:** the title and pause screens had grown a wall of controls, volume rows, selectors and switches. The first screen now answers three questions (how to start, how to steer, what the pick-ups do)
+  and every setting is one step away: **AUDIO**, **CONTROLS** (and **CO-OP** for two players), opened from the title screen and from the pause menu (RESUME, AUDIO, CONTROLS, RETURN TO MENU).
+- **How:** a small menu system in `src/ui/menu/` (a pure state machine with directional focus, Phaser widgets, one page builder per page); the old `VolumePanel`, `ControllerPanel`, `TouchStartMenu`, `TouchPauseMenu`
+  and the touch selectors were removed. The control reference is generated from the real key schemes, the power-up text from the simulation's constants.
+- **Haptics:** default flipped to **ON** for new players after a real-phone test (a saved OFF is kept, nothing is migrated), with a one-line hint about Silent mode.
+- **Safeguards kept:** no tap-anywhere start, two-tap switch to keyboard, a large green way back to touch (title corner and CONTROLS page), D-pad default, rotate prompt, fullscreen pill.
+- **Behaviour changes worth knowing:** clicking empty space no longer starts a desktop game (PLAY is a button; Space still starts); D-pad left / right changes the player count only when the 1 / 2 PLAYERS switch is
+  focused; Space / Enter / A pressed on RESUME never fires a shot; the HUD is hidden behind AUDIO / CONTROLS while paused. RETURN TO MENU needs two presses (Escape is still direct).
+- **Tests:** three new unit suites (focus, controller, content) and `scripts/menu.mjs` (`npm run test:menu`, including an automated layout review of every page at five phone and five desktop sizes); the smoke, touch, music, gamepad, co-op
+  and pages suites were rewritten to drive the new menus through `menuSnapshot()` / `pauseMenuSnapshot()`. `coop.mjs` now starts on the Original soundtrack like the other suites (its "one music instance" check
+  was already failing on `main` because the default became Random).
+- **Not changed:** `src/core/`, movement, weapons, power-ups, scoring, UFOs, difficulty, audio gains and playback rules, haptic patterns and events, the Python game, the Pages workflow.
 
 ## Verification, Phase 3 (2026-10-19)
 
