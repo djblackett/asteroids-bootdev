@@ -144,13 +144,16 @@ export function padToInput(snapshot: GamepadSnapshot, held: ReadonlySet<PadButto
  * and a keyboard player always has full authority. Buttons (shoot / laser / boost) are simply OR-ed.
  */
 export function mergeInputs(keyboard: PlayerInput, pad: PlayerInput): PlayerInput {
-  return {
+  const merged: PlayerInput = {
     rotate: keyboard.rotate !== 0 ? keyboard.rotate : pad.rotate,
     move: keyboard.move !== 0 ? keyboard.move : pad.move,
     shoot: keyboard.shoot || pad.shoot,
     laser: !!(keyboard.laser || pad.laser),
     boost: !!(keyboard.boost || pad.boost),
   };
+  // A touch stick's "point this way" request (the second device) only stands while the first one is not steering at all.
+  if (pad.steer && keyboard.rotate === 0 && keyboard.move === 0) merged.steer = pad.steer;
+  return merged;
 }
 
 /** Shortens a browser gamepad id for display: `Xbox 360 Controller (STANDARD GAMEPAD Vendor: 045e ...)` -> `Xbox 360 Controller`. */

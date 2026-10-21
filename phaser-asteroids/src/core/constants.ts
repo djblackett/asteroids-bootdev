@@ -60,6 +60,20 @@ export const POINTS_SMALL_ASTEROID = 50;
 export const PLAYER_RADIUS = 20;
 export const PLAYER_TURN_SPEED = 300; // degrees per second
 export const PLAYER_SPEED = 300; // pixels per second
+
+// --- Touch movement experiment (Point-to-Fly and Assisted Flight) -------------------------------------------------
+// Tuning knobs for the two joystick movement modes. They only apply to a ship that is handed a `steer` request by the touch
+// screen; keyboard, gamepad and the Classic D-pad never read them. The ship has no inertia in this game, so "assistance" bends
+// the direction it *travels*, not a velocity. Speed itself is always PLAYER_SPEED (x Boost), so no mode is faster than Classic.
+/** Both modes: the most the nose may turn toward the stick, in degrees per second. Starts equal to Classic's turn rate. */
+export const TOUCH_STEER_TURN_SPEED = PLAYER_TURN_SPEED;
+/**
+ * Assisted Flight only: the most the *direction of travel* may turn toward the stick, in degrees per second. The nose still turns at
+ * TOUCH_STEER_TURN_SPEED, so the ship flies toward the stick before it has finished facing it. 600 = twice the nose rate: a 90 degree
+ * change of mind costs 0.15 s of curve, a full reversal 0.3 s. Raise it for a snappier ship, lower it (towards 300, which makes
+ * Assisted Flight identical to Point-to-Fly) for a floatier one.
+ */
+export const ASSIST_TRAVEL_TURN_SPEED = 600;
 export const PLAYER_LIVES = 3;
 export const PLAYER_RESPAWN_INVULNERABILITY = 2.0; // seconds
 export const GAME_START_COOLDOWN = 0.2; // seconds before the first shot is allowed

@@ -1,5 +1,6 @@
 import { P1_KEYS, P2_KEY_LAYOUTS, SOLO_KEYS, keySchemesFor } from '../../../input/keyboardControls';
 import type { TestResult } from '../../../haptics/hapticManager';
+import { DEFAULT_MOVEMENT, MOVEMENT_LABELS, MOVEMENT_MODES } from '../../../input/movementMode';
 import { COLORS } from '../../text';
 import { SYSTEM_KEYS_LINE, keyboardRows } from '../controlHelp';
 import type { MenuContext, PageNav } from '../context';
@@ -8,6 +9,8 @@ import { MenuButton, MenuChoice, MIN_TARGET, ROW_GAP, TEXT, rowGeometry, type Pa
 import { backButton, CENTER_X, pageTitle, rowY } from './common';
 import { drawHelpRows } from './reference';
 
+/** The MOVEMENT row sits below the Fullscreen pill in the top right corner (which reaches about y = 110 on the narrowest phones). */
+const MOVEMENT_Y = 124;
 const TEST_RESULT_MS = 2500;
 /** What the button says after a test. It reports what the browser did; it cannot know whether a motor moved, hence the question. */
 const TEST_RESULT: Record<TestResult, { text: string; color: string }> = {
@@ -24,7 +27,7 @@ export const HAPTIC_UNSUPPORTED = 'This browser cannot vibrate.';
 const padSignature = (ctx: MenuContext, count: 1 | 2): string => ctx.pads.status(count).map((s) => s.text).join('|');
 
 /**
- * CONTROLS: how the ship is steered, and only what applies to this device. A phone in touch mode sees the steering choice, the haptic
+ * CONTROLS: how the ship is steered, and only what applies to this device. A phone in touch mode sees the movement mode, the haptic
  * switch with TEST VIBRATION, and the safe way out to the keyboard; a keyboard / controller player sees the key map, the controllers
  * and who each one drives. A touch-capable device that is in keyboard mode gets one big way back to touch at the top, always.
  * The page is the same on the title and pause screens, minus what cannot change during a run.
@@ -44,19 +47,35 @@ export function buildControlsPage(kit: PageKit, ctx: MenuContext, nav: PageNav):
 // --- touch ----------------------------------------------------------------------------------------------------------------
 
 function buildTouchControls(kit: PageKit, ctx: MenuContext): PageDef {
-  const { steering, haptics } = ctx;
+  const { movement, haptics } = ctx;
+  // Three modes side by side, the lit one explained underneath. The caption comes from MOVEMENT_LABELS so the page, the tests and the
+  // docs cannot disagree about the names.
   new MenuChoice(kit, {
-    id: 'steering',
-    label: 'STEERING',
-    y: 118,
-    options: ['D-PAD', 'JOYSTICK'],
-    selected: () => (steering.mode === 'dpad' ? 0 : 1),
-    onSelect: (index) => steering.set(index === 0 ? 'dpad' : 'joystick'),
+    id: 'movement',
+    label: 'MOVEMENT',
+    y: MOVEMENT_Y,
+    controlW: 930,
+    options: MOVEMENT_MODES.map((mode) => MOVEMENT_LABELS[mode].name),
+    selected: () => MOVEMENT_MODES.indexOf(movement.mode),
+    onSelect: (index) => movement.set(MOVEMENT_MODES[index] ?? DEFAULT_MOVEMENT),
+    size: 28,
+  });
+  const blurb = kit.text(CENTER_X, MOVEMENT_Y + MIN_TARGET + 24, MOVEMENT_LABELS[movement.mode].blurb, {
+    size: TEXT.small + 2,
+    originX: 0.5,
+    originY: 0.5,
+    color: COLORS.hint,
+    bold: false,
+  });
+  blurb.setWordWrapWidth(1100).setAlign('center');
+  kit.onFrame(() => {
+    const text = MOVEMENT_LABELS[movement.mode].blurb;
+    if (blurb.text !== text) blurb.setText(text);
   });
   new MenuChoice(kit, {
     id: 'haptics',
     label: 'HAPTIC FEEDBACK',
-    y: 220,
+    y: MOVEMENT_Y + 138,
     options: ['ON', 'OFF'],
     selected: () => (haptics.enabled ? 0 : 1),
     onSelect: (index) => haptics.setEnabled(index === 0),
@@ -68,7 +87,7 @@ function buildTouchControls(kit: PageKit, ctx: MenuContext): PageDef {
     // Runs inside the tap itself, which is what lets the browser allow the vibration.
     new MenuButton(kit, {
       id: 'test-vibration',
-      rect: rowGeometry(322).control,
+      rect: rowGeometry(MOVEMENT_Y + 238).control,
       label: () => (shown !== null && ctx.now() < until ? TEST_RESULT[shown].text : 'TEST VIBRATION'),
       onTap: () => {
         shown = haptics.testVibration();
@@ -77,7 +96,7 @@ function buildTouchControls(kit: PageKit, ctx: MenuContext): PageDef {
       size: 28,
     });
   }
-  kit.text(CENTER_X, 322 + MIN_TARGET + 28, haptics.supported ? HAPTIC_HINT : HAPTIC_UNSUPPORTED, {
+  kit.text(CENTER_X, MOVEMENT_Y + 238 + MIN_TARGET + 16, haptics.supported ? HAPTIC_HINT : HAPTIC_UNSUPPORTED, {
     size: TEXT.small,
     originX: 0.5,
     originY: 0.5,
@@ -87,17 +106,17 @@ function buildTouchControls(kit: PageKit, ctx: MenuContext): PageDef {
 
   if (ctx.where === 'title') {
     // Leaving touch mode hides every on-screen control, so it takes two deliberate taps (see ConfirmTap).
-    kit.text(70, 468 + MIN_TARGET / 2, 'TOUCH CONTROLS: ON', { size: TEXT.label, originX: 0, originY: 0.5, color: COLORS.hint });
+    kit.text(70, MOVEMENT_Y + 360 + MIN_TARGET / 2, 'TOUCH CONTROLS: ON', { size: TEXT.label, originX: 0, originY: 0.5, color: COLORS.hint });
     new MenuButton(kit, {
       id: 'to-keyboard',
-      rect: rowGeometry(468).control,
+      rect: rowGeometry(MOVEMENT_Y + 360).control,
       label: 'SWITCH TO KEYBOARD',
       confirm: { armedLabel: 'TAP AGAIN TO SWITCH\nTO KEYBOARD CONTROLS' },
       onTap: () => ctx.actions.switchInputMode(),
       size: 26,
     });
   }
-  return { defaultFocus: 'steering' };
+  return { defaultFocus: 'movement' };
 }
 
 // --- keyboard and controller ------------------------------------------------------------------------------------------------

@@ -73,7 +73,7 @@ If that top effect is refused (for example it is in its cooldown) the step stays
 | `src/haptics/hapticPatterns.ts` | The tunable table, priorities, order, gap, test pattern, and `hapticKindsOf(events)` (the event mapping) |
 | `src/haptics/hapticManager.ts` | Priorities, cooldowns, one-effect-per-step, pause / focus / hidden cancellation, test vibration, lifecycle listeners |
 | `src/haptics/vibrationAdapter.ts` | `VibrationAdapter` interface + `NavigatorVibrationAdapter` (feature-detected, never throws, `vibrate(0)` cancels) |
-| `src/haptics/hapticSettings.ts` | The saved ON / OFF choice (same shape as `SteeringController`) |
+| `src/haptics/hapticSettings.ts` | The saved ON / OFF choice (same shape as `MovementController`) |
 | `src/haptics/gameHaptics.ts` | `installHaptics(game)` (one manager in the registry, created in `BootScene`) and `getHaptics(scene)` |
 | `src/scenes/GameScene.ts` | Passes each step's events to the manager **only when the touch UI is active**, tells it the pause state, resets it on scene start and shutdown |
 | `src/ui/menu/pages/controls.ts` | The HAPTIC FEEDBACK row, TEST VIBRATION and the hint, on the touch CONTROLS page (title and pause) |

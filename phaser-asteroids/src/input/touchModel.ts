@@ -1,3 +1,4 @@
+import { directionToHeading } from '../core/math';
 import type { PlayerInput } from '../core/player';
 import { stickAxis } from './gamepadMapping';
 
@@ -17,6 +18,11 @@ import { stickAxis } from './gamepadMapping';
  * Exactly one steering control is live at a time (`SteeringMode`): the floating joystick or the fixed D-pad. A press on the other
  * one is refused, and switching mode lets go of everything.
  *
+ * The joystick can read the thumb two ways (`StickStyle`). `relative` is the original analogue stick above (left / right turns, up
+ * flies) and is only kept for compatibility: no menu offers it any more. `point` and `assist` are the two movement experiments: the
+ * thumb's direction from the stick's centre is an absolute screen direction, turned into a heading with the simulation's own
+ * conventions, and the command carries it as `steer` (see `SteerRequest`). Same stick, same geometry, same dead zone for both.
+ *
  * Every finger is bound to the control it *started* on, by pointer id, until it lifts or is cancelled. Sliding onto another
  * button does nothing and a finger that leaves its button keeps holding it, so controls can never swap or double-fire.
  */
@@ -29,6 +35,17 @@ export const TOUCH_CONTROLS: readonly TouchControl[] = ['stick', 'dpad', 'fire',
 export type SteeringMode = 'joystick' | 'dpad';
 
 export const STEERING_MODES: readonly SteeringMode[] = ['joystick', 'dpad'];
+
+/** How the joystick reads the thumb: the legacy `relative` analogue stick, or an absolute direction for Point-to-Fly / Assisted Flight. */
+export type StickStyle = 'relative' | 'point' | 'assist';
+
+/**
+ * Directional sticks: the thumb must be this far from the stick's centre (fraction of the radius) before a direction is requested,
+ * and once it is, only falls back to nothing below the smaller figure. The gap keeps a thumb resting on the edge from flickering
+ * between "steer" and "coast". 0.25 of the 52-72 px radius is a 13-18 px circle: a tap or a nervous thumb never steers.
+ */
+export const DIRECTION_DEAD_ZONE = 0.25;
+export const DIRECTION_DEAD_ZONE_HELD = 0.18;
 
 /** Distance (CSS px) the thumb travels from where it landed to reach full deflection, bounded so tiny and huge screens both work. */
 export const STICK_RADIUS_MIN = 52;
@@ -131,6 +148,9 @@ export class TouchModel {
   private dy = 0;
   private radius = STICK_RADIUS_MIN;
   private steering: SteeringMode = 'joystick';
+  private style: StickStyle = 'relative';
+  /** A directional stick is past its dead zone (with hysteresis), so the command carries a heading. */
+  private pointing = false;
   private dpadPointer: number | null = null;
   /** Where the D-pad is on screen (centre and radius, CSS px), set by whoever can read the element's rectangle. */
   private padX = 0;
@@ -169,6 +189,18 @@ export class TouchModel {
     this.changed();
   }
 
+  get stickStyle(): StickStyle {
+    return this.style;
+  }
+
+  /** Chooses how the joystick reads the thumb. Everything is let go, so a direction from the old style cannot outlive the switch. */
+  setStickStyle(style: StickStyle): void {
+    if (style === this.style) return;
+    this.style = style;
+    this.releaseAll();
+    this.changed();
+  }
+
   /** The D-pad's centre and radius in the same coordinates as pointer events (CSS px). Cheap to call repeatedly. */
   setDpadGeometry(centreX: number, centreY: number, radius: number): void {
     if (!(radius > 0) || !Number.isFinite(centreX) || !Number.isFinite(centreY)) return;
@@ -182,6 +214,7 @@ export class TouchModel {
   setStickRadius(radius: number): void {
     if (radius > 0 && radius !== this.radius) {
       this.radius = radius;
+      this.updatePointing();
       this.changed();
     }
   }
@@ -218,6 +251,7 @@ export class TouchModel {
       this.anchorY = y;
       this.dx = 0;
       this.dy = 0;
+      this.pointing = false;
     }
     this.owner.set(pointerId, control);
     this.changed();
@@ -238,6 +272,7 @@ export class TouchModel {
     if (dx === this.dx && dy === this.dy) return;
     this.dx = dx;
     this.dy = dy;
+    this.updatePointing();
     this.changed();
   }
 
@@ -250,6 +285,7 @@ export class TouchModel {
       this.stickPointer = null;
       this.dx = 0;
       this.dy = 0;
+      this.pointing = false;
     }
     if (pointerId === this.dpadPointer) {
       this.dpadPointer = null;
@@ -268,6 +304,7 @@ export class TouchModel {
     this.padDir = DPAD_NEUTRAL;
     this.dx = 0;
     this.dy = 0;
+    this.pointing = false;
     if (any) this.changed();
     return any;
   }
@@ -293,8 +330,15 @@ export class TouchModel {
   /** The command for this frame. Neutral unless fingers are down. */
   command(): PlayerInput {
     if (this.owner.size === 0) return { rotate: 0, move: 0, shoot: false, laser: false, boost: false };
+    const buttons = { shoot: this.holds('fire'), laser: this.holds('laser'), boost: this.holds('boost') };
+    if (this.dpadPointer === null && this.steering === 'joystick' && this.style !== 'relative') {
+      // Directional stick: nothing to turn by hand. Past the dead zone the ship is asked to face (and fly) the thumb's way.
+      if (!this.pointing) return { rotate: 0, move: 0, ...buttons };
+      const heading = directionToHeading(this.dx, this.dy);
+      return { rotate: 0, move: 1, ...buttons, steer: { heading, mode: this.style === 'assist' ? 'assist' : 'point' } };
+    }
     const { rotate, move } = this.dpadPointer !== null ? this.padDir : stickToAxes(this.dx, this.dy, this.radius);
-    return { rotate, move, shoot: this.holds('fire'), laser: this.holds('laser'), boost: this.holds('boost') };
+    return { rotate, move, ...buttons };
   }
 
   stickView(): StickView {
@@ -313,6 +357,12 @@ export class TouchModel {
   dpadView(): DpadView {
     const { rotate, move } = this.padDir;
     return { active: this.dpadPointer !== null, up: move > 0, down: move < 0, left: rotate < 0, right: rotate > 0 };
+  }
+
+  /** The directional stick's dead zone, with hysteresis: in at `DIRECTION_DEAD_ZONE`, out again only below `DIRECTION_DEAD_ZONE_HELD`. */
+  private updatePointing(): void {
+    const reach = Math.hypot(this.dx, this.dy) / this.radius;
+    this.pointing = reach >= (this.pointing ? DIRECTION_DEAD_ZONE_HELD : DIRECTION_DEAD_ZONE);
   }
 
   /** Recomputes the D-pad direction from the finger's last position (it moved, or the pad moved or resized under it). */

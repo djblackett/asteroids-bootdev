@@ -3,7 +3,7 @@ import type { GameSetup } from '../../gameSetup';
 import type { HapticManager } from '../../haptics/hapticManager';
 import type { GamepadHub } from '../../input/gamepadHub';
 import type { InputModeController } from '../../input/inputMode';
-import type { SteeringController } from '../../input/steeringMode';
+import type { MovementController } from '../../input/movementMode';
 
 /**
  * Everything the menu pages need to read or change, handed over by the scene that shows them. The title screen and the pause screen
@@ -16,7 +16,7 @@ export interface MenuContext {
   readonly audio: AudioDirector;
   readonly haptics: HapticManager;
   readonly inputMode: InputModeController;
-  readonly steering: SteeringController;
+  readonly movement: MovementController;
   readonly pads: GamepadHub;
   /** The title screen's choices (also what the current run was started with). */
   setup(): GameSetup;

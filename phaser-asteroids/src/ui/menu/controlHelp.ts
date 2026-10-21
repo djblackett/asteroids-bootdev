@@ -1,5 +1,5 @@
 import type { KeyScheme } from '../../input/keyboardControls';
-import type { SteeringMode } from '../../input/touchModel';
+import type { MovementMode } from '../../input/movementMode';
 
 /**
  * The control reference the title and Controls screens print. Keyboard rows are generated from the real key schemes the game reads
@@ -69,11 +69,15 @@ export interface TouchHelpRow {
   kind: 'dpad' | 'stick' | 'fire' | 'laser' | 'boost' | 'pause';
 }
 
-export function touchRows(steering: SteeringMode): TouchHelpRow[] {
+const STEERING_ROW: Readonly<Record<MovementMode, TouchHelpRow>> = {
+  classic: { label: 'D-PAD', text: 'Move and turn', color: null, kind: 'dpad' },
+  pointToFly: { label: 'STICK', text: 'Point to fly', color: null, kind: 'stick' },
+  assisted: { label: 'STICK', text: 'Point to travel', color: null, kind: 'stick' },
+};
+
+export function touchRows(movement: MovementMode): TouchHelpRow[] {
   return [
-    steering === 'dpad'
-      ? { label: 'D-PAD', text: 'Move and turn', color: null, kind: 'dpad' }
-      : { label: 'STICK', text: 'Drag to steer', color: null, kind: 'stick' },
+    STEERING_ROW[movement],
     { label: 'FIRE', text: 'Hold to shoot', color: '#ff6450', kind: 'fire' },
     { label: 'LASER', text: 'Piercing beam', color: '#64c8ff', kind: 'laser' },
     { label: 'BOOST', text: 'Speed burst', color: '#ff64ff', kind: 'boost' },

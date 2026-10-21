@@ -30,7 +30,7 @@ Status: automated checks pass (below); both were tried on an Android phone (D-pa
 
 **Title screen (touch mode):** reorganised in the menu redesign pass, see [menus.md](menus.md). A big green **PLAY**, a **HOW TO PLAY** reference of the on-screen controls in their in-game colours
 (**D-PAD** or **STICK**, **FIRE**, **LASER**, **BOOST**, **PAUSE**), a tappable power-up legend (opens a guide with one sentence each), and two secondary buttons: **AUDIO** (music on / off, track, music volume,
-sound effects) and **CONTROLS** (STEERING D-PAD | JOYSTICK, HAPTIC FEEDBACK ON | OFF with TEST VIBRATION and a hint about silent phones, and **SWITCH TO KEYBOARD**), plus the small **FULLSCREEN** button at the
+sound effects) and **CONTROLS** (MOVEMENT CLASSIC D-PAD | POINT-TO-FLY | ASSISTED FLIGHT, HAPTIC FEEDBACK ON | OFF with TEST VIBRATION and a hint about silent phones, and **SWITCH TO KEYBOARD**), plus the small **FULLSCREEN** button at the
 top right. The keyboard switch takes **two taps**: the first only asks "TAP AGAIN TO SWITCH TO KEYBOARD CONTROLS", the question lapses after 3 s, and a touch within 300 ms of the first one, such as a second finger
 or a bounce, does not count. There is deliberately no "tap anywhere to start": a stray touch must not begin a run. A touch-capable device in keyboard mode gets a large green **TOUCH CONTROLS: OFF / TAP TO TURN ON**
 button top right of the title screen and a full-width one on the CONTROLS page; its PLAY button is keys-only ("PLAY WITH KEYBOARD").
@@ -141,6 +141,10 @@ Size: `clamp(132px, 44vh, 188px)`, i.e. 171 CSS px on a 390 px-tall phone; large
 lower left inside the safe-area inset, clear of the HUD text, FIRE, LASER, BOOST and PAUSE (checked on six phone / tablet sizes).
 
 ## Choosing the steering control
+
+> **Superseded by the movement experiment.** The STEERING: D-PAD | JOYSTICK row, the `asteroids.touchSteering` key and `steeringMode.ts` were replaced by a three-way
+> MOVEMENT selector (Classic D-Pad, Point-to-Fly, Assisted Flight) stored under `asteroids.touchMovement`; see [movement-modes.md](movement-modes.md), including how an old saved
+> `joystick` / `dpad` is migrated (both start as Classic D-Pad). The relative joystick below survives in code only for compatibility and tests. What follows describes the earlier two-way choice.
 
 - **Where:** the **STEERING: D-PAD | JOYSTICK** row of the **CONTROLS** page, reachable from the title screen and from the pause menu. Both
   options are always visible, the chosen one is lit green with a gold outline, and a switch is one tap that applies at once.
@@ -309,7 +313,8 @@ event type at the moment of the call and asserts both.
 | Touch + keyboard + pad merging, and a real `GameSim` driven by touch (steer, fly, FIRE, once-per-press LASER / BOOST, pause, game over) | `tests/touchInput.test.ts` | 16 tests |
 | D-pad: direction maths (eight sectors, boundaries, dead zone, hysteresis, sweeps), digital output, one finger, sliding, sliding outside, release / cancel, FIRE / LASER / BOOST together, mode switching, a real `GameSim` driven by it (identical to the keys) | `tests/touchDpad.test.ts` | 47 tests |
 | D-pad through the binding and facade: taps, slides, cancel, lost capture, blur / hidden / pagehide, rotation, resize, fullscreen change, pause / restart, switching mode mid-hold, listener cleanup | `tests/touchDpadControls.test.ts` | 32 tests |
-| Steering choice: D-pad default, a saved joystick / D-pad choice is never overridden, persistence, junk and blocked storage, listeners | `tests/steeringMode.test.ts` | 8 tests |
+| Movement choice (replaced the steering choice): Classic default, three saved modes, junk and blocked storage, listeners, legacy `touchSteering` migration | `tests/movementMode.test.ts` | 13 tests |
+| Point-to-Fly and Assisted Flight: heading maths, the stick's dead zone / hysteresis / release, shortest-path and rate-limited turning, comparative trajectories, Boost, walls, frame rates, mode switching | `tests/touchMovement.test.ts` | 50 tests |
 | Tap-again confirmation for the keyboard switch and the pause screen's MAIN MENU (arms, confirms inside 3 s, lapses, a second touch within 300 ms is not a confirmation, clock going backwards) | `tests/confirmTap.test.ts` | 8 tests |
 | Fullscreen: support detection (incl. iPhone-like, webkit names, standalone), request accepted / rejected / throws / `fullscreenerror`, enter, exit, system exit, button wording, cleanup | `tests/fullscreen.test.ts` | 29 tests |
 | Haptics: manager rules, adapter, settings, lifecycle (see [haptics.md](haptics.md)) | `tests/haptics.test.ts` | 62 tests |

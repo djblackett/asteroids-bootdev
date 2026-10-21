@@ -127,15 +127,19 @@ describe('controller and touch reference', () => {
     expect(padToInput(pad({ axes: [1, -1, 0, 0] }))).toMatchObject({ rotate: 1, move: 1 });
   });
 
-  it('names the touch controls as the game labels them, per steering mode', () => {
-    expect(touchRows('dpad').map((r) => r.label)).toEqual(['D-PAD', 'FIRE', 'LASER', 'BOOST', 'PAUSE']);
-    expect(touchRows('joystick').map((r) => r.label)).toEqual(['STICK', 'FIRE', 'LASER', 'BOOST', 'PAUSE']);
-    expect(touchRows('dpad')[0]?.kind).toBe('dpad');
-    expect(touchRows('joystick')[0]?.kind).toBe('stick');
+  it('names the touch controls as the game labels them, per movement mode', () => {
+    expect(touchRows('classic').map((r) => r.label)).toEqual(['D-PAD', 'FIRE', 'LASER', 'BOOST', 'PAUSE']);
+    for (const mode of ['pointToFly', 'assisted'] as const) {
+      expect(touchRows(mode).map((r) => r.label)).toEqual(['STICK', 'FIRE', 'LASER', 'BOOST', 'PAUSE']);
+      expect(touchRows(mode)[0]?.kind).toBe('stick');
+    }
+    expect(touchRows('classic')[0]?.kind).toBe('dpad');
+    // The two stick modes share one control but describe what it does differently.
+    expect(touchRows('pointToFly')[0]?.text).not.toBe(touchRows('assisted')[0]?.text);
   });
 
   it('draws FIRE, LASER and BOOST in the colours of the on-screen buttons', () => {
-    const colors = Object.fromEntries(touchRows('dpad').map((r) => [r.label, r.color]));
+    const colors = Object.fromEntries(touchRows('classic').map((r) => [r.label, r.color]));
     expect(colors).toMatchObject({ FIRE: '#ff6450', LASER: '#64c8ff', BOOST: '#ff64ff' });
   });
 });

@@ -7,7 +7,15 @@ import {
   type TouchBinding,
   type ViewportChange,
 } from './touchBinding';
-import { stickRadiusFor, TouchModel, type DpadView, type SteeringMode, type StickView, type TouchControl } from './touchModel';
+import type { MovementMode } from './movementMode';
+import { stickRadiusFor, TouchModel, type DpadView, type SteeringMode, type StickStyle, type StickView, type TouchControl } from './touchModel';
+
+/** Which on-screen control and which reading of the thumb each movement mode uses. Both stick modes share the one joystick. */
+export const MOVEMENT_CONTROLS: Readonly<Record<MovementMode, { steering: SteeringMode; style: StickStyle }>> = {
+  classic: { steering: 'dpad', style: 'relative' },
+  pointToFly: { steering: 'joystick', style: 'point' },
+  assisted: { steering: 'joystick', style: 'assist' },
+};
 
 /** What the buttons show about the ship's abilities (the HUD text at the top left says the same; a thumb should not have to look there). */
 export interface AbilityLabels {
@@ -48,7 +56,8 @@ const PRESSABLE: readonly TouchControl[] = ['fire', 'laser', 'boost', 'pause'];
  *
  *   command()          this frame's `PlayerInput` from the fingers (neutral when touch mode is off or nothing is touched)
  *   setLayer()         'play' while a run is being played, 'menu' on the title and pause screens, 'off' otherwise
- *   setSteering()      joystick or D-pad: the other one disappears and everything held is let go
+ *   setMovement()      Classic D-Pad, Point-to-Fly or Assisted Flight: picks the control and how it reads a thumb, lets go of everything held
+ *   setSteering()      the lower-level switch under it (joystick or D-pad), kept for the legacy relative stick
  *   releaseAll()       every finger forgotten at once
  *   onPauseTap()       the PAUSE button was tapped
  *   onPortrait()       the phone was turned upright
@@ -118,6 +127,17 @@ export class TouchControls {
   setSteering(mode: SteeringMode): void {
     this.model.setSteering(mode);
     this.view.setSteering(mode);
+  }
+
+  /**
+   * The movement mode in use. Fingers are let go once, so no turn, thrust or direction from the old mode survives the switch (the
+   * simulation sees a neutral command next frame and forgets any assisted travel direction), and FIRE / LASER / BOOST are released too.
+   */
+  setMovement(mode: MovementMode): void {
+    const { steering, style } = MOVEMENT_CONTROLS[mode];
+    this.model.releaseAll();
+    this.model.setStickStyle(style);
+    this.setSteering(steering);
   }
 
   get steering(): SteeringMode {

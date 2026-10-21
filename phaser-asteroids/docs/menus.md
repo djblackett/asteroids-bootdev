@@ -14,7 +14,7 @@ Title                                            Pause (during a run)
 ├── CONTROLS    ───────────────┤                 └── RETURN TO MENU   (two presses; Esc goes straight there)
 ├── CO-OP       (two players only)  ── TWO-PLAYER OPTIONS
 └── POWER-UPS card ── POWER-UP GUIDE              AUDIO:    MUSIC on | off · MUSIC TRACK < > · MUSIC VOLUME - + · SOUND EFFECTS - +
-                                                  CONTROLS: touch:     STEERING d-pad | joystick · HAPTIC FEEDBACK on | off · TEST VIBRATION
+                                                  CONTROLS: touch:     MOVEMENT classic d-pad | point-to-fly | assisted flight · HAPTIC FEEDBACK on | off · TEST VIBRATION
                                                                        · SWITCH TO KEYBOARD (title only, two taps)
                                                             keyboard:  key map · controllers and who they drive · CONTROLLER LAYOUT
                                                                        · PLAYER 2 KEYS (two players, title only)
@@ -66,7 +66,7 @@ used by the keyboard and the controller alike.
 | Music track (Original, Mega Man, Gatekeeper, Random) | Track row on the title / pause screen; X on a controller | AUDIO > MUSIC TRACK (X on a controller still steps it on the title screen) |
 | Music volume, SFX volume | Rows on the title / pause screen; arrow keys; D-pad | AUDIO > MUSIC VOLUME / SOUND EFFECTS |
 | Haptic feedback, TEST VIBRATION | Switches on the touch title / pause screens | CONTROLS (touch mode) > HAPTIC FEEDBACK ON / OFF, TEST VIBRATION |
-| Steering: D-pad / joystick | Selector on the touch title / pause screens | CONTROLS (touch mode) > STEERING |
+| Movement mode: Classic D-Pad / Point-to-Fly / Assisted Flight | Selector on the touch title / pause screens | CONTROLS (touch mode) > MOVEMENT (see [movement-modes.md](movement-modes.md)) |
 | Touch controls on / off | CONTROLS button on the touch title / TOUCH CONTROLS button on the keyboard title | CONTROLS > SWITCH TO KEYBOARD (two taps) / the green way back (title corner and CONTROLS page) |
 | One / two players | 1 / 2 keys, clickable labels | 1 PLAYER / 2 PLAYERS switch on the title (1 / 2 keys; D-pad on the switch) |
 | Lives, friendly fire, speeds | L, F, S, D on the two-player title | CO-OP > TWO-PLAYER OPTIONS (L, F, S, D still work on the two-player title and on that page) |
@@ -94,7 +94,7 @@ Every device drives the same state machine (`menuController.ts`):
   within 300 ms is not a confirmation). It exists only on the title screen's CONTROLS page: the mode cannot change during a run.
 - **A way back that cannot be missed.** On a touch-capable device in keyboard mode the title screen has a large green **TOUCH CONTROLS: OFF / TAP TO TURN ON** button top right, and the CONTROLS page starts with a full-width
   green bar. Switching modes rebuilds the page in place (no scene restart) and clears every held input.
-- **D-pad is the default steering**, the joystick one tap away in CONTROLS (also from the pause menu); a saved choice is never overridden.
+- **Classic D-Pad is the default movement mode** (an experiment, see [movement-modes.md](movement-modes.md)); Point-to-Fly and Assisted Flight are one tap away in CONTROLS (also from the pause menu); a saved choice is never overridden. The old relative JOYSTICK choice is no longer offered.
 - **RETURN TO MENU needs two presses** on every device, and it is the only way out of a run in progress: Escape and BACK only pause, resume and go back.
 - Portrait still covers everything with the rotate prompt and pauses the run.
 
@@ -113,7 +113,7 @@ Without `navigator.vibrate` the TEST VIBRATION button is not offered and the pag
 | `src/ui/menu/menuController.ts` | The state machine: pages, focus, keyboard / pad / pointer handling, the input lock, `snapshot()` for tests. Pure. |
 | `src/ui/menu/widgets.ts` | Drawn pieces: `MenuButton`, `MenuStepper` (`-  bar  +`, `<  name  >`), `MenuChoice` (`[ ON \| OFF ]`), `PageKit` (owns what one page made). |
 | `src/ui/menu/menuView.ts` | Puts a controller on a scene: builds each page when it opens and destroys it when it closes, forwards the pointer. |
-| `src/ui/menu/context.ts` | `MenuContext`: what pages read and change (audio, haptics, input mode, steering, pads, setup). Title and pause build the same pages from it. |
+| `src/ui/menu/context.ts` | `MenuContext`: what pages read and change (audio, haptics, input mode, movement, pads, setup). Title and pause build the same pages from it. |
 | `src/ui/menu/pages/*.ts` | `title`, `audio`, `controls`, `coop`, `powerups`, `padLayout`, `pause`, plus `reference.ts` (key caps and touch icons) and `common.ts`. |
 | `src/ui/menu/controlHelp.ts`, `powerupInfo.ts` | The control reference and power-up text as pure data (unit tested against the real key schemes, `padToInput` and the sim constants). |
 | `src/scenes/StartScene.ts`, `GameScene.ts` | Own the menu view, route keys and controller buttons, start / resume / leave. |

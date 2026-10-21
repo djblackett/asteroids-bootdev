@@ -8,7 +8,7 @@ import { getHaptics } from '../haptics/gameHaptics';
 import type { HapticManager } from '../haptics/hapticManager';
 import { getGamepadHub } from '../input/gameGamepads';
 import { getHeldKeys } from '../input/gameKeys';
-import { getInputMode, getSteering, getTouchControls } from '../input/gameTouch';
+import { getInputMode, getMovement, getTouchControls } from '../input/gameTouch';
 import type { GamepadHub } from '../input/gamepadHub';
 import type { HeldKeys } from '../input/heldKeys';
 import type { TouchControls } from '../input/touchControls';
@@ -414,7 +414,7 @@ export class GameScene extends Phaser.Scene {
       audio: this.audio,
       haptics: this.haptics,
       inputMode: getInputMode(this),
-      steering: getSteering(this),
+      movement: getMovement(this),
       pads: getGamepadHub(this),
       setup,
       patchSetup: () => undefined, // the run's rules were fixed when it started

@@ -6,7 +6,7 @@ import { getSetup, setSetup, type GameSetup } from '../gameSetup';
 import { getHaptics } from '../haptics/gameHaptics';
 import type { HapticManager } from '../haptics/hapticManager';
 import { getGamepadHub } from '../input/gameGamepads';
-import { getInputMode, getSteering, getTouchControls } from '../input/gameTouch';
+import { getInputMode, getMovement, getTouchControls } from '../input/gameTouch';
 import type { GamepadHub } from '../input/gamepadHub';
 import type { InputModeController } from '../input/inputMode';
 import { createKeyPressRouter } from '../input/keyPress';
@@ -112,7 +112,7 @@ export class StartScene extends Phaser.Scene {
       audio: this.audio,
       haptics: this.haptics,
       inputMode: this.inputMode,
-      steering: getSteering(this),
+      movement: getMovement(this),
       pads: this.pads,
       setup: () => this.setup,
       patchSetup: (change) => {

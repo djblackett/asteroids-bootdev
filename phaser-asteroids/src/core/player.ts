@@ -1,4 +1,5 @@
 import {
+  ASSIST_TRAVEL_TURN_SPEED,
   BOOST_COOLDOWN,
   BOOST_DURATION,
   BOOST_SPEED_MULTIPLIER,
@@ -21,9 +22,10 @@ import {
   RAPID_FIRE_DURATION,
   SCREEN_HEIGHT,
   SCREEN_WIDTH,
+  TOUCH_STEER_TURN_SPEED,
 } from './constants';
 import { createLaser, type LaserBeam } from './laser';
-import { getForwardVector, lengthOf, normalize, timeNormalizedDamping, wrap, type Vec2 } from './math';
+import { getForwardVector, lengthOf, normalize, timeNormalizedDamping, turnToward, wrap, type Vec2 } from './math';
 import { createShot, type Shot } from './shot';
 
 /**
@@ -36,6 +38,24 @@ export interface PlayerInput {
   shoot: boolean;
   laser?: boolean;
   boost?: boolean;
+  /**
+   * Touch joystick "point" request (Point-to-Fly / Assisted Flight). Absent for the keyboard, gamepads and the Classic D-pad, which
+   * leaves the ship's movement exactly as it always was. See `SteerRequest`.
+   */
+  steer?: SteerRequest;
+}
+
+/**
+ * "Turn toward this heading" instead of "rotate left / right". The ship turns by the shortest way at TOUCH_STEER_TURN_SPEED and flies
+ * (`move` > 0) at its normal speed:
+ *   point:  along its nose, so it curves while it turns (Point-to-Fly).
+ *   assist: along a travel direction that chases the heading at ASSIST_TRAVEL_TURN_SPEED, ahead of the nose (Assisted Flight).
+ * `rotate` from another device wins: a pressed key beats the stick for the nose.
+ */
+export interface SteerRequest {
+  /** Desired heading in degrees, Pygame convention (0 = Down, 90 = Left, 180 = Up, 270 = Right). */
+  heading: number;
+  mode: 'point' | 'assist';
 }
 
 export const NO_INPUT: Readonly<PlayerInput> = { rotate: 0, move: 0, shoot: false, laser: false, boost: false };
@@ -67,6 +87,11 @@ export interface PlayerState {
 
   isMoving: boolean;
   exhaustTimer: number;
+  /**
+   * Assisted Flight's direction of travel (same convention as `rotation`), while the stick is engaged; null otherwise. Cleared the
+   * moment the stick is released, so the next push starts from the stick's own direction. Unused by every other control.
+   */
+  travelHeading: number | null;
 
   rapidFire: TimedEffect;
   multiShot: TimedEffect;
@@ -120,6 +145,7 @@ export function createPlayer(x: number, y: number, playerNumber = 1, speedMultip
     respawnTimer: 0,
     isMoving: false,
     exhaustTimer: 0,
+    travelHeading: null,
     rapidFire: { active: false, timer: 0 },
     multiShot: { active: false, timer: 0 },
     megaPower: { active: false, timer: 0 },
@@ -295,13 +321,26 @@ export function updatePlayer(p: PlayerState, input: PlayerInput, dt: number): Pl
 
   p.isMoving = false;
 
-  if (input.rotate !== 0) {
+  // A pressed key (or any other rotate command) beats the touch stick's heading request.
+  const steer = input.rotate === 0 ? input.steer : undefined;
+  if (steer) {
+    p.rotation = turnToward(p.rotation, steer.heading, TOUCH_STEER_TURN_SPEED * dt);
+  } else if (input.rotate !== 0) {
     p.rotation = wrap(p.rotation + input.rotate * dt * PLAYER_TURN_SPEED, 360);
+  }
+
+  // Assisted Flight: the direction of travel chases the stick, faster than the nose can. A push from rest (or after a release) starts
+  // already pointing the stick's way; there is no momentum to keep. Any frame without an engaged assist request forgets it.
+  if (steer?.mode === 'assist' && input.move > 0) {
+    p.travelHeading =
+      p.travelHeading === null ? steer.heading : turnToward(p.travelHeading, steer.heading, ASSIST_TRAVEL_TURN_SPEED * dt);
+  } else {
+    p.travelHeading = null;
   }
 
   if (input.move !== 0) {
     // Non-inertial: displacement only exists while the key is held.
-    const forward = getForwardVector(p.rotation);
+    const forward = getForwardVector(p.travelHeading ?? p.rotation);
     const step = PLAYER_SPEED * p.speedMultiplier * (p.boost.active ? BOOST_SPEED_MULTIPLIER : 1) * input.move * dt;
     p.position.x += forward.x * step;
     p.position.y += forward.y * step;
@@ -363,6 +402,7 @@ export function respawnPlayer(p: PlayerState, x: number, y: number): void {
   p.rotation = 0;
   p.velocity = { x: 0, y: 0 };
   p.motion = { x: 0, y: 0 };
+  p.travelHeading = null;
   p.isRespawning = true;
   p.respawnTimer = PLAYER_RESPAWN_INVULNERABILITY;
 
@@ -383,6 +423,7 @@ export function respawnPlayer(p: PlayerState, x: number, y: number): void {
 export function eliminatePlayer(p: PlayerState): void {
   p.velocity = { x: 0, y: 0 };
   p.motion = { x: 0, y: 0 };
+  p.travelHeading = null;
   p.isRespawning = false;
   p.respawnTimer = 0;
   p.isMoving = false;

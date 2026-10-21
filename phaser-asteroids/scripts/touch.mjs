@@ -82,7 +82,8 @@ async function gameRectCss(p, x0, y0, x1, y1) {
   return { left: a.x, top: a.y, right: b.x, bottom: b.y, width: b.x - a.x, height: b.y - a.y };
 }
 
-const steeringOf = (p) => p.page.evaluate(`window.__game.registry.get('touchSteering').mode`);
+const movementOf = (p) => p.page.evaluate(`window.__game.registry.get('touchMovement').mode`);
+const savedMovement = (p) => p.page.evaluate(() => localStorage.getItem('asteroids.touchMovement'));
 
 /**
  * Waits for the forced game over the tests set up (one life, an asteroid on the ship). If it never comes, prints what the run looked
@@ -103,6 +104,276 @@ async function waitGameOver(p, label) {
   }
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// Movement modes: Point-to-Fly and Assisted Flight on real (emulated) multi-touch, in a running game
+// ---------------------------------------------------------------------------------------------------------
+
+/** Pygame heading (0 = Down, 90 = Left, 180 = Up, 270 = Right) -> the thumb offset (CSS px, y down) that asks for it. */
+const headingOffset = (heading, d = 46) => {
+  const a = (heading * Math.PI) / 180;
+  return { dx: -Math.sin(a) * d, dy: Math.cos(a) * d };
+};
+const angleApart = (a, b) => Math.abs((((a - b) % 360) + 540) % 360 - 180);
+const headingOfMove = (dx, dy) => ((((Math.atan2(-dx, dy) * 180) / Math.PI) % 360) + 360) % 360;
+
+/** Puts the ship at the middle of the playfield facing `rot`, with nothing else going on, and waits a moment. */
+async function recentre(t, rot = 0) {
+  await t.page.evaluate(
+    ([rot]) => {
+      const s = window.__game.scene.getScene('GameScene').sim;
+      s.spawner.spawnTimer = -1e9;
+      s.asteroids.length = 0;
+      s.player.position = { x: 640, y: 360 };
+      s.player.rotation = rot;
+      s.player.travelHeading = null;
+      s.player.lives = 99;
+    },
+    [rot],
+  );
+  await sleep(60);
+}
+
+/** Waits until the simulation clock has advanced by `seconds` (the sim is paused by pausing, so this follows game time, not wall time). */
+async function simSeconds(t, seconds) {
+  const start = (await t.sim()).time;
+  await t.page.waitForFunction(([from, secs]) => window.__game.scene.getScene('GameScene').sim.time - from >= secs, [start, seconds], { timeout: 8000, polling: 16 });
+}
+
+async function runMovement() {
+  console.log('\n--- Movement modes (Point-to-Fly, Assisted Flight) ---');
+  for (const mode of ['pointToFly', 'assisted']) {
+    const label = mode === 'pointToFly' ? 'Point-to-Fly' : 'Assisted Flight';
+    const t = await mobilePage(844, 390, { steering: mode });
+    await t.start();
+    check(`[${label}] saved choice applied: the stick is the live control`, (await movementOf(t)) === mode);
+    await t.play();
+    await recentre(t);
+    check(`[${label}] in the run the joystick zone and STEER ring are on screen, the D-pad is not`, (await t.rect('.tc-zone')).display === 'block' && (await t.rect('.tc-hint')).display !== 'none' && (await t.rect('.tc-dpad')).display === 'none');
+    await t.shot(`movement-${mode}-play-idle`);
+
+    // Landing and tiny wobbles do nothing (dead zone); ship stays put
+    await t.finger.down(1, 150, 250);
+    await sleep(80);
+    let c = await t.cmd();
+    check(`[${label}] landing the thumb is neutral`, c.move === 0 && c.rotate === 0 && c.steer === undefined, JSON.stringify(c));
+    await t.finger.move(1, 154, 253);
+    await sleep(120);
+    c = await t.cmd();
+    const idle = await t.sim();
+    check(`[${label}] a few pixels of wobble inside the dead zone does nothing (no command, ship still)`, c.move === 0 && c.steer === undefined && idle.x === 640 && idle.y === 360, JSON.stringify([c, idle.x, idle.y]));
+    await t.shot(`movement-${mode}-play-deadzone`);
+
+    // The eight directions: the ship turns to face the thumb and then flies that way
+    const dirs = [[180, 'up'], [270, 'right'], [0, 'down'], [90, 'left'], [225, 'up-right'], [135, 'up-left'], [315, 'down-right'], [45, 'down-left']];
+    const results = [];
+    for (const [heading, name] of dirs) {
+      await t.finger.up(1);
+      await sleep(60);
+      await recentre(t, 100);
+      const o = headingOffset(heading);
+      await t.finger.down(1, 150, 250);
+      await t.finger.move(1, 150 + o.dx, 250 + o.dy);
+      await sleep(60);
+      const cmd = await t.cmd();
+      const before = await t.sim();
+      await simSeconds(t, 0.9);
+      const after = await t.sim();
+      const moved = headingOfMove(after.x - before.x, after.y - before.y);
+      const ok =
+        cmd.steer && angleApart(cmd.steer.heading, heading) < 0.5 && cmd.steer.mode === (mode === 'assisted' ? 'assist' : 'point') && cmd.move === 1 && cmd.rotate === 0 &&
+        angleApart(after.rot, heading) < 2 && Math.hypot(after.x - before.x, after.y - before.y) > 150;
+      // Assisted travels straight at the thumb; Point-to-Fly curves round while it is still turning, so only the later part is straight.
+      const straight = mode === 'assisted' ? angleApart(moved, heading) < 25 : true;
+      results.push(`${name}:${ok && straight ? 'ok' : `BAD(${JSON.stringify([cmd.steer, Math.round(after.rot), Math.round(moved)])})`}`);
+    }
+    check(`[${label}] thumb up / down / left / right and the four diagonals: the nose settles on that heading and the ship flies off`, results.every((r) => r.endsWith(':ok')), results.join(' '));
+    await t.finger.up(1);
+    await sleep(60);
+
+    // Release: stops, keeps its heading, nothing stuck
+    await recentre(t, 0);
+    await t.finger.down(2, 150, 250);
+    await t.finger.move(2, 150 + 46, 250);
+    await simSeconds(t, 0.4);
+    await t.finger.up(2);
+    await sleep(80);
+    const rel1 = await t.sim();
+    await sleep(400);
+    const rel2 = await t.sim();
+    check(`[${label}] releasing the stick stops thrust and steering at once: no drift, no more turning, neutral command`, rel1.x === rel2.x && rel1.y === rel2.y && rel1.rot === rel2.rot && JSON.stringify(await t.cmd()) === NEUTRAL_CMD, JSON.stringify([rel1, rel2]));
+    check(`[${label}] and the simulation has forgotten any assisted travel direction`, (await t.page.evaluate(`window.__game.scene.getScene('GameScene').sim.player.travelHeading`)) === null);
+
+    // The stick beside FIRE, LASER and BOOST: four fingers
+    await recentre(t, 100);
+    const fire = await t.centre('.tc-fire');
+    const laser = await t.centre('.tc-laser');
+    const boost = await t.centre('.tc-boost');
+    const before = await t.sim();
+    await t.finger.down(3, 150, 250);
+    await t.finger.move(3, 150, 250 - 46);
+    await t.finger.down(4, fire.x, fire.y);
+    await sleep(250);
+    const shotsWhileFiring = (await t.sim()).shots;
+    await t.finger.down(5, laser.x, laser.y);
+    await sleep(100);
+    await t.finger.down(6, boost.x, boost.y);
+    await sleep(150);
+    c = await t.cmd();
+    const during = await t.sim();
+    check(`[${label}] stick + FIRE + LASER + BOOST at once: all four commands arrive, the ship shoots, fires the laser and boosts`, c.shoot && c.laser && c.boost && c.steer && c.move === 1 && shotsWhileFiring >= 1 && during.laser === before.laser - 1 && during.boost === true, JSON.stringify([c, shotsWhileFiring, before.laser, during.laser, during.boost]));
+    await t.shot(`movement-${mode}-play-four-fingers`);
+    await t.finger.up(4);
+    await sleep(80);
+    c = await t.cmd();
+    check(`[${label}] lifting FIRE keeps the stick, LASER and BOOST`, !c.shoot && c.laser && c.boost && c.steer, JSON.stringify(c));
+    for (const id of [3, 5, 6]) await t.finger.up(id);
+    await sleep(100);
+    check(`[${label}] with every finger lifted the command is neutral`, JSON.stringify(await t.cmd()) === NEUTRAL_CMD);
+
+    // A cancelled touch and focus loss leave nothing held
+    await t.finger.down(7, 150, 250);
+    await t.finger.move(7, 150 + 46, 250);
+    await t.finger.down(8, fire.x, fire.y);
+    await sleep(100);
+    await t.finger.cancelAll();
+    await sleep(120);
+    check(`[${label}] a cancelled touch leaves no stuck thrust, heading or FIRE`, JSON.stringify(await t.cmd()) === NEUTRAL_CMD);
+    await t.finger.down(9, 150, 250);
+    await t.finger.move(9, 150, 250 + 46);
+    await sleep(80);
+    await t.page.evaluate(() => window.dispatchEvent(new Event('blur')));
+    await sleep(200);
+    check(`[${label}] losing focus releases the stick and pauses`, (await t.sim()).paused === true && JSON.stringify(await t.cmd()) === NEUTRAL_CMD);
+    await t.finger.up(9);
+
+    // Switch mode from the pause menu: the run carries on, nothing activates
+    const other = mode === 'pointToFly' ? 'assisted' : 'pointToFly';
+    const otherName = other === 'pointToFly' ? 'POINT-TO-FLY' : 'ASSISTED FLIGHT';
+    // (The four-finger test above may have left the ship against a wall; the game's own wall-bounce impulse would keep nudging it after RESUME. That is existing physics, not input, so it is cleared here.)
+    await t.page.evaluate(`window.__game.scene.getScene('GameScene').sim.player.velocity = { x: 0, y: 0 }`);
+    const snap = await t.sim();
+    await t.tapItem('controls', { scene: 'GameScene' });
+    await t.shot(`movement-${mode}-pause-controls`);
+    await t.tapItem('movement', { zone: otherName, scene: 'GameScene' });
+    const snap2 = await t.sim();
+    check(`[${label}] choosing ${otherName} in the pause menu applies it and keeps the run frozen as it was (position, heading, lives, score, shots, time)`, (await movementOf(t)) === other && snap2.paused === true && ['x', 'y', 'rot', 'lives', 'score', 'shots', 'laser', 'boost', 'time'].every((k) => snap[k] === snap2[k]), JSON.stringify([snap, snap2]));
+    await t.tapItem('back', { scene: 'GameScene' });
+    await t.tapItem('resume', { scene: 'GameScene' });
+    await sleep(60);
+    const resumed = await t.sim();
+    await sleep(400);
+    const later = await t.sim();
+    check(`[${label}] after RESUME in ${otherName} the ship is where it was, still, with no stale thrust and no ghost FIRE / LASER / BOOST`, later.paused === false && later.x === resumed.x && later.y === resumed.y && later.laser === snap.laser && later.boost === snap.boost && later.shots <= snap.shots && JSON.stringify(await t.cmd()) === NEUTRAL_CMD, JSON.stringify([snap, resumed, later]));
+    check(`[${label}] the stick works in the new mode straight away`, await (async () => {
+      await t.finger.down(10, 150, 250);
+      await t.finger.move(10, 150 + 46, 250);
+      await sleep(100);
+      const cc = await t.cmd();
+      await t.finger.up(10);
+      return cc.steer?.mode === (other === 'assisted' ? 'assist' : 'point');
+    })());
+    check(`[${label}] no console errors`, t.problems.length === 0, t.problems.join(' | '));
+    await t.context.close();
+  }
+
+  // ---- Same input, two modes: the trajectories differ the way they should ---------------------------------------------------
+  {
+    const t = await mobilePage(844, 390, { steering: 'pointToFly' });
+    await t.start();
+    await t.play();
+    const trial = async (mode) => {
+      await t.page.evaluate((m) => window.__game.registry.get('touchMovement').set(m), mode);
+      await sleep(80);
+      await recentre(t, 270);
+      await t.page.evaluate(() => {
+        window.__game.scene.getScene('GameScene').sim.player.position = { x: 300, y: 360 };
+      });
+      await t.finger.down(1, 150, 250);
+      await t.finger.move(1, 150 + 46, 250); // right
+      await simSeconds(t, 0.5);
+      const a = await t.sim();
+      await t.finger.move(1, 150, 250 - 46); // flick to up
+      await simSeconds(t, 0.35);
+      const b = await t.sim();
+      await t.finger.up(1);
+      await sleep(80);
+      return { sideways: b.x - a.x, up: a.y - b.y };
+    };
+    const p = await trial('pointToFly');
+    const a = await trial('assisted');
+    info(`flick right -> up, 0.35 s later: Point-to-Fly went ${p.sideways.toFixed(0)} px further right and ${p.up.toFixed(0)} px up; Assisted Flight ${a.sideways.toFixed(0)} px right and ${a.up.toFixed(0)} px up`);
+    check('identical start and identical thumb: Assisted Flight gets going up sooner and wastes less sideways than Point-to-Fly', a.up > p.up + 10 && a.sideways < p.sideways - 10, JSON.stringify({ p, a }));
+    check('(both modes) no console errors', t.problems.length === 0, t.problems.join(' | '));
+    await t.context.close();
+  }
+
+  // ---- Layout and screenshots on small and large landscape phones -----------------------------------------------------------
+  const SIZES = [
+    [667, 375, 'small'],
+    [844, 390, 'medium'],
+    [932, 430, 'large'],
+  ];
+  for (const [w, h, name] of SIZES) {
+    for (const mode of ['classic', 'pointToFly', 'assisted']) {
+      const t = await mobilePage(w, h, { steering: mode });
+      await t.start();
+      // the Controls page (title screen)
+      await t.tapItem('controls');
+      const segs = [];
+      for (const zone of ['CLASSIC D-PAD', 'POINT-TO-FLY', 'ASSISTED FLIGHT']) segs.push(await t.itemRect('movement', { zone }));
+      const others = [];
+      for (const id of ['haptics', 'test-vibration', 'to-keyboard', 'back']) others.push(await t.itemRect(id));
+      const boxes = [...segs, ...others.filter(Boolean)];
+      let anyOverlap = false;
+      for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) if (overlaps(boxes[i], boxes[j])) anyOverlap = true;
+      const canvas = await t.rect('canvas');
+      const textBounds = await t.page.evaluate(`(() => { const sc = window.__game.scene.getScene('StartScene'); const out = []; const walk = (list, v) => { for (const c of list) { const vis = v && c.visible; if (c.type === 'Text' && vis && c.text) { const b = c.getBounds(); out.push({ text: c.text, left: b.x, right: b.x + b.width, top: b.y, bottom: b.y + b.height }); } if (c.list) walk(c.list, vis); } }; walk(sc.children.list, true); return out; })()`);
+      const spill = textBounds.filter((b) => b.left < 0 || b.right > 1280 || b.top < 0 || b.bottom > 720);
+      const segSizeOk = segs.every((r) => r.height >= 44 && r.width >= 100 && r.left >= canvas.left && r.right <= canvas.right);
+      const sel = (await t.page.evaluate(`window.__game.registry.get('touchMovement').mode`));
+      // is the selected caption the only one lit? (read from the page's own text colours)
+      const lit = await t.page.evaluate(`(() => { const sc = window.__game.scene.getScene('StartScene'); const out = []; const walk = (list) => { for (const c of list) { if (c.type === 'Text' && ['CLASSIC D-PAD', 'POINT-TO-FLY', 'ASSISTED FLIGHT'].includes(c.text)) out.push([c.text, c.style.color]); if (c.list) walk(c.list); } }; walk(sc.children.list); return out; })()`);
+      const gold = lit.filter(([, color]) => color === lit.find(([text]) => text === ({ classic: 'CLASSIC D-PAD', pointToFly: 'POINT-TO-FLY', assisted: 'ASSISTED FLIGHT' })[sel])?.[1]);
+      check(`[${name} ${w}x${h}, ${mode}] CONTROLS page: three thumb-sized mode buttons inside the screen, nothing overlapping, no text spilling off, the chosen mode marked`, segSizeOk && !anyOverlap && spill.length === 0 && gold.length >= 1 && sel === mode, JSON.stringify({ segs: segs.map((r) => `${Math.round(r.width)}x${Math.round(r.height)}`), anyOverlap, spill: spill.map((s) => s.text), sel }));
+      await t.shot(`movement-controls-${name}-${mode}`);
+      await t.tapItem('back');
+      await t.play();
+      await t.quiet();
+      await t.page.evaluate(`window.__game.scene.getScene('GameScene').sim.player.lives = 99`);
+      await sleep(250);
+      if (mode !== 'classic') {
+        await t.finger.down(1, 120, h - 150);
+        await t.finger.move(1, 120 + 38, h - 150 - 38);
+        await sleep(200);
+        const base = await t.rect('.tc-base');
+        const buttons = { fire: await t.rect('.tc-fire'), laser: await t.rect('.tc-laser'), boost: await t.rect('.tc-boost'), pause: await t.rect('.tc-pause') };
+        const clear = Object.values(buttons).every((r) => !overlaps(base, r));
+        const inside = base.left >= 0 && base.top >= 0 && base.right <= w && base.bottom <= h;
+        check(`[${name} ${w}x${h}, ${mode}] the stick's ring while held is inside the screen and clear of FIRE / LASER / BOOST / PAUSE`, clear && inside, JSON.stringify({ base: [Math.round(base.left), Math.round(base.top), Math.round(base.width)], clear, inside }));
+        await t.shot(`movement-play-${name}-${mode}`);
+        await t.finger.up(1);
+      } else {
+        const pad = await t.rect('.tc-dpad');
+        await t.finger.down(1, pad.left + pad.width * 0.5, pad.top + pad.height * 0.15);
+        await sleep(150);
+        await t.shot(`movement-play-${name}-${mode}`);
+        await t.finger.up(1);
+      }
+      // pause menu with the Controls page open
+      const pauseAt = await t.centre('.tc-pause');
+      await t.finger.down(2, pauseAt.x, pauseAt.y);
+      await t.finger.up(2);
+      await sleep(250);
+      await t.tapItem('controls', { scene: 'GameScene' });
+      await t.shot(`movement-pause-${name}-${mode}`);
+      const pm = (await t.menu('GameScene')).items.find((i) => i.id === 'movement');
+      check(`[${name} ${w}x${h}, ${mode}] the pause menu's CONTROLS page has the movement selector`, !!pm && pm.zones.length === 3, JSON.stringify(pm?.zones?.map((z) => z.name)));
+      check(`[${name} ${w}x${h}, ${mode}] no console errors`, t.problems.length === 0, t.problems.join(' | '));
+      await t.context.close();
+    }
+  }
+}
+
 async function runDpad() {
   console.log('\n--- D-pad ---');
   // =====================================================================================================
@@ -111,8 +382,8 @@ async function runDpad() {
   const t = await mobilePage(844, 390, { steering: null }); // a first-time visitor
   await t.start();
   let texts = await t.texts('StartScene');
-  check('the title screen shows the D-pad in its controls reference (the default), and no steering switch of its own', texts.includes('D-PAD') && texts.includes('Move and turn') && !texts.includes('STEERING') && !texts.includes('JOYSTICK'), texts.join(' | ').slice(0, 200));
-  check('a player who never chose gets the D-pad (the default), with nothing saved yet', (await steeringOf(t)) === 'dpad' && (await t.page.evaluate(() => localStorage.getItem('asteroids.touchSteering'))) === null);
+  check('the title screen shows the D-pad in its controls reference (the default), and no movement switch of its own', texts.includes('D-PAD') && texts.includes('Move and turn') && !texts.includes('MOVEMENT') && !texts.includes('POINT-TO-FLY'), texts.join(' | ').slice(0, 200));
+  check('a player who never chose gets Classic D-Pad (the default), with nothing saved yet', (await movementOf(t)) === 'classic' && (await savedMovement(t)) === null);
   const pill = await t.rect('.tc-sys-btn');
   const pillText = await t.page.evaluate(() => document.querySelector('.tc-sys-btn').textContent);
   check('the title screen shows the Fullscreen control, at least 44 CSS px tall, inside the screen, top right', (await t.rect('.tc-system')).display === 'block' && pillText === 'FULLSCREEN' && pill.height >= 44 && pill.right <= 844 && pill.top >= 0 && pill.left > 422 && pill.top < 30, `${pillText} ${Math.round(pill.width)}x${Math.round(pill.height)} at ${Math.round(pill.left)},${Math.round(pill.top)}`);
@@ -125,26 +396,30 @@ async function runDpad() {
   // the steering choice is on CONTROLS: one tap away, and it applies at once
   await t.tapItem('controls');
   texts = await t.texts('StartScene');
-  check('the CONTROLS page offers STEERING: D-PAD | JOYSTICK, with D-PAD lit', (await t.menu()).page === 'controls' && texts.includes('STEERING') && texts.includes('JOYSTICK') && texts.includes('D-PAD'), texts.join(' | ').slice(0, 200));
-  const segs = [await t.itemRect('steering', { zone: 'D-PAD' }), await t.itemRect('steering', { zone: 'JOYSTICK' })];
-  check('both steering buttons are at least 44 CSS px tall and 100 wide (thumb-sized)', segs.every((r) => r.height >= 44 && r.width >= 100), segs.map((r) => `${Math.round(r.width)}x${Math.round(r.height)}`).join(' '));
-  await t.shot('dpad-controls-page');
-  await t.tapItem('steering', { zone: 'JOYSTICK' });
-  check('tapping JOYSTICK selects it, applies it at once and saves it', (await steeringOf(t)) === 'joystick' && (await t.page.evaluate(() => localStorage.getItem('asteroids.touchSteering'))) === 'joystick');
-  await t.shot('dpad-title-joystick-selected');
+  check('the CONTROLS page offers MOVEMENT: CLASSIC D-PAD | POINT-TO-FLY | ASSISTED FLIGHT, and says what the lit one does', (await t.menu()).page === 'controls' && ['MOVEMENT', 'CLASSIC D-PAD', 'POINT-TO-FLY', 'ASSISTED FLIGHT'].every((x) => texts.includes(x)) && texts.some((x) => /original controls/.test(x)) && !texts.includes('STEERING') && !texts.includes('JOYSTICK'), texts.join(' | ').slice(0, 300));
+  const segs = [await t.itemRect('movement', { zone: 'CLASSIC D-PAD' }), await t.itemRect('movement', { zone: 'POINT-TO-FLY' }), await t.itemRect('movement', { zone: 'ASSISTED FLIGHT' })];
+  check('all three movement buttons are at least 44 CSS px tall and 100 wide (thumb-sized), side by side without overlap', segs.every((r) => r.height >= 44 && r.width >= 100) && !overlaps(segs[0], segs[1]) && !overlaps(segs[1], segs[2]), segs.map((r) => `${Math.round(r.width)}x${Math.round(r.height)}`).join(' '));
+  await t.shot('movement-controls-page-classic');
+  await t.tapItem('movement', { zone: 'POINT-TO-FLY' });
+  check('tapping POINT-TO-FLY selects it, applies it at once and saves it', (await movementOf(t)) === 'pointToFly' && (await savedMovement(t)) === 'pointToFly');
+  check('and the page now explains Point-to-Fly', (await t.texts('StartScene')).some((x) => /Point where you want the ship to face/.test(x)));
+  await t.shot('movement-controls-page-pointtofly');
+  await t.tapItem('movement', { zone: 'ASSISTED FLIGHT' });
+  check('tapping ASSISTED FLIGHT selects it, applies it at once and saves it', (await movementOf(t)) === 'assisted' && (await savedMovement(t)) === 'assisted');
+  await t.shot('movement-controls-page-assisted');
   await t.tapItem('back');
-  check('back on the title screen, the how-to reference says what the joystick does', (await t.menu()).page === 'title' && (await t.texts('StartScene')).includes('STICK') && (await t.texts('StartScene')).includes('Drag to steer'));
+  check('back on the title screen, the how-to reference says what the stick does', (await t.menu()).page === 'title' && (await t.texts('StartScene')).includes('STICK') && (await t.texts('StartScene')).includes('Point to travel'));
   await t.tapItem('controls');
-  await t.tapItem('steering', { zone: 'D-PAD' });
-  check('tapping D-PAD selects it again and applies it at once', (await steeringOf(t)) === 'dpad');
-  check('the choice is saved in localStorage', (await t.page.evaluate(() => localStorage.getItem('asteroids.touchSteering'))) === 'dpad');
-  await t.shot('dpad-title-dpad-selected');
+  await t.tapItem('movement', { zone: 'CLASSIC D-PAD' });
+  check('tapping CLASSIC D-PAD selects it again and applies it at once', (await movementOf(t)) === 'classic');
+  check('the choice is saved in localStorage', (await savedMovement(t)) === 'classic');
+  await t.shot('movement-title-classic-selected');
   await t.tapItem('back');
-  check('...and the reference says what the D-pad does once D-PAD is chosen again', (await t.texts('StartScene')).includes('D-PAD') && (await t.texts('StartScene')).includes('Move and turn'));
+  check('...and the reference says what the D-pad does once CLASSIC D-PAD is chosen again', (await t.texts('StartScene')).includes('D-PAD') && (await t.texts('StartScene')).includes('Move and turn'));
   await t.page.reload();
   await t.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
   await sleep(300);
-  check('after a reload D-PAD is still selected (the choice persists between sessions)', (await steeringOf(t)) === 'dpad');
+  check('after a reload CLASSIC D-PAD is still selected (the choice persists between sessions)', (await movementOf(t)) === 'classic');
   check('no touch controls on the title screen, in either mode', !(await t.overlayShown()));
 
   // =====================================================================================================
@@ -321,32 +596,37 @@ async function runDpad() {
   await t.finger.up(13);
   await sleep(300);
 
-  // switch to the joystick FROM THE PAUSE MENU (CONTROLS -> JOYSTICK), then resume
+  // switch to Point-to-Fly FROM THE PAUSE MENU (CONTROLS -> POINT-TO-FLY), then resume
+  const runBefore = await t.sim();
   await t.tapItem('controls', { scene: 'GameScene' });
-  check('the pause menu\'s CONTROLS page offers the steering choice with D-PAD lit, and the run stays paused', (await t.texts()).includes('STEERING') && (await t.menu('GameScene')).page === 'controls' && (await t.sim()).paused === true && (await steeringOf(t)) === 'dpad');
-  await t.shot('dpad-pause-controls');
-  await t.tapItem('steering', { zone: 'JOYSTICK', scene: 'GameScene' });
-  check('the pause menu switches to the joystick by touch and remembers it', (await steeringOf(t)) === 'joystick' && (await t.page.evaluate(() => localStorage.getItem('asteroids.touchSteering'))) === 'joystick');
-  check('the pause menu\'s CONTROLS page has no keyboard switch (the mode cannot change mid-run)', !(await t.menu('GameScene')).items.some((i) => i.id === 'to-keyboard'));
+  check("the pause menu's CONTROLS page offers the movement choice with CLASSIC D-PAD lit, and the run stays paused", (await t.texts()).includes('MOVEMENT') && (await t.menu('GameScene')).page === 'controls' && (await t.sim()).paused === true && (await movementOf(t)) === 'classic');
+  await t.shot('movement-pause-controls-classic');
+  await t.tapItem('movement', { zone: 'POINT-TO-FLY', scene: 'GameScene' });
+  check('the pause menu switches to Point-to-Fly by touch and remembers it', (await movementOf(t)) === 'pointToFly' && (await savedMovement(t)) === 'pointToFly');
+  await t.shot('movement-pause-controls-pointtofly');
+  check("the pause menu's CONTROLS page has no keyboard switch (the mode cannot change mid-run)", !(await t.menu('GameScene')).items.some((i) => i.id === 'to-keyboard'));
+  const runDuring = await t.sim();
+  check('changing mode while paused keeps the run exactly as it was (same position, heading, lives, score, time; still paused)', runDuring.paused === true && runDuring.x === runBefore.x && runDuring.y === runBefore.y && runDuring.rot === runBefore.rot && runDuring.lives === runBefore.lives && runDuring.score === runBefore.score && runDuring.time === runBefore.time, JSON.stringify([runBefore, runDuring]));
   await t.tapItem('back', { scene: 'GameScene' });
   await t.tapItem('resume', { scene: 'GameScene' });
   await sleep(100);
   check('after RESUME the joystick zone is back and the D-pad is gone', (await t.rect('.tc-zone')).display === 'block' && (await t.rect('.tc-dpad')).display === 'none' && (await t.rect('.tc-hint')).display !== 'none');
+  check('and nothing fired or activated by the menu taps (no shots, laser charges and boost unchanged)', (await t.sim()).shots <= runBefore.shots && (await t.sim()).laser === runBefore.laser && (await t.sim()).boost === runBefore.boost && JSON.stringify(await t.cmd()) === NEUTRAL_CMD, JSON.stringify([runBefore, await t.sim()]));
   await t.finger.down(15, 150, 280);
   await t.finger.move(15, 150 - 45, 280 - 45);
   await sleep(100);
   c = await t.cmd();
-  check('the original floating joystick still works, analogue, in joystick mode', c.rotate < -0.4 && c.rotate > -1 && c.move > 0.4, JSON.stringify(c));
+  check('the Point-to-Fly stick: thumb up-left asks the ship to face up-left (heading 135) and fly, with no rotate command', c.steer && Math.abs(c.steer.heading - 135) < 0.5 && c.steer.mode === 'point' && c.move === 1 && c.rotate === 0, JSON.stringify(c));
   await t.finger.down(16, fire.x, fire.y);
   await t.finger.down(17, laser.x, laser.y);
   await t.finger.down(18, boost.x, boost.y);
   await sleep(100);
   c = await t.cmd();
-  check('joystick + FIRE + LASER + BOOST all work together (unchanged)', c.shoot && c.laser && c.boost && c.rotate < -0.4, JSON.stringify(c));
+  check('Point-to-Fly stick + FIRE + LASER + BOOST all work together (four fingers)', c.shoot && c.laser && c.boost && c.steer?.mode === 'point', JSON.stringify(c));
   // switch mode while those fingers are down (programmatically: the UI only offers it on menu screens)
-  await t.page.evaluate(`window.__game.registry.get('touchSteering').set('dpad')`);
+  await t.page.evaluate(`window.__game.registry.get('touchMovement').set('classic')`);
   await sleep(100);
-  check('switching from joystick to D-pad while the fingers are down releases everything and removes the joystick', JSON.stringify(await t.cmd()) === NEUTRAL_CMD && (await t.rect('.tc-zone')).display === 'none' && (await t.rect('.tc-dpad')).display !== 'none' && (await t.rect('.tc-base')).display === 'none');
+  check('switching from the stick to Classic while the fingers are down releases everything and removes the joystick', JSON.stringify(await t.cmd()) === NEUTRAL_CMD && (await t.rect('.tc-zone')).display === 'none' && (await t.rect('.tc-dpad')).display !== 'none' && (await t.rect('.tc-base')).display === 'none');
   await t.finger.move(15, 60, 60);
   await sleep(60);
   check('the old joystick finger keeps moving and does nothing', JSON.stringify(await t.cmd()) === NEUTRAL_CMD);
@@ -355,7 +635,7 @@ async function runDpad() {
   pad = await t.rect('.tc-dpad');
   await t.finger.down(19, padPoint(pad, 270).x, padPoint(pad, 270).y);
   await sleep(80);
-  check('and the D-pad works straight away', (await t.cmd()).rotate === -1);
+  check('and the D-pad works straight away', (await t.cmd()).rotate === -1 && (await t.cmd()).steer === undefined);
   await t.finger.up(19);
 
   // focus loss
@@ -408,29 +688,46 @@ async function runDpad() {
   const first = await mobilePage(844, 390, { steering: null });
   await first.start();
   await first.play();
-  check('a first-time visitor starts their first run with the D-pad (the pad is shown, no joystick zone)', (await first.rect('.tc-dpad')).display !== 'none' && (await first.rect('.tc-zone')).display === 'none' && (await first.rect('.tc-hint')).display === 'none');
+  check('a first-time visitor starts their first run with Classic D-Pad (the pad is shown, no joystick zone)', (await first.rect('.tc-dpad')).display !== 'none' && (await first.rect('.tc-zone')).display === 'none' && (await first.rect('.tc-hint')).display === 'none');
   await first.context.close();
 
-  const fresh = await mobilePage(844, 390, { steering: 'joystick' }); // someone who saved the joystick before the default changed
+  // Legacy migration: the old relative JOYSTICK preference (asteroids.touchSteering) is not reinterpreted as either new stick mode.
+  const legacy = await mobilePage(844, 390, { steering: null });
+  await legacy.context.addInitScript(() => {
+    try {
+      if (localStorage.getItem('asteroids.touchSteering') === null) localStorage.setItem('asteroids.touchSteering', 'joystick');
+    } catch {
+      // storage blocked
+    }
+  });
+  await legacy.start();
+  check('a returning player who saved the old relative JOYSTICK starts as Classic D-Pad, not as Point-to-Fly or Assisted Flight', (await movementOf(legacy)) === 'classic');
+  check('and the old preference is left untouched, with nothing new saved until they choose', (await legacy.page.evaluate(() => localStorage.getItem('asteroids.touchSteering'))) === 'joystick' && (await savedMovement(legacy)) === null);
+  await legacy.play();
+  check('their first run shows the D-pad and no joystick', (await legacy.rect('.tc-dpad')).display !== 'none' && (await legacy.rect('.tc-zone')).display === 'none');
+  await legacy.context.close();
+
+  const fresh = await mobilePage(844, 390, { steering: 'assisted' }); // someone who already chose Assisted Flight
   await fresh.start();
-  check('a saved JOYSTICK choice is NOT overridden by the D-pad default', (await steeringOf(fresh)) === 'joystick');
+  check('a saved ASSISTED FLIGHT choice is applied on a brand-new visit', (await movementOf(fresh)) === 'assisted');
   await fresh.play();
   check('and their first run shows the joystick zone and no pad', (await fresh.rect('.tc-zone')).display === 'block' && (await fresh.rect('.tc-dpad')).display === 'none');
   await fresh.page.reload();
   await fresh.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
   await sleep(250);
-  check('the joystick choice survives a reload (the seed never overwrites a saved choice)', (await steeringOf(fresh)) === 'joystick');
-  await fresh.page.evaluate(() => localStorage.setItem('asteroids.touchSteering', 'dpad'));
+  check('the choice survives a reload (the seed never overwrites a saved choice)', (await movementOf(fresh)) === 'assisted');
+  await fresh.page.evaluate(() => localStorage.setItem('asteroids.touchMovement', 'pointToFly'));
   await fresh.page.reload();
   await fresh.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
   await sleep(250);
-  await fresh.play();
-  check('a saved D-PAD choice is applied on a brand-new visit (the pad is shown in the first run)', (await fresh.rect('.tc-dpad')).display !== 'none' && (await fresh.rect('.tc-zone')).display === 'none');
-  await fresh.page.evaluate(() => localStorage.setItem('asteroids.touchSteering', 'nonsense'));
-  await fresh.page.reload();
-  await fresh.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
-  await sleep(250);
-  check('an unknown saved value falls back to the D-pad default', (await steeringOf(fresh)) === 'dpad');
+  check('a saved POINT-TO-FLY choice is applied on a brand-new visit', (await movementOf(fresh)) === 'pointToFly');
+  for (const junk of ['nonsense', 'joystick', 'dpad', '']) {
+    await fresh.page.evaluate((v) => localStorage.setItem('asteroids.touchMovement', v), junk);
+    await fresh.page.reload();
+    await fresh.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
+    await sleep(250);
+    check(`an unsupported saved value (${JSON.stringify(junk)}) falls back to Classic D-Pad`, (await movementOf(fresh)) === 'classic');
+  }
   await fresh.context.close();
 
   // storage that throws (private window): the choice still works for the visit
@@ -442,11 +739,11 @@ async function runDpad() {
     Object.defineProperty(window, 'localStorage', { get: boom, configurable: true });
   });
   await priv.start();
-  check('with storage blocked a first-time visitor still gets the D-pad', (await steeringOf(priv)) === 'dpad');
+  check('with storage blocked a first-time visitor still gets Classic D-Pad', (await movementOf(priv)) === 'classic');
   await priv.tapItem('controls');
-  await priv.tapItem('steering', { zone: 'JOYSTICK' });
+  await priv.tapItem('movement', { zone: 'ASSISTED FLIGHT' });
   await sleep(200);
-  check('with storage blocked the joystick can still be chosen for the visit and nothing crashes', (await steeringOf(priv)) === 'joystick' && priv.problems.filter((x) => !/SecurityError/.test(x)).length === 0, priv.problems.join(' | '));
+  check('with storage blocked Assisted Flight can still be chosen for the visit and nothing crashes', (await movementOf(priv)) === 'assisted' && priv.problems.filter((x) => !/SecurityError/.test(x)).length === 0, priv.problems.join(' | '));
   await priv.context.close();
 
   // =====================================================================================================
@@ -463,7 +760,7 @@ async function runDpad() {
   for (const [w, h, name] of SIZES) {
     const p = await mobilePage(w, h);
     await p.start();
-    await p.page.evaluate(() => localStorage.setItem('asteroids.touchSteering', 'dpad'));
+    await p.page.evaluate(() => localStorage.setItem('asteroids.touchMovement', 'classic'));
     await p.page.reload();
     await p.page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
     await sleep(250);
@@ -754,7 +1051,7 @@ async function runFullscreen() {
   await dp.goto(`${BASE}?debug`);
   await dp.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
   await sleep(250);
-  const dstate = await dp.evaluate(() => ({ system: getComputedStyle(document.querySelector('.tc-system')).display, root: getComputedStyle(document.querySelector('.tc-root')).display, dpadBoxes: document.querySelector('.tc-dpad').getClientRects().length, steering: window.__game.registry.get('touchSteering').mode }));
+  const dstate = await dp.evaluate(() => ({ system: getComputedStyle(document.querySelector('.tc-system')).display, root: getComputedStyle(document.querySelector('.tc-root')).display, dpadBoxes: document.querySelector('.tc-dpad').getClientRects().length, steering: window.__game.registry.get('touchMovement').mode }));
   check('desktop: no Fullscreen control, no D-pad, nothing drawn (the keyboard game is unchanged)', dstate.system === 'none' && dstate.root === 'none' && dstate.dpadBoxes === 0, JSON.stringify(dstate)); // the pad is the default steering, but it is inside the hidden touch root: nothing is rendered
   await dp.keyboard.press('Space');
   await dp.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
@@ -1112,10 +1409,13 @@ process.exit(failures ? 1 : 0);
  */
 async function mobilePage(width, height, { query = '?debug', mobile = true, touch = true, steering = 'joystick' } = {}) {
   const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 2, isMobile: mobile, hasTouch: touch });
-  if (steering) {
+  // 'classic' | 'pointToFly' | 'assisted': a movement choice the player already saved. 'joystick' (the default) is not a choice any more:
+  // it puts the retired relative stick on screen through the compatibility seam in `start()`, for the sections that test the stick
+  // zone's multi-touch and lifecycle rules. null: a first-time visitor.
+  if (steering && steering !== 'joystick') {
     await context.addInitScript((value) => {
       try {
-        if (localStorage.getItem('asteroids.touchSteering') === null) localStorage.setItem('asteroids.touchSteering', value);
+        if (localStorage.getItem('asteroids.touchMovement') === null) localStorage.setItem('asteroids.touchMovement', value);
       } catch {
         // storage blocked: nothing to seed
       }
@@ -1256,6 +1556,7 @@ async function mobilePage(width, height, { query = '?debug', mobile = true, touc
     start: async () => {
       await page.goto(`${BASE}${query}`);
       await page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
+      if (steering === 'joystick') await page.evaluate(() => window.__game.registry.get('touchControls').setSteering('joystick'));
       await sleep(250);
     },
     /** Taps PLAY and waits for the run. */
@@ -1284,8 +1585,8 @@ async function run() {
   const titleTexts = await m.texts('StartScene');
   const titleItems = (await m.menu()).items.map((i) => i.id);
   check('the title screen is the touch one (a big PLAY, no keyboard instructions, no players switch)', titleTexts.includes('PLAY') && !titleTexts.some((t) => /SPACE|click to start/.test(t)) && !titleItems.includes('players'), titleTexts.join(' | ').slice(0, 160));
-  check('the title screen shows how to play (the controls with their in-game names), the power-up legend, and AUDIO and CONTROLS doors', ['HOW TO PLAY', 'STICK', 'FIRE', 'LASER', 'BOOST', 'POWER-UPS', 'RAPID FIRE', 'SLOW MOTION'].every((t) => titleTexts.includes(t)) && ['audio', 'controls', 'powerups'].every((i) => titleItems.includes(i)), titleTexts.join(' | ').slice(0, 200));
-  check('no settings clutter on the first screen (no volume rows, haptics, steering or mute switches)', !titleTexts.some((t) => /VOLUME|SFX|HAPTIC|VIBRATION|STEERING|^MUSIC/.test(t)), titleTexts.join(' | ').slice(0, 200));
+  check('the title screen shows how to play (the controls with their in-game names), the power-up legend, and AUDIO and CONTROLS doors', ['HOW TO PLAY', 'D-PAD', 'FIRE', 'LASER', 'BOOST', 'POWER-UPS', 'RAPID FIRE', 'SLOW MOTION'].every((t) => titleTexts.includes(t)) && ['audio', 'controls', 'powerups'].every((i) => titleItems.includes(i)), titleTexts.join(' | ').slice(0, 200));
+  check('no settings clutter on the first screen (no volume rows, haptics, steering or mute switches)', !titleTexts.some((t) => /VOLUME|SFX|HAPTIC|VIBRATION|STEERING|MOVEMENT|^MUSIC/.test(t)), titleTexts.join(' | ').slice(0, 200));
   check('no touch controls are drawn on the title screen', !(await m.overlayShown()));
   const a0 = await m.audio();
   check('audio starts locked, music not yet playing', a0.locked === true && !a0.playing, JSON.stringify(a0));
@@ -1586,7 +1887,7 @@ async function run() {
   // The switch lives on the CONTROLS page now, below the steering and haptic choices.
   await m.tapItem('controls');
   const controlIds = (await m.menu()).items.map((i) => i.id);
-  check('CONTROLS opens a page for this phone: steering, haptic feedback, test vibration, and the way to the keyboard', (await m.menu()).page === 'controls' && ['steering', 'haptics', 'test-vibration', 'to-keyboard', 'back'].every((id) => controlIds.includes(id)), JSON.stringify(controlIds));
+  check('CONTROLS opens a page for this phone: movement mode, haptic feedback, test vibration, and the way to the keyboard', (await m.menu()).page === 'controls' && ['movement', 'haptics', 'test-vibration', 'to-keyboard', 'back'].every((id) => controlIds.includes(id)), JSON.stringify(controlIds));
   const sw = await m.itemRect('to-keyboard');
   check('the switch to keyboard controls is a full-size button (at least 44 CSS px tall)', sw.height >= 44 && sw.width >= 120, JSON.stringify({ w: Math.round(sw.width), h: Math.round(sw.height) }));
   const ctl = { x: (sw.left + sw.right) / 2, y: (sw.top + sw.bottom) / 2 };
@@ -1771,6 +2072,7 @@ async function run() {
   await laptopCtx.close();
 
   await runDpad();
+  await runMovement();
   await runFullscreen();
   await runHaptics();
 

@@ -130,7 +130,7 @@ export function buildTitlePage(kit: PageKit, ctx: MenuContext, nav: PageNav): Pa
     defaultFocus: 'play',
     signature: () => {
       const s = ctx.setup();
-      return `${ctx.inputMode.mode}|${s.game.playerCount}|${s.p2Keys}|${s.game.livesMode}|${s.game.friendlyFire}|${s.game.speed.join(",")}|${ctx.steering.mode}|${ctx.pads.status(s.game.playerCount).map((p) => p.text).join('|')}`;
+      return `${ctx.inputMode.mode}|${s.game.playerCount}|${s.p2Keys}|${s.game.livesMode}|${s.game.friendlyFire}|${s.game.speed.join(",")}|${ctx.movement.mode}|${ctx.pads.status(s.game.playerCount).map((p) => p.text).join('|')}`;
     },
   };
 }
@@ -141,7 +141,7 @@ function buildHowToPlay(kit: PageKit, g: ReturnType<PageKit['graphics']>, ctx: M
   const touch = ctx.inputMode.isTouch;
   if (touch) {
     kit.text(LEFT_X + LEFT_W / 2, BAND_TOP + 22, 'HOW TO PLAY', { size: TEXT.heading, originX: 0.5, originY: 0.5, color: COLORS.heading });
-    drawTouchRows(kit, g, LEFT_X + 20, HELP_TOP - 10, touchRows(ctx.steering.mode), HELP_STEP);
+    drawTouchRows(kit, g, LEFT_X + 20, HELP_TOP - 10, touchRows(ctx.movement.mode), HELP_STEP);
     return;
   }
 

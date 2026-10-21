@@ -64,3 +64,25 @@ export function circlesOverlap(a: Circle, b: Circle): boolean {
 export function wrap(value: number, size: number): number {
   return ((value % size) + size) % size;
 }
+
+/** Signed shortest rotation from `from` to `to`, in degrees, in (-180, 180]. Exactly opposite headings give +180 so the choice is stable. */
+export function shortestAngleDelta(from: number, to: number): number {
+  const d = wrap(to - from, 360);
+  return d > 180 ? d - 360 : d;
+}
+
+/** Turns `current` toward `target` by the shortest way, by at most `maxStep` degrees. Never overshoots; the result is in [0, 360). */
+export function turnToward(current: number, target: number, maxStep: number): number {
+  const delta = shortestAngleDelta(current, target);
+  const step = Math.min(Math.abs(delta), Math.max(0, maxStep));
+  return wrap(current + Math.sign(delta) * step, 360);
+}
+
+/**
+ * The inverse of `getForwardVector`: the heading (degrees, 0 = Down, 90 = Left, 180 = Up, 270 = Right) of a screen-space direction
+ * (y down). A zero vector has no direction and returns 0.
+ */
+export function directionToHeading(x: number, y: number): number {
+  if (x === 0 && y === 0) return 0;
+  return wrap((Math.atan2(-x, y) * 180) / Math.PI, 360);
+}
