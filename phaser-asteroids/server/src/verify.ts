@@ -2,7 +2,7 @@ import type { GameConfig } from '../../src/core/gameConfig';
 import { FIXED_TICK_RATE } from '../../src/replay/constants';
 import { verifyReplay } from '../../src/replay/verifier';
 import type { VerificationResult } from '../../src/replay/types';
-import type { ServerSettings } from './config';
+import { MAX_RANKED_TICKS, type ServerSettings } from './config';
 
 /** What the server issued for this run; the replay must agree with every field. */
 export interface IssuedRunFacts {
@@ -10,6 +10,8 @@ export interface IssuedRunFacts {
   rulesVersion: string;
   config: GameConfig;
   createdAt: number;
+  /** The persisted issued limit. Legacy null rows retain the fixed resource ceiling and require a natural game over. */
+  timeLimitTicks?: number | null;
 }
 
 export type RejectCode =
@@ -72,7 +74,12 @@ export function verifyRankedReplay(replay: unknown, run: IssuedRunFacts, now: nu
   if (typeof totalTicks !== 'number' || !Number.isInteger(totalTicks) || totalTicks <= 0) {
     return reject('invalid_replay', 'totalTicks must be a positive integer');
   }
-  if (totalTicks > settings.maxTicks) return reject('too_long', `replay exceeds the ranked limit of ${settings.maxTicks} ticks`);
+  // The limit the server issued with THIS run (never above the resource bound this deployment is sized for).
+  const limit = run.timeLimitTicks ?? MAX_RANKED_TICKS;
+  if (!Number.isInteger(limit) || limit <= 0 || limit > MAX_RANKED_TICKS) {
+    return reject('invalid_replay', 'issued time limit is outside the ranked resource bound');
+  }
+  if (totalTicks > limit) return reject('too_long', `replay exceeds the ranked limit of ${limit} ticks`);
 
   // The game clock cannot run faster than the wall clock: ticks advance at most once per 1/60 s of real time, and the client
   // could not begin playing before the challenge existed. This rejects "ten minutes of play submitted five seconds later".
@@ -83,7 +90,13 @@ export function verifyRankedReplay(replay: unknown, run: IssuedRunFacts, now: nu
     return reject('too_fast', `replay covers ${Math.round(simulatedMs)} ms of play but only ${Math.max(0, Math.round(elapsedMs))} ms have passed since the challenge was issued`);
   }
 
-  const result = verifyReplay(replay, { maxTicks: settings.maxTicks, requireGameOver: true });
+  // A run still alive at the limit ends there; the client cannot pick the tick, because only a replay of exactly `limit` ticks
+  // qualifies and a game over before it always takes precedence. A run issued without a recorded limit can only end in game over.
+  const result = verifyReplay(replay, {
+    maxTicks: limit,
+    requireGameOver: true,
+    ...(run.timeLimitTicks != null && { timeLimitTicks: limit }),
+  });
   if (result.valid) return { ok: true, result };
 
   if (result.discrepancy) return reject('score_mismatch', result.discrepancy);

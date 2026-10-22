@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
 import { getAudio, type AudioDirector } from '../audio/phaserAudio';
-import { SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
 import { defaultRng } from '../core/rng';
 import { Starfield } from '../core/starfield';
 import { getSetup, setSetup, type GameSetup } from '../gameSetup';
@@ -11,8 +10,13 @@ import { getInputMode, getMovement, getTouchControls } from '../input/gameTouch'
 import type { GamepadHub } from '../input/gamepadHub';
 import type { InputModeController } from '../input/inputMode';
 import { createKeyPressRouter } from '../input/keyPress';
-import { RankedApiError, rankedRequested, requestChallenge, resolveApiBase } from '../ranked/api';
+import { rankedInputAvailable } from '../input/rankedInput';
+import { getApiBase, RANKED_MAX_TICKS, RankedApiError, rankedRequested, requestChallenge } from '../ranked/api';
+import { readLocalScores } from '../ranked/localScores';
+import { refreshPersonalBest, type PersonalBest } from '../ranked/personalBest';
+import { ScoresModel } from '../ranked/scoresModel';
 import { rankedSession } from '../ranked/session';
+import { FIXED_TICK_RATE } from '../replay';
 import { drawStarfield } from '../render/worldRenderer';
 import type { MenuContext, PageNav } from '../ui/menu/context';
 import type { MenuSnapshot } from '../ui/menu/menuController';
@@ -22,8 +26,10 @@ import { buildControlsPage } from '../ui/menu/pages/controls';
 import { buildCoopPage } from '../ui/menu/pages/coop';
 import { buildPadLayoutPage } from '../ui/menu/pages/padLayout';
 import { buildPowerupGuide } from '../ui/menu/pages/powerups';
+import { buildRankedPage, type RankedMenuContext, type RankedRequestStatus } from '../ui/menu/pages/ranked';
+import { buildScoresPage, type ScoresContext } from '../ui/menu/pages/scores';
 import { buildTitlePage } from '../ui/menu/pages/title';
-import { addText, COLORS } from '../ui/text';
+import { formatClock } from '../ui/text';
 import { SCENE_GAME, SCENE_START } from './keys';
 
 /** A second mode switch inside this window is the same touch landing twice (two fingers, a bouncing thumb), not a decision. */
@@ -44,11 +50,24 @@ export class StartScene extends Phaser.Scene {
   private menu!: MenuView;
   private starting = false;
   private switchLockedUntil = 0;
-  /** One line at the bottom of the title screen, used only when a ranked run was asked for with `?ranked`. */
-  private rankedNote: Phaser.GameObjects.Text | null = null;
+  /** Where the request for a ranked challenge stands; the RANKED PLAY page draws it. */
+  private rankedStatus: RankedRequestStatus = { kind: 'idle' };
+  /** Identifies the latest request, so the answer to one the player cancelled (or replaced) is ignored. */
+  private rankedRequest = 0;
+  private scoresModel!: ScoresModel;
+  /** This device's best verified score, refreshed from the server when the page opens. */
+  private personalBest: PersonalBest | null = null;
+  private autoStartRanked = false;
+  /** Keyboard presence cannot be queried; remember a real key code received on this menu. Never saved as a preference. */
+  private keyboardSeen = false;
 
   constructor() {
     super(SCENE_START);
+  }
+
+  /** `rankedAgain`: PLAY AGAIN on a ranked result screen, which goes straight on to ask for the next challenge. */
+  init(data?: { rankedAgain?: boolean }): void {
+    this.autoStartRanked = data?.rankedAgain === true;
   }
 
   /** For browser tests: where every button is and which page is open. */
@@ -59,7 +78,8 @@ export class StartScene extends Phaser.Scene {
   create(): void {
     this.starting = false;
     this.switchLockedUntil = 0;
-    this.rankedNote = null;
+    this.rankedStatus = { kind: 'idle' };
+    this.rankedRequest++;
     this.setup = getSetup(this.registry);
     this.audio = getAudio(this);
     this.audio.startMusicWhenUnlocked();
@@ -73,8 +93,25 @@ export class StartScene extends Phaser.Scene {
     // has no way to drive a second ship.
     if (this.inputMode.isTouch) this.forceOnePlayer();
 
-    const nav: PageNav = { open: (id) => this.menu.controller.open(id), back: () => void this.menu.controller.back() };
+    this.scoresModel = new ScoresModel(getApiBase());
+    this.personalBest = null;
+    const nav: PageNav = {
+      open: (id) => {
+        // The boards are fetched fresh each time the screen opens.
+        if (id === 'scores') void this.scoresModel.load();
+        if (id === 'ranked' || id === 'scores') this.refreshBest();
+        this.menu.controller.open(id);
+      },
+      back: () => void this.menu.controller.back(),
+    };
     const ctx = this.makeContext();
+    const rankedCtx = this.makeRankedContext(nav);
+    const scoresCtx: ScoresContext = {
+      inputMode: this.inputMode,
+      model: this.scoresModel,
+      highlightIds: () => new Set(readLocalScores().map((s) => s.id)),
+      best: () => this.personalBest,
+    };
     const builders: Record<string, PageBuilder> = {
       title: (kit) => buildTitlePage(kit, ctx, nav),
       audio: (kit) => buildAudioPage(kit, ctx, nav),
@@ -82,14 +119,21 @@ export class StartScene extends Phaser.Scene {
       coop: (kit) => buildCoopPage(kit, ctx, nav),
       powerups: (kit) => buildPowerupGuide(kit, ctx, nav),
       padlayout: (kit) => buildPadLayoutPage(kit, ctx, nav),
+      ranked: (kit) => buildRankedPage(kit, rankedCtx, nav),
+      scores: (kit) => buildScoresPage(kit, scoresCtx, nav),
     };
     this.menu = new MenuView(this, 10, builders, 'title');
-
-    if (this.rankedWanted()) this.showRankedNote('RANKED MODE: PLAY ASKS THE SERVER FOR A VERIFIED RUN', COLORS.heading);
 
     // Presses meant for the scene we came from (the BACK that opened this menu, a RETRY that was refused) are not ours.
     this.pads.discardPresses();
     this.menu.show(this.inputMode.isTouch ? 'touch' : 'keys');
+    this.refreshBest();
+    // PLAY AGAIN after a ranked run: straight to the ranked page, which asks the server for the next challenge.
+    if (this.autoStartRanked) {
+      this.autoStartRanked = false;
+      nav.open('ranked');
+      this.requestRanked();
+    }
 
     // The system controls (Fullscreen) belong to the touch screens; leaving the scene takes them away again.
     const touch = getTouchControls(this);
@@ -102,6 +146,7 @@ export class StartScene extends Phaser.Scene {
       keyboard.on(
         Phaser.Input.Keyboard.Events.ANY_KEY_DOWN,
         createKeyPressRouter((code) => {
+          if (code && code !== 'Unidentified') this.keyboardSeen = true;
           if (this.menu.controller.key(code)) return;
           if (code === 'KeyM') this.audio.music.toggleMuted();
         }),
@@ -219,40 +264,100 @@ export class StartScene extends Phaser.Scene {
 
   private start(): void {
     if (this.starting) return;
+    // `?ranked` (development and tests): PLAY goes through the same RANKED PLAY page a player reaches with the RANKED button.
+    if (this.rankedWanted()) {
+      if (this.menu.controller.currentPage !== 'ranked') this.menu.controller.open('ranked');
+      this.requestRanked();
+      return;
+    }
     this.starting = true;
-    if (this.rankedWanted()) void this.startRanked();
-    else this.scene.start(SCENE_GAME);
+    this.scene.start(SCENE_GAME);
+  }
+
+  /** A normal game, whatever the ranked service is doing. */
+  private playNormally(): void {
+    if (this.starting) return;
+    if (!this.rankedInputReady()) return;
+    this.cancelRankedRequest();
+    this.starting = true;
+    this.scene.start(SCENE_GAME);
+  }
+
+  private refreshBest(): void {
+    void refreshPersonalBest(getApiBase()).then((best) => {
+      if (this.scene.isActive(SCENE_START)) this.personalBest = best;
+    });
+  }
+
+  private makeRankedContext(nav: PageNav): RankedMenuContext {
+    return {
+      inputMode: this.inputMode,
+      inputAvailable: () => this.rankedInputReady(),
+      status: () => this.rankedStatus,
+      best: () => this.personalBest,
+      timeLimitLabel: formatClock(RANKED_MAX_TICKS / FIXED_TICK_RATE),
+      actions: {
+        start: () => this.requestRanked(),
+        cancel: () => this.cancelRankedRequest(),
+        playNormally: () => this.playNormally(),
+        openScores: () => nav.open('scores'),
+        enableTouch: () => {
+          if (!this.inputMode.isTouch) this.switchInputMode();
+        },
+      },
+    };
+  }
+
+  private cancelRankedRequest(): void {
+    if (this.rankedStatus.kind === 'idle') return;
+    this.rankedRequest++;
+    this.rankedStatus = { kind: 'idle' };
+    rankedSession.set('idle');
+  }
+
+  /**
+   * Ranked play starts only after the server has issued a challenge (seed + configuration + time limit). If it cannot be issued the
+   * player is told so on the RANKED PLAY page and can play normally or try again: a ranked run is never started without a challenge,
+   * and a casual game is never started in its place without the player asking.
+   */
+  private requestRanked(): void {
+    if (this.starting || this.rankedStatus.kind === 'connecting') return;
+    if (!this.rankedInputReady()) return;
+    const mine = ++this.rankedRequest;
+    rankedSession.beginRequest();
+    const base = getApiBase();
+    if (!base) return this.failRanked('unconfigured', 'Ranked play is not available in this build');
+    this.rankedStatus = { kind: 'connecting' };
+    void requestChallenge(base)
+      .then((challenge) => {
+        if (mine !== this.rankedRequest || !this.scene.isActive(SCENE_START)) return; // cancelled, or the player left
+        // A controller may have disconnected while the challenge was in flight. Do not enter an uncontrollable run.
+        if (!this.rankedInputReady()) {
+          this.cancelRankedRequest();
+          return;
+        }
+        rankedSession.setChallenge(challenge);
+        this.rankedStatus = { kind: 'idle' };
+        this.starting = true;
+        this.scene.start(SCENE_GAME);
+      })
+      .catch((e: unknown) => {
+        if (mine !== this.rankedRequest) return;
+        this.failRanked(e instanceof RankedApiError ? e.code : 'unavailable', e instanceof RankedApiError ? e.message : 'Unexpected error');
+      });
+  }
+
+  private failRanked(code: string, message: string): void {
+    this.rankedStatus = { kind: 'error', code };
+    rankedSession.set('failed', message);
   }
 
   private rankedWanted(): boolean {
     return typeof window !== 'undefined' && rankedRequested(window.location.search);
   }
 
-  /**
-   * Ranked play starts only after the server has issued a challenge (seed + configuration). If it cannot be issued the player is told so
-   * and stays here: a ranked run is never started without one, and a casual game is never started in its place without the player asking.
-   */
-  private async startRanked(): Promise<void> {
-    rankedSession.beginRequest();
-    this.showRankedNote('REQUESTING A RANKED RUN...', COLORS.hint);
-    try {
-      const base = resolveApiBase(window.location.search, window.location.hostname, import.meta.env.VITE_LEADERBOARD_API_URL);
-      if (!base) throw new RankedApiError('unconfigured', 'Ranked play is not available in this build');
-      const challenge = await requestChallenge(base);
-      if (!this.scene.isActive(SCENE_START)) return;
-      rankedSession.setChallenge(challenge);
-      this.scene.start(SCENE_GAME);
-    } catch (e) {
-      const message = e instanceof RankedApiError ? e.message : 'Unexpected error';
-      rankedSession.set('failed', message);
-      if (!this.scene.isActive(SCENE_START)) return;
-      this.showRankedNote(`RANKED UNAVAILABLE: ${message.toUpperCase()}. PLAY TO TRY AGAIN.`, '#ff9696');
-      this.starting = false;
-    }
+  private rankedInputReady(): boolean {
+    return rankedInputAvailable(this.inputMode, this.pads, this.keyboardSeen);
   }
 
-  private showRankedNote(text: string, color: string): void {
-    this.rankedNote ??= addText(this, SCREEN_WIDTH / 2, SCREEN_HEIGHT - 28, '', { size: 18, originX: 0.5, originY: 0.5 }).setDepth(30);
-    this.rankedNote.setText(text).setColor(color);
-  }
 }

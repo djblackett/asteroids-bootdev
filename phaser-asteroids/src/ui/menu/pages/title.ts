@@ -59,34 +59,52 @@ export function buildTitlePage(kit: PageKit, ctx: MenuContext, nav: PageNav): Pa
   }
 
   // --- the right column: PLAY, the player count, AUDIO / CONTROLS --------------------------------------------------------
-  const playH = touch ? 150 : 120;
+  const playH = touch ? 150 : 110;
   const switchH = touch ? 0 : MIN_TARGET + 16;
   const block = playH + switchH + 16 + MIN_TARGET;
   let y = BAND_TOP + Math.max(0, (BAND_BOTTOM - BAND_TOP - block) / 2);
   // On a phone with no touch controls, PLAY would start a game nobody can steer; it says so, and the green button above is the way out.
   const keyboardOnPhone = recover && ctx.inputMode.env.coarsePrimaryPointer;
+  // Two doors side by side: the normal game (green) and a ranked run (gold). Ranked is always one player, so with two players chosen
+  // it says so instead of quietly changing the player count.
+  const half = (RIGHT_W - 16) / 2;
   new MenuButton(kit, {
     id: 'play',
-    rect: { x: RIGHT_X, y, w: RIGHT_W, h: playH },
+    rect: { x: RIGHT_X, y, w: half, h: playH },
     label: keyboardOnPhone ? 'PLAY WITH KEYBOARD' : 'PLAY',
     primary: !keyboardOnPhone,
     keysOnly: keyboardOnPhone,
     onTap: () => ctx.actions.play(),
-    size: keyboardOnPhone ? 30 : 64,
+    size: keyboardOnPhone ? 26 : 60,
     ...(touch ? {} : { hint: keyboardOnPhone ? 'PRESS SPACE ON A KEYBOARD' : 'SPACE' }),
+  });
+  const rankedOk = count === 1;
+  new MenuButton(kit, {
+    id: 'ranked',
+    name: 'RANKED PLAY',
+    rect: { x: RIGHT_X + half + 16, y, w: half, h: playH },
+    label: rankedOk ? 'RANKED' : 'RANKED\n1 PLAYER ONLY',
+    color: COLORS.heading,
+    enabled: () => rankedOk,
+    onTap: () => nav.open('ranked'),
+    size: rankedOk ? 42 : 26,
+    ...(touch || !rankedOk ? {} : { hint: 'R' }),
   });
   y += playH + 16;
 
+  const openScores = (): void => nav.open('scores');
   if (!touch) {
+    // Second row: the player switch directly under PLAY and HIGH SCORES directly under RANKED, so Down from either lands on the item
+    // below it (and from the switch on to AUDIO, as it always has).
     new MenuChoice(kit, {
       id: 'players',
       label: 'PLAYERS',
       y,
-      frame: { x: RIGHT_X, y, w: RIGHT_W, h: MIN_TARGET },
+      frame: { x: RIGHT_X, y, w: half, h: MIN_TARGET },
       options: ['1 PLAYER', '2 PLAYERS'],
       selected: () => (ctx.setup().game.playerCount === 2 ? 1 : 0),
       onSelect: (index) => ctx.setPlayers(index === 1 ? 2 : 1),
-      size: 28,
+      size: 22,
     });
     y += MIN_TARGET + 16;
   } else {
@@ -97,17 +115,24 @@ export function buildTitlePage(kit: PageKit, ctx: MenuContext, nav: PageNav): Pa
     ['audio', 'AUDIO', () => nav.open('audio')],
     ['controls', 'CONTROLS', () => nav.open('controls')],
     ...(count === 2 ? ([['coop', 'CO-OP', () => nav.open('coop')]] as Array<[string, string, () => void]>) : []),
+    // On a phone (no player switch) HIGH SCORES joins this row; elsewhere it sits beside the player switch, above.
+    ...(touch ? ([['scores', 'HIGH SCORES', openScores]] as Array<[string, string, () => void]>) : []),
   ];
   const gap = 16;
   const bw = (RIGHT_W - gap * (buttons.length - 1)) / buttons.length;
   buttons.forEach(([id, label, open], i) => {
-    new MenuButton(kit, { id, rect: { x: RIGHT_X + i * (bw + gap), y, w: bw, h: MIN_TARGET }, label, onTap: open, size: 28 });
+    new MenuButton(kit, { id, rect: { x: RIGHT_X + i * (bw + gap), y, w: bw, h: MIN_TARGET }, label, onTap: open, size: buttons.length > 3 ? 22 : label.length > 8 ? 24 : 28 });
   });
+  if (!touch) {
+    new MenuButton(kit, { id: 'scores', rect: { x: RIGHT_X + half + 16, y: y - MIN_TARGET - 16, w: half, h: MIN_TARGET }, label: 'HIGH SCORES', onTap: openScores, size: 26 });
+  }
 
   buildLegend(kit, ctx, count, nav);
 
   const hotkeys: Record<string, () => void> = { Space: () => ctx.actions.play() };
   if (!touch) {
+    if (rankedOk) hotkeys.KeyR = () => nav.open('ranked');
+    hotkeys.KeyH = () => nav.open('scores');
     hotkeys.KeyC = () => nav.open('padlayout');
     const firstPad = ctx.pads.pads()[0];
     if (firstPad) hotkeys.KeyG = () => ctx.pads.cycle(firstPad.key, count);

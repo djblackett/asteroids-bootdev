@@ -35,6 +35,8 @@ export interface IssuedRun {
   schemaVersion: number;
   tickRate: number;
   config: GameConfig;
+  /** The run ends by itself after this many simulated ticks if the ship is still alive; that is a valid, scored ending. */
+  timeLimitTicks: number;
   issuedAt: string;
   expiresAt: string;
 }
@@ -45,6 +47,7 @@ interface RunRow {
   seed: number;
   rules_version: string;
   config_json: string;
+  time_limit_ticks: number | null;
   created_at: number;
   expires_at: number;
   status: 'issued' | 'verifying' | 'accepted' | 'rejected';
@@ -88,13 +91,14 @@ export async function createRun(deps: ServiceDeps, issuerHash: string | null): P
     schemaVersion: RANKED_SCHEMA_VERSION,
     tickRate: RANKED_TICK_RATE,
     config: { ...RANKED_CONFIG, speed: [...RANKED_CONFIG.speed] as [number, number] },
+    timeLimitTicks: settings.maxTicks,
     issuedAt: new Date(now).toISOString(),
     expiresAt: new Date(now + settings.runTtlMs).toISOString(),
   };
   await db.run(
-    `INSERT INTO runs (id, token_hash, seed, rules_version, config_json, created_at, expires_at, status, issuer_hash)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'issued', ?)`,
-    [run.runId, await sha256Hex(run.token), run.seed, run.rulesVersion, JSON.stringify(run.config), now, now + settings.runTtlMs, issuerHash],
+    `INSERT INTO runs (id, token_hash, seed, rules_version, config_json, time_limit_ticks, created_at, expires_at, status, issuer_hash)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'issued', ?)`,
+    [run.runId, await sha256Hex(run.token), run.seed, run.rulesVersion, JSON.stringify(run.config), run.timeLimitTicks, now, now + settings.runTtlMs, issuerHash],
   );
   return run;
 }
@@ -164,6 +168,7 @@ export async function submitRun(deps: ServiceDeps, input: SubmitInput): Promise<
         rulesVersion: run.rules_version,
         config: JSON.parse(run.config_json) as GameConfig,
         createdAt: run.created_at,
+        timeLimitTicks: run.time_limit_ticks,
       };
       verdict = (deps.verify ?? verifyRankedReplay)(payload.replay, facts, claimedAt, settings);
     } catch (e) {
@@ -198,12 +203,13 @@ export async function submitRun(deps: ServiceDeps, input: SubmitInput): Promise<
       result.stats.asteroidsDestroyed,
       result.stats.ufosDestroyed,
       controls,
+      result.endReason ?? 'game_over',
     ];
     const [inserted, updated] = await db.batch([
       {
         sql: `INSERT INTO scores (id, run_id, score, nickname, completed_at, rules_version, ticks, duration_ms,
-                                  asteroids_destroyed, ufos_destroyed, reported_controls)
-              SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                                  asteroids_destroyed, ufos_destroyed, reported_controls, end_reason)
+              SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
               WHERE EXISTS (SELECT 1 FROM runs WHERE id = ? AND status = 'verifying' AND claim_token = ?)`,
         params: [...row, run.id, claimToken],
       },
@@ -274,6 +280,7 @@ async function buildAccepted(deps: ServiceDeps, scoreId: string, replayed: boole
       score: row.score,
       completedAt: new Date(row.completed_at).toISOString(),
       durationSeconds: Math.round(row.duration_ms / 10) / 100,
+      endReason: row.end_reason,
     },
     ranks: { allTime, weekly },
   };

@@ -36,7 +36,7 @@ describe('leaderboard ordering', () => {
     const h = makeHarness();
     await insertScore(h.db, { score: 300, completedAt: T0, nickname: 'Pilot One' });
     const entry = (await h.call('GET', '/api/v1/leaderboard/all-time')).body.entries[0];
-    expect(Object.keys(entry).sort()).toEqual(['completedAt', 'durationSeconds', 'id', 'nickname', 'rank', 'score']);
+    expect(Object.keys(entry).sort()).toEqual(['completedAt', 'durationSeconds', 'endReason', 'id', 'nickname', 'rank', 'score']);
   });
 
   it('rejected and unsubmitted runs never appear', async () => {

@@ -23,6 +23,7 @@
     "test:pages": "npm run build && node scripts/pages-check.mjs",
     "test:server": "vitest run server/tests",
     "test:ranked": "npm run build && node scripts/ranked-browser.mjs",
+    "test:ranked:ui": "npm run build && node scripts/ranked-ui.mjs",
     "test:worker": "npm run build && node server/scripts/worker-e2e.mjs",
     "bench:workerd": "npm run build && node server/scripts/bench-workerd.mjs"
   },

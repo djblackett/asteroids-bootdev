@@ -1,4 +1,4 @@
-import { RANKED_SCHEMA_VERSION } from './config';
+import { RANKED_SCHEMA_VERSION, RANKED_TICK_RATE } from './config';
 import { constantTimeEqual, sha256Hex } from './crypto';
 import { readBoundedBody } from './body';
 import { ApiError } from './errors';
@@ -48,7 +48,7 @@ async function route(request: Request, url: URL, origin: string | null, deps: Se
 
   if (path === `${API}/health`) {
     only(method, 'GET');
-    return json({ ok: true, rulesVersion: settings.rulesVersion, schemaVersion: RANKED_SCHEMA_VERSION, maxTicks: settings.maxTicks, time: new Date(deps.now()).toISOString() });
+    return json({ ok: true, rulesVersion: settings.rulesVersion, schemaVersion: RANKED_SCHEMA_VERSION, maxTicks: settings.maxTicks, timeLimitSeconds: settings.maxTicks / RANKED_TICK_RATE, time: new Date(deps.now()).toISOString() });
   }
 
   if (path === `${API}/runs`) {

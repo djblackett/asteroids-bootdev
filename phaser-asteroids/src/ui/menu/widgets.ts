@@ -194,7 +194,10 @@ export class MenuButton implements Widget {
     const cx = this.rect.x + this.rect.w / 2;
     const cy = this.rect.y + this.rect.h / 2;
     this.text = kit.text(cx, cy - (opts.hint ? 10 : 0), '', { size: opts.size ?? TEXT.button, originX: 0.5, originY: 0.5, color: opts.color ?? COLORS.white }).setAlign('center');
-    if (opts.hint) kit.text(cx, this.rect.y + this.rect.h - 20, opts.hint, { size: TEXT.hint, originX: 0.5, originY: 0.5, color: COLORS.dim, bold: false });
+    if (opts.hint) {
+      const hint = kit.text(cx, this.rect.y + this.rect.h - 20, opts.hint, { size: TEXT.hint, originX: 0.5, originY: 0.5, color: COLORS.dim, bold: false });
+      fit(hint, this.rect.w - 16); // a long hint in a narrow button shrinks instead of spilling over the edge
+    }
     kit.add(this);
   }
 
@@ -506,5 +509,71 @@ export class MenuChoice extends RowWidget {
       this.segmentText[i]?.setColor(i === chosen ? COLORS.heading : COLORS.white);
     });
     if (!bare) this.rowRing(view);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Text field (the DOM <input> from ui/nicknameInput.ts lies on top of its frame)
+// ---------------------------------------------------------------------------------------------------------------------
+
+/** The part of the DOM input a field widget needs; `NicknameInput` is the real one. */
+export interface FieldInput {
+  readonly hasFocus: boolean;
+  show(rect: Rect): void;
+  focus(): void;
+  place(): void;
+}
+
+export interface FieldOptions {
+  id: string;
+  /** What tests and the debug snapshot call it. */
+  name: string;
+  rect: Rect;
+  input: FieldInput;
+}
+
+/**
+ * A focusable frame for a text field. The typed text is drawn by the DOM input itself (so the phone's keyboard, selection and screen
+ * readers all work); this widget only draws the frame and hands over to the input when it is pressed or activated (Enter, A, a tap that
+ * did not already land on the input). Keys typed while the input has the focus never reach the menu (see `NicknameInput`).
+ */
+export class MenuField implements Widget {
+  readonly id: string;
+  readonly rect: Rect;
+  readonly enabled = true;
+  private readonly g: Graphics;
+  private key = '';
+
+  constructor(
+    kit: PageKit,
+    private readonly opts: FieldOptions,
+  ) {
+    this.id = opts.id;
+    this.rect = opts.rect;
+    this.g = kit.graphics();
+    kit.add(this);
+    opts.input.show(opts.rect);
+  }
+
+  get label(): string {
+    return this.opts.name;
+  }
+
+  activate(): void {
+    this.opts.input.focus();
+  }
+
+  sync(view: ViewState, _now: number): void {
+    this.opts.input.place(); // every frame: the canvas may have been resized or the keyboard opened since the last one
+    const hot = view.focused || this.opts.input.hasFocus;
+    const key = `${hot}`;
+    if (key === this.key) return;
+    this.key = key;
+    this.g.clear();
+    paintBox(this.g, this.rect, { fill: PALETTE.fill, edge: hot ? PALETTE.gold : PALETTE.edge, edgeWidth: hot ? 6 : 3, focusRing: hot });
+  }
+
+  destroy(): void {
+    // The kit's container destroys the display objects; the DOM input outlives the page on purpose (see NicknameInput).
   }
 }

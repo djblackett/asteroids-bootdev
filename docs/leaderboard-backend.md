@@ -1,6 +1,7 @@
-# Phaser Asteroids — Secure Online Leaderboard Backend (Phase 2)
+# Phaser Asteroids — Secure Online Leaderboard (Phase 2 backend, Phase 3 player experience)
 
 > **Status:** Implemented and tested locally (Node + real workerd/D1 runtime + real Chromium). **Not deployed.** Nothing in this repository talks to a Cloudflare account.
+> Phase 3 (the ranked menu, nickname entry, High Scores, personal best, and the time-limited ending) is described in [§15](#15-the-player-facing-experience-phase-3); the 20-minute limit decision is in [§3](#timing-policy).
 > **Code:** `phaser-asteroids/server/` (backend), `phaser-asteroids/src/ranked/` (browser client), builds on `phaser-asteroids/src/replay/` (Phase 1, see [deterministic-replay.md](deterministic-replay.md)).
 
 The single security rule: **no score enters the public leaderboard unless the server independently reproduces it from a ranked run the server itself issued.** The browser never sends a score; it sends the inputs it played, and the server replays them with the same deterministic engine.
@@ -106,10 +107,35 @@ Every arrow is a **single conditional SQL statement or one atomic batch**, so th
 | --- | --- | --- |
 | Challenge lifetime | **60 minutes** from issue (`RUN_TTL_SECONDS`, 60 s–24 h) | Covers the longest allowed run plus long pauses |
 | Minimum elapsed time | simulated duration (`totalTicks / 60`) must be ≤ real time since issue **+ 2 s** | The fixed-step runner never advances more than real time (and not at all while paused), so a legitimate client cannot finish faster than its replay claims. Rejects "10 minutes of play submitted 5 s after issue" (`too_fast`) before any simulation runs |
-| Maximum length | **72,000 ticks = 20 simulated minutes** | Bounds CPU and memory |
+| Time limit | **72,000 ticks = 20 simulated minutes**, issued with the challenge as `timeLimitTicks` | Bounds CPU and memory. **Reaching it with the ship still alive is a valid, scored ending** (`endReason: "time_limit"`), not a failed submission. See below |
 | Pause / tab suspension / blur | Allowed | Simulation time stands still while paused, wall time continues; both sides of the inequality stay true. Only the 60-minute window limits how long a player can sit paused |
 
 **This does not prove a human played.** A bot can generate a replay offline and simply wait. See §12.
+
+### The 20-minute limit is a valid ending (decision)
+
+*Problem (found in Phase 2):* a run longer than 72,000 ticks could not be submitted, so a player's best-ever run could silently become unsubmittable.
+
+*Investigation (numbers measured for this decision):*
+
+| Question | Result |
+| --- | --- |
+| Verification cost of a full 72,000-tick run | ~0.5 s of simulation CPU in Node even with an immortal ship at difficulty level 39 (scratch measurement); the Worker's safety net is `cpu_ms = 5000` |
+| Worst-case recording size, one input change on **every** tick of 20 minutes (Assisted Flight steering) | 6.9 MiB raw, **0.44 MiB gzipped** (about 15:1). Limits are 8 MiB / 1 MiB, so a full-length run fits with margin |
+| How far can play realistically go? | Asteroids get 15 % faster every 30 s without bound, the shipped bot dies within 2-6 minutes on every seed tried, and no run in testing has come near 20 minutes |
+| Challenge lifetime | 60 minutes: 20 minutes of play plus 40 minutes of pauses |
+
+*Decision:* keep the measured 20-minute resource budget and make **reaching it a first-class outcome** instead of raising an arbitrary cap (any finite cap would otherwise recreate the same problem one minute later):
+
+* The server issues `timeLimitTicks` with every challenge and stores it with the run (`runs.time_limit_ticks`). It is verified against that stored value, so changing the configuration never strands a run that is already in flight.
+* The game stops the run at exactly that tick (authoritative simulation ticks, not wall time) and shows a result page: **TIME LIMIT REACHED**.
+* The replay's `totalTicks` must equal the limit exactly. A natural game over before it always wins. A replay that stops early without game over is still `not_game_over`; one that runs past it is `too_long`; a game-over replay padded to reach the limit is `invalid_replay`.
+* The server simulates exactly that many ticks and scores the simulation **at that tick**. A ship never has to be "killed". Nothing in the body can choose or move the limit, and the recording's own claim (`claimedResult.endReason`) is only cross-checked.
+* The ending is stored (`scores.end_reason`, `game_over` or `time_limit`) and returned as `endReason`.
+* The limit is told to players before they start (the Ranked Play page) and counted down in the HUD during the last minute.
+* Versioning: `claimedResult.endReason` is optional and recordings made before it existed still verify; `verifyReplay` only honours a time limit when a caller passes `timeLimitTicks`. `RANKED_TIME_LIMIT_SECONDS` can only **shorten** the limit (5-1200 s); the CPU, memory and body-size budgets were sized for 1200 s and cannot be raised by configuration.
+
+*Not covered by a test at full length:* no automated run can stay alive for 72,000 ticks, so the exact-limit rules are tested at a reduced limit (480-1500 ticks, in real Chromium and in the unit tests); the rules are the same code path at every length, and the full-length CPU and body-size figures above are measurements, not a test.
 
 ## 4. Replay submission and verification
 
@@ -135,7 +161,7 @@ Order of work (cheap and fail-fast first):
 | Compressed request | 1 MiB | `Content-Length` pre-check, then bytes counted while streaming; stream cancelled when exceeded |
 | Decompressed / plain body | 8 MiB | Same, and the inflate stream is counted and cancelled at the limit (a 32 MiB-of-spaces gzip bomb is refused with 413) |
 | Encodings | `identity`, `gzip` | Others → 415 |
-| Ticks | 72,000 | `too_long` |
+| Ticks | 72,000 (the issued time limit) | `too_long`; a run alive at exactly the limit is accepted |
 | Input changes | ≤ ticks (the replay schema allows at most one change per tick; Phase 1 also caps at 100 k) | Structure validation |
 | Structure/types | every field type- and range-checked by Phase 1's `validateReplayStructure` | Before simulation |
 | Simulation work | ≤ 72,000 ticks, bounded entity counts in the game itself | `limits.cpu_ms = 5000` as a backstop |
@@ -156,7 +182,7 @@ Reference points: a 10-minute replay is 3.3 MB raw / ~210 KB gzipped, well insid
 
 ## 5. Database schema
 
-Migration `server/migrations/0001_init.sql` (applied to D1 with `wrangler d1 migrations apply`):
+Migrations `server/migrations/0001_init.sql` and `0002_time_limit.sql` (applied to D1 with `wrangler d1 migrations apply`; 0002 adds `runs.time_limit_ticks` and `scores.end_reason`, see §3):
 
 **`runs`** — `id` (PK, UUID), `token_hash`, `seed` (0…2³²−1), `rules_version`, `config_json`, `created_at`, `expires_at`, `status` (`issued|verifying|accepted|rejected`), `claim_token`, `claimed_at`, `replay_hash` (SHA-256 of the submitted body: enables idempotent retries; **not** proof of authenticity), `finished_at`, `score_id`, `reject_reason`, `reject_detail`, `issuer_hash`. CHECK constraints tie `status='accepted'` ⇔ `score_id` set and `status='rejected'` ⇔ `reject_reason` set.
 
@@ -181,6 +207,7 @@ All JSON, all under `/api/v1`. Errors: `{"error":{"code":"…","message":"…", 
   "schemaVersion": 1,
   "tickRate": 60,
   "config": { "playerCount": 1, "livesMode": "independent", "friendlyFire": false, "speed": [1, 1] },
+  "timeLimitTicks": 72000,
   "issuedAt": "2026-10-22T15:00:00.000Z",
   "expiresAt": "2026-10-22T16:00:00.000Z"
 }
@@ -195,7 +222,7 @@ Request body (before optional gzip): `{"replay": {header, inputs, totalTicks, cl
 {
   "status": "accepted",
   "replayed": false,
-  "score": { "id": "c649cb33-…", "nickname": "Dave J", "score": 9114, "completedAt": "2026-10-22T15:03:11.204Z", "durationSeconds": 127.02 },
+  "score": { "id": "c649cb33-…", "nickname": "Dave J", "score": 9114, "completedAt": "2026-10-22T15:03:11.204Z", "durationSeconds": 127.02, "endReason": "game_over" },
   "ranks": { "allTime": 3, "weekly": 1 }
 }
 ```
@@ -231,10 +258,10 @@ Query: `limit` (1–100, default 10), `offset` (0–1000). Anything else → 400
 }
 ```
 ### `GET /scores/:id` → 200 `{ "score": {…}, "ranks": { "allTime": 3, "weekly": 1 } }` (404 if unknown **or hidden**)
-### `GET /health` → `{ "ok": true, "rulesVersion": "1.0.0", "schemaVersion": 1, "maxTicks": 72000, "time": "…" }`
+### `GET /health` → `{ "ok": true, "rulesVersion": "1.0.0", "schemaVersion": 1, "maxTicks": 72000, "timeLimitSeconds": 1200, "time": "…" }`
 ### `POST /admin/scores/:id/visibility` — body `{"visible": false, "reason": "offensive"}`, `Authorization: Bearer <ADMIN_TOKEN>`. The route does not exist (404) unless `ADMIN_TOKEN` (≥ 16 chars) is configured; never sends CORS headers; failed attempts are rate limited.
 
-Public entries expose only `id, rank, nickname, score, completedAt, durationSeconds`.
+Public entries expose only `id, rank, nickname, score, completedAt, durationSeconds, endReason` (`game_over` or `time_limit`).
 
 ## 7. Atomic, one-use submission
 
@@ -292,9 +319,9 @@ Assume the attacker reads the JavaScript, edits local state, hand-writes replay 
 4. **Offensive nicknames** are limited by charset only; there is no word filter. Moderation is after-the-fact (hide).
 5. **Denial of service** is bounded, not prevented: a flood of cheap requests still costs request fees, and the global rate limits can be exhausted by an attacker to block legitimate starts/submissions. Consider a Cloudflare WAF rate-limiting rule at the edge (an account setting, not done here).
 6. **Rate limiting by IP** is imperfect in both directions (shared NATs, rotating proxies).
-7. **In-flight runs lost on deploy** if rules change; a run longer than 20 simulated minutes cannot be submitted (the client reports it; the game does not yet stop the run at the cap).
+7. **In-flight runs lost on deploy** if rules change. (A run that reaches 20 simulated minutes is no longer a failure: it ends there and is scored, see §3.)
 8. **Memory/CPU limits have been checked on local workerd only**, not on Cloudflare's network.
-9. **Only single-player, keyboard-driven ranked play was exercised end-to-end in a browser.** Touch and gamepad metadata are unit-tested (`tests/ranked.test.ts`) but not driven through a ranked browser run.
+9. **Browser coverage is emulated, not physical:** keyboard and touch (Assisted Flight, Chromium touch emulation) ranked runs and gamepad *menu* navigation are driven end to end; a controller-flown ranked run and real-phone behaviour are not.
 10. **D1 is a single-region primary** and there is no backup beyond D1 Time Travel.
 
 ## 13. Local setup and testing
@@ -314,15 +341,16 @@ npm run dev                               # http://127.0.0.1:8787
 
 # Run the game against it (separate terminal, from phaser-asteroids/)
 npm run dev                               # http://localhost:5173
-# open  http://localhost:5173/?ranked=1&nick=YourName     (PLAY now requests a server-issued run)
+# open  http://localhost:5173/            then RANKED -> START RANKED RUN (the dev shortcut ?ranked=1 also still works)
 ```
 
 | Command (from `phaser-asteroids/`) | What it proves | Runtime |
 | --- | --- | --- |
 | `npm test` | All unit tests, including server (`node:sqlite`, same SQL/migrations) and client | local, mocked clock |
-| `npm run test:server` | Only the 108 server tests: lifecycle, forgery, concurrency, limits, leaderboard, weeks, moderation, nicknames, rate limits | local, mocked clock |
+| `npm run test:server` | Only the server tests: lifecycle, forgery, concurrency, limits, leaderboard, weeks, moderation, nicknames, rate limits | local, mocked clock |
 | `npm run test:worker` | 32 HTTP checks against the **real Worker in workerd with a real local D1** and the real clock | local service |
-| `npm run test:ranked` | **Chromium → game → Worker → D1 → leaderboard**, plus casual play with the backend down | local service, real browser |
+| `npm run test:ranked` | The whole player journey through the real menus: **Chromium → game → Worker → D1 → leaderboard → High Scores → personal best**, plus ranked/casual play with the backend down | local service, real browser |
+| `npm run test:ranked:ui` | Time-limited run on a Worker with an 8 s limit, forged-score rejection, skip, lost-response Retry, challenge expiry, paging, empty board, gamepad menu navigation, phone-sized touch + Assisted Flight run, resize/keyboard-field alignment | local services, real browser |
 | `npm run bench:workerd` | CPU/latency of the verifier in workerd | local service |
 | `npm run typecheck`, `cd server && npx tsc --noEmit -p tsconfig.json` | Types | — |
 
@@ -344,14 +372,90 @@ Nothing above is a test against production Cloudflare infrastructure.
 
 **Rollback:** `npx wrangler rollback --env production` restores the previous Worker version (also available in the dashboard). Migrations are forward-only; 0001 is additive. For data problems, D1 Time Travel: `npx wrangler d1 time-travel restore asteroids-leaderboard --env production --timestamp=<RFC3339>`. Removing `VITE_LEADERBOARD_API_URL` from the site build turns ranked play off without touching the backend.
 
-## 15. Future client UI integration
+## 15. The player-facing experience (Phase 3)
 
-Everything the UI needs is already exposed by the game and API:
+Code: `src/ranked/` (API client, submission state machine, personal best, boards model), `src/ui/menu/pages/{ranked,rankedResult,scores}.ts` (pages built from the existing menu kit), `src/ui/nicknameInput.ts` (the one DOM text field), `src/scenes/{StartScene,GameScene}.ts` (integration). Nothing here verifies or ranks anything: every number on screen after a run comes from the server's answer.
 
-* **Start:** `requestChallenge()` / `StartScene.startRanked()` (`src/ranked/api.ts`); replace the `?ranked` dev flag with a menu item.
-* **State:** `rankedSession` (`src/ranked/session.ts`) with phases `requesting → playing → submitting → accepted | rejected | failed | abandoned`; mirrored on `window.__ASTEROIDS_RANKED__` for tests.
-* **Result:** `outcome.score` and `outcome.ranks` (all-time and weekly rank) after acceptance; the game-over screen already shows one status line.
-* **Personal best:** `src/ranked/localScores.ts` keeps accepted `{id, score, at}` on this device; `GET /scores/:id` returns the current rank for each id.
-* **Nickname:** `?nick=` / stored value today; add an input and let the server's 400 `invalid_nickname` message drive validation text.
-* **Leaderboard screen:** `GET /leaderboard/weekly|all-time` (page with `limit`/`offset`). Render nicknames with text APIs only. Show `weekEnd` as the reset time.
-* Handle `failed`/`rejected` by offering "Play again (ranked)" which goes back to the title and requests a *new* challenge, as RETRY already does.
+### Flow
+
+```
+TITLE  ── PLAY (casual, unchanged; Space)
+       ── RANKED (R) ──► RANKED PLAY page: rules, the time limit, your best verified score
+       │                    └ START RANKED RUN ─ POST /runs ─► CONNECTING… ─► play
+       │                    └ (backend down / not configured) "Ranked Play is temporarily unavailable. You can still play normally."
+       │                         TRY AGAIN · PLAY NORMALLY · BACK
+       ── HIGH SCORES (H) ─► THIS WEEK | ALL TIME, 10 per screen, PREVIOUS / NEXT, BACK
+RANKED RUN ── RANKED label beside the clock (a countdown in the last minute) ── pause/resume as normal
+       └─ game over, or TIME LIMIT REACHED ─► RESULT page: score, name field, SUBMIT SCORE / SKIP
+            └─ SUBMIT ─► UPLOADING… ─► SERVER IS VERIFYING… ─► SCORE VERIFIED! (weekly + all-time rank) ─► VIEW HIGH SCORES · PLAY AGAIN · MAIN MENU
+```
+
+* `?ranked=1` still works as a developer shortcut (PLAY then opens the same Ranked Play page and starts the request), but nothing needs it.
+* **Ranked is one player.** With two players chosen on the title screen the button reads `RANKED / 1 PLAYER ONLY` and is disabled; the player count is never changed silently.
+* **Ranked play starts only after the server issues a challenge.** A failed request leaves the player on the page with a plain message; a casual game is never started in its place unless they choose PLAY NORMALLY. The result page's PLAY AGAIN goes through the same request: a spent challenge is never reused.
+* **Leaving a run in progress** needs the pause menu's existing two-press RETURN TO MENU. An abandoned run creates no score. After the result page is open, MAIN MENU / PLAY AGAIN only appear once there is nothing left to submit (accepted, rejected, expired, skipped...), so a score cannot be thrown away by one stray tap; SKIP is an explicit button.
+* **Expiry during a long pause** is detected as it happens (against the device clock, shifted by the clock difference measured when the challenge arrived). The pause menu and HUD say `RANKED RUN EXPIRED`, the label changes to `UNRANKED`, and the result page says the run expired instead of attempting a submission that cannot succeed.
+
+### Submission states (`src/ranked/submission.ts`)
+
+| State | What the player sees | Leads to |
+| --- | --- | --- |
+| ready | name field, SUBMIT SCORE (Enter), SKIP; live feedback under the field | uploading, skipped |
+| uploading | "UPLOADING YOUR RUN…" (or "CONNECTION TROUBLE. TRYING AGAIN (n)…") | verifying |
+| verifying | "THE SERVER IS VERIFYING YOUR SCORE…" (shown when the upload has really finished: XHR `upload.onload`) | any answer |
+| accepted | **SCORE VERIFIED!**, the server's score, nickname, weekly and all-time rank, new personal best | — |
+| rejected | SCORE NOT VERIFIED, reason code in small print; the run is spent | — |
+| network error | "Could not reach the ranked server. Your run is safe." RETRY · SKIP | uploading |
+| duplicate | "Already submitted" (the run holds an accepted score under a different submission) | — |
+| expired | "Ranked run expired"; nothing was sent | — |
+| refused / unavailable | the server refused the request / no API configured | — |
+
+"Verified" is shown only for a state reached from a `200 accepted`. **Retry semantics:** the request body (replay + nickname + controls) is built once and sent byte-identically on every attempt (the browser test hashes every request). The automatic attempts are bounded (the first try plus two repeats, 1.5 s and 4 s apart); after that nothing happens until the player presses RETRY. Only transport failures, 5xx, 429 and "still verifying" can be retried; a server rejection, expiry or a `run_already_submitted` never is. A response lost after the server accepted the run comes back as `replayed: true` with the original score (tested end to end). The nickname is locked after the first send (a changed name would be a different body and a 409); it reopens only if the server itself says `invalid_nickname`, which does not consume the run.
+
+### Nickname
+
+3-16 characters (counted as Unicode code points), must start with a letter or digit, then letters, digits, space and `_ . ! -`; blank means `Anonymous`. The rule lives in one function, `src/ranked/nickname.ts`, which the Worker re-exports, so the field's live feedback and the server cannot disagree (the server's answer remains authoritative). The last **successfully submitted** nickname is remembered in `localStorage` (`asteroids.rankedNickname`) and pre-filled; `?nick=` pre-fills on a development page and stores nothing. Nicknames are drawn as plain canvas text, never HTML.
+
+**Mobile keyboard.** The field is a real `<input>` laid over its canvas frame: a phone opens its keyboard only for a tap that lands on an input, and you also get IME, paste and screen-reader support. It follows the canvas through resizes and rotation every frame (verified at 667×375, 844×390, 1024×768, 768×1024, 1920×1080 with the typed text kept); while it is focused and the on-screen keyboard has shrunk the visual viewport, it docks just above the keyboard so what is being typed is never hidden; in portrait the "rotate your phone" prompt covers it and the text is kept; Enter / "Done" dismisses the keyboard and submits (if valid); key presses in the field never reach the game (no steering, pausing or retrying while typing); font size is at least 16 px so iOS does not zoom. `interactive-widget=resizes-visual` is set on the viewport meta so browsers behave alike.
+
+### Personal best (`src/ranked/localScores.ts`, `personalBest.ts`)
+
+The 20 best **server-accepted** `{id, score, at, nickname}` entries are kept in `localStorage` (`asteroids.rankedScores`); the best across nicknames is the personal best. Only an acceptance adds to it. When a page that shows it opens, `GET /scores/:id` refreshes it (and forgets a score the server no longer lists, e.g. hidden); offline it shows the remembered figure. Clearing site data forgets it, switching device does not carry it. A score id is public and proves nothing: High Scores marks rows whose **id** matches a remembered one with `YOU` (never by nickname). There are no accounts and nothing here is an identity.
+
+### High Scores (`src/ui/menu/pages/scores.ts`, `scoresModel.ts`)
+
+THIS WEEK (default) / ALL TIME, ten entries per screen (`limit=10&offset=…`, never a bulk download), PREVIOUS / NEXT, `PAGE n / m`. The week caption (`WEEK OF OCT 19 - OCT 25 (ATLANTIC TIME)`) is formatted from the server's `weekStart`/`weekEnd`/`timeZone`; the browser never computes a week. Switching boards works by touch, mouse, Left/Right on the tabs (keyboard and D-pad), and a slow answer for a board the player has already left is dropped. States: loading, empty ("No ranked scores yet. Be the first!"), network error (TRY AGAIN), not configured ("High scores are not available yet"), ready.
+
+### Offline, unconfigured and development behaviour
+
+* **No production API configured** (`VITE_LEADERBOARD_API_URL` unset, non-loopback host): casual play is untouched; Ranked Play says "not available in this build yet"; High Scores says "not available yet"; nothing is requested.
+* **Backend unreachable:** a normal game still starts instantly (the browser test turns the Worker off and checks no API call is made by plain PLAY).
+* **Local development:** on a loopback host `?api=http://127.0.0.1:PORT` selects a local Worker and the default is `wrangler dev`'s `http://127.0.0.1:8787`. `?api=` is ignored on any other host.
+* Intro page limitation: the Ranked Play page states the production limit (20:00); a Worker started with a shorter `RANKED_TIME_LIMIT_SECONDS` (tests only) still shows 20:00 there, while the HUD and result page use the issued value.
+
+### Mobile and accessibility notes
+
+Controls are at least 90 game px (≥ 44 CSS px at 667×375 and up; asserted in the browser tests for the title, High Scores and result pages), no page has overlapping or off-screen controls (asserted from the menu geometry), keyboard focus rings are the existing gold frames, the DOM field has an accessible name and a visible focus style, and a polite live region announces results ("Score verified. 24,850 points. Weekly rank 7."). Nothing animates while verifying, so reduced-motion needs no special case. Portrait phones get the existing rotate prompt (the game is landscape-only).
+
+### Manual acceptance checklist (physical Android phone) — NOT yet performed
+
+No real device was available to this work; the Android keyboard, `visualViewport` behaviour, fullscreen and haptics on real hardware are **untested**. Please run on a phone against a reachable Worker (for example `wrangler dev --ip 0.0.0.0` plus `npm run preview:lan`, with the phone's origin in `ALLOWED_ORIGINS`):
+
+1. Open the game: title menu shows PLAY, RANKED, HIGH SCORES, AUDIO, CONTROLS; everything is thumb-sized.
+2. HIGH SCORES: switch THIS WEEK / ALL TIME, page with NEXT, BACK.
+3. RANKED → read the time limit → START RANKED RUN → game starts only after "CONNECTING…".
+4. Fresh install: movement is Assisted Flight; steer, FIRE, LASER, BOOST feel normal; the RANKED label is visible and does not cover anything.
+5. Fullscreen button (title/pause) still works; PAUSE → RESUME keeps the run; rotate upright and back.
+6. Die (or reach the limit). Result page: tap the name field — keyboard opens, the field stays visible above it, typing works, "Done" dismisses and submits; try a 2-character name and see feedback; dismiss the keyboard by tapping elsewhere and confirm the text is still there.
+7. SUBMIT: uploading → verifying → SCORE VERIFIED! with the ranks you expect. Turn on airplane mode before SUBMIT: you get "Could not reach…" and RETRY works after turning it off, without a second score.
+8. VIEW HIGH SCORES: your row is marked YOU.
+9. Reload the page: RANKED page shows your best verified score. Clear site data: it is gone, the board entry is not.
+
+### Known limitations (Phase 3)
+
+* Real-device behaviour (above) is untested; the on-screen-keyboard docking relies on `visualViewport` and is only exercised in emulation.
+* A ranked run at the full 20:00 has not been played in automated tests; the time-limit rules are tested at 8 s (real Chromium + Worker) and 1500 ticks (unit), and full-length cost is a measurement (see §3).
+* Gamepad-only players cannot type a nickname without a keyboard (they can SUBMIT with the remembered one, or leave it blank for `Anonymous`); there is no on-screen controller keyboard by design.
+* The nickname has no word filter (moderation is after the fact, §12.4).
+* Rank text uses the ranks returned at acceptance; the High Scores screen is a snapshot and may be a few seconds stale (`Cache-Control: public, max-age=5`).
+* Ranked scores and bots: §12.1 is unchanged. Anyone can generate a valid replay offline for the issued seed.

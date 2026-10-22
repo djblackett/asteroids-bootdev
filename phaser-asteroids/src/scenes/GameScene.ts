@@ -23,10 +23,13 @@ import {
 import { createKeyPressRouter } from '../input/keyPress';
 import { keySchemesFor, readPlayerInput, type KeyScheme } from '../input/keyboardControls';
 import { readPlayerInputs } from '../input/playerInputs';
-import { RANKED_MAX_TICKS, resolveApiBase, submitRankedRun, type RankedChallenge } from '../ranked/api';
+import { getApiBase, type RankedChallenge } from '../ranked/api';
 import { ControlTracker } from '../ranked/controls';
-import { chosenNickname, rememberScore } from '../ranked/localScores';
+import { localBest, readLocalScores, startingNickname } from '../ranked/localScores';
+import { refreshPersonalBest, type PersonalBest } from '../ranked/personalBest';
+import { ScoresModel } from '../ranked/scoresModel';
 import { rankedSession } from '../ranked/session';
+import { SubmissionFlow } from '../ranked/submission';
 import { drawStarfield, drawWorld } from '../render/worldRenderer';
 import {
   FIXED_DT,
@@ -38,7 +41,8 @@ import {
   type ReplayRecord,
 } from '../replay';
 import { AbilityHud, ComboHud, Hud, KillStreakBanner, Overlay, playerColor, TeamHud, TOUCH_HUD_SCALE } from '../ui/hud';
-import { addText, COLORS } from '../ui/text';
+import { NicknameInput } from '../ui/nicknameInput';
+import { addText, COLORS, formatClock } from '../ui/text';
 import { abilityLabels } from '../ui/touchLabels';
 import type { MenuContext, PageNav } from '../ui/menu/context';
 import type { MenuSnapshot } from '../ui/menu/menuController';
@@ -47,6 +51,8 @@ import { buildAudioPage } from '../ui/menu/pages/audio';
 import { buildControlsPage } from '../ui/menu/pages/controls';
 import { buildPadLayoutPage } from '../ui/menu/pages/padLayout';
 import { buildPausePage } from '../ui/menu/pages/pause';
+import { buildRankedResultPage, type RankedResultContext } from '../ui/menu/pages/rankedResult';
+import { buildScoresPage, type ScoresContext } from '../ui/menu/pages/scores';
 import { handleBack } from '../ui/menu/backAction';
 import { TouchGameOverButtons } from '../ui/touchMenus';
 import { SCENE_GAME, SCENE_START } from './keys';
@@ -138,10 +144,28 @@ export class GameScene extends Phaser.Scene {
   private verifiedSeed = 0;
   private fixedRunner: FixedStepRunner | null = null;
   private replayRecorder: ReplayRecorder | null = null;
-  // Ranked run (null in casual and in the experimental ?verified mode): issued by the server, submitted once at game over.
+  // Ranked run (null in casual and in the experimental ?verified mode): issued by the server, submitted once the run has ended.
   private rankedChallenge: RankedChallenge | null = null;
-  private rankedSubmitted = false;
+  /** When the challenge stops being valid, on this device's clock (see `localExpiry`). */
+  private rankedExpiresAt = 0;
+  /** The challenge ran out while the run was in progress: playing on is allowed, submitting is not (and the player is told). */
+  private rankedExpired = false;
+  /** The ranked time limit was reached with the ship still alive. The simulation stops there; the result page takes over. */
+  private timeUp = false;
   private controlTracker = new ControlTracker();
+  /** Ranked only: owns everything between "the run ended" and "the server answered" (see ranked/submission.ts). */
+  private rankedFlow: SubmissionFlow | null = null;
+  private resultMenu: MenuView | null = null;
+  private resultDim: Phaser.GameObjects.Rectangle | null = null;
+  private nicknameInput: NicknameInput | null = null;
+  private scoresModel!: ScoresModel;
+  private personalBest: PersonalBest | null = null;
+  /** The best verified score before this run, fixed when the run ends (for the "new personal best" line). */
+  private priorBest: number | null = null;
+  private resultOpenedAt = 0;
+  private rankedLabel: Phaser.GameObjects.Text | null = null;
+  private rankedClock: Phaser.GameObjects.Text | null = null;
+  private rankedNotice: Phaser.GameObjects.Text | null = null;
 
   constructor() {
     super(SCENE_GAME);
@@ -152,9 +176,19 @@ export class GameScene extends Phaser.Scene {
     // registry; the simulation (and with it every co-op detail) is always built from scratch.
     const setup = getSetup(this.registry);
     // A ranked run takes its seed AND configuration from the server's challenge; nothing from the menu or the URL applies.
-    const challenge = rankedSession.takeChallenge();
+    const taken = rankedSession.takeChallenge();
+    const challenge = taken?.challenge ?? null;
     this.rankedChallenge = challenge;
-    this.rankedSubmitted = false;
+    this.rankedExpiresAt = taken?.expiresAtLocal ?? 0;
+    this.rankedExpired = false;
+    this.timeUp = false;
+    this.rankedFlow = null;
+    this.resultMenu = null;
+    this.resultDim = null;
+    this.nicknameInput = null;
+    this.priorBest = null;
+    this.resultOpenedAt = 0;
+    this.rankedLabel = this.rankedClock = this.rankedNotice = null;
     this.controlTracker = new ControlTracker();
     const config = challenge ? resolveGameConfig(challenge.config) : simConfigOf(setup);
 
@@ -212,6 +246,7 @@ export class GameScene extends Phaser.Scene {
     this.teamHud = players > 1 ? new TeamHud(this) : null;
     this.comboHud = new ComboHud(this, players > 1);
     this.streakBanner = new KillStreakBanner(this);
+    if (this.rankedChallenge) this.createRankedHud();
     this.hudObjects = this.children.list.slice(beforeHud);
     this.hudHidden = [];
     this.audio = getAudio(this);
@@ -242,9 +277,11 @@ export class GameScene extends Phaser.Scene {
       .setDepth(22)
       .setVisible(false);
 
-    if (this.touchUi) {
+    // A ranked run ends on its own result page (name, submit, verdict), never on the casual RETRY / MAIN MENU buttons.
+    if (this.touchUi && !this.rankedChallenge) {
       this.touchOver = new TouchGameOverButtons(this, { retry: () => this.retry(), menu: () => this.toMenu() });
     }
+    if (this.rankedChallenge) this.createResultMenu();
 
     this.setupInput();
     this.setupLifecycle();
@@ -271,6 +308,8 @@ export class GameScene extends Phaser.Scene {
       const recorder = this.replayRecorder;
       if (!this.paused) {
         runner.update(dt, (tick, fixedDt) => {
+          // The run already ended inside this frame (time limit): the ticks the runner still owes this frame are not played.
+          if (this.timeUp) return;
           const rawInputs = sim.isGameOver ? this.schemes.map(() => NO_INPUT) : this.readInputs();
           if (this.rankedChallenge && !sim.isGameOver) this.observeControls();
           const p1Input = toPlayerInput(toRecordedInput(rawInputs[0] ?? NO_INPUT));
@@ -281,7 +320,13 @@ export class GameScene extends Phaser.Scene {
           if (sim.isGameOver && !recorder.isFinalized) {
             recorder.markGameOver(sim);
           }
-          if (sim.isGameOver) this.beginRankedSubmit();
+          // A natural game over always takes precedence; the limit only ends a run whose ship is still alive, at exactly the tick the
+          // server issued. The recording stops here and the server replays exactly this many ticks.
+          if (this.rankedChallenge && !sim.isGameOver && tick + 1 >= this.rankedChallenge.timeLimitTicks) {
+            recorder.markTimeLimit(sim);
+            this.timeUp = true;
+          }
+          if (this.runOver) this.beginRankedResult();
           this.audio.sfx.handle(events);
           if (this.touchUi) this.haptics.handle(events);
           this.announce(events, time);
@@ -323,7 +368,9 @@ export class GameScene extends Phaser.Scene {
       this.teamHud?.update(sim, time);
       this.comboHud.update(sim);
       this.streakBanner.update(sim);
+      this.updateRankedHud();
     }
+    this.checkRankedExpiry();
     if (this.touchUi) this.updateTouchControls();
     this.haptics.setPaused(this.paused);
     this.audio.music.setGamePaused(this.paused);
@@ -337,8 +384,8 @@ export class GameScene extends Phaser.Scene {
    * screen also shows the system controls (Fullscreen).
    */
   private updateTouchControls(): void {
-    const playing = !this.paused && !this.sim.isGameOver;
-    this.touch.setLayer(playing ? 'play' : this.paused && !this.sim.isGameOver ? 'menu' : 'off');
+    const playing = !this.paused && !this.runOver;
+    this.touch.setLayer(playing ? 'play' : this.paused && !this.runOver ? 'menu' : 'off');
     if (playing) this.touch.setAbilities(abilityLabels(this.sim.player));
   }
 
@@ -356,38 +403,158 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
-  /**
-   * Ranked only, once, at game over: sends the recording to the server, which replays it and decides the score. The game never
-   * posts a score of its own. Failure leaves the (unranked-looking) game over screen alone and just says the score was not recorded.
-   */
-  private beginRankedSubmit(): void {
-    const challenge = this.rankedChallenge;
-    const recorder = this.replayRecorder;
-    if (!challenge || !recorder || this.rankedSubmitted) return;
-    this.rankedSubmitted = true;
-    const search = typeof window !== 'undefined' ? window.location.search : '';
-    const base = typeof window !== 'undefined' ? resolveApiBase(search, window.location.hostname, import.meta.env.VITE_LEADERBOARD_API_URL) : null;
-    const replay = recorder.exportReplay();
-    rankedSession.set('submitting');
-    if (!base) {
-      rankedSession.finish(challenge.runId, { kind: 'failed', message: 'Ranked play is not available in this build' });
-      return;
-    }
-    if (replay.totalTicks > RANKED_MAX_TICKS) {
-      rankedSession.finish(challenge.runId, { kind: 'failed', message: 'This run was longer than the 20 minute ranked limit' });
-      return;
-    }
-    void submitRankedRun({ base, challenge, replay, nickname: chosenNickname(search), controls: this.controlTracker.scheme() })
-      .then((outcome) => {
-        if (outcome.kind === 'accepted') rememberScore({ id: outcome.score.id, score: outcome.score.score, at: outcome.score.completedAt });
-        rankedSession.finish(challenge.runId, outcome);
-      })
-      .catch(() => rankedSession.finish(challenge.runId, { kind: 'failed', message: 'Unexpected error while submitting' }));
+  /** The run is over: the ship was lost, or (ranked only) the time limit was reached with the ship still alive. */
+  private get runOver(): boolean {
+    return this.sim.isGameOver || this.timeUp;
   }
 
-  /** Leaving a ranked run before game over: its challenge is simply never submitted. */
+  // --- ranked: HUD, expiry, result page ------------------------------------------------------------------------------------
+
+  /** `RANKED` beside the clock, a countdown in the last minute, and (if it happens) the expiry notice. Subtle: nothing near the ship. */
+  private createRankedHud(): void {
+    const y = 18;
+    this.rankedLabel = addText(this, CENTER_X - 76, y, 'RANKED', { size: 20, color: COLORS.heading, originX: 1 }).setDepth(10);
+    this.rankedClock = addText(this, CENTER_X + 76, y, '', { size: 20, color: COLORS.hint, originX: 0 }).setDepth(10).setVisible(false);
+    this.rankedNotice = addText(this, CENTER_X, 150, 'RANKED RUN EXPIRED: THIS SCORE CAN NOT BE SUBMITTED', { size: 22, color: '#ffa050', originX: 0.5, originY: 0.5 })
+      .setDepth(10)
+      .setVisible(false);
+  }
+
+  private updateRankedHud(): void {
+    const challenge = this.rankedChallenge;
+    if (!challenge || !this.rankedLabel || !this.rankedClock || !this.rankedNotice) return;
+    const ticks = this.replayRecorder?.ticks ?? 0;
+    const left = Math.max(0, Math.ceil((challenge.timeLimitTicks - ticks) / FIXED_TICK_RATE));
+    const closing = !this.runOver && left <= 60;
+    this.rankedClock.setVisible(closing);
+    if (closing) this.rankedClock.setText(`${formatClock(left)} LEFT`).setColor(left <= 10 ? '#ff6464' : COLORS.hint);
+    this.rankedNotice.setVisible(this.rankedExpired && !this.runOver);
+    this.rankedLabel.setText(this.rankedExpired ? 'UNRANKED' : 'RANKED').setColor(this.rankedExpired ? '#ffa050' : COLORS.heading);
+  }
+
+  /** A paused or idle tab can outlast the challenge. Notice it as soon as it happens, not at game over. */
+  private checkRankedExpiry(): void {
+    if (!this.rankedChallenge || this.rankedExpired || this.runOver) return;
+    if (Date.now() >= this.rankedExpiresAt) this.rankedExpired = true;
+  }
+
+  /** The note on the pause page's red line. */
+  private pauseNote(): string {
+    if (this.padNote) return this.padNote;
+    return this.rankedExpired && !this.runOver ? 'RANKED RUN EXPIRED: THIS SCORE CAN NOT BE SUBMITTED' : '';
+  }
+
+  private createResultMenu(): void {
+    this.scoresModel = new ScoresModel(getApiBase());
+    this.resultDim = this.add.rectangle(CENTER_X, CENTER_Y, SCREEN_WIDTH, SCREEN_HEIGHT, 0x000000, 0.86).setDepth(20).setVisible(false);
+    const nav: PageNav = {
+      open: (id) => {
+        if (id === 'scores') {
+          void this.scoresModel.load();
+          this.refreshBest();
+        }
+        this.resultMenu?.controller.open(id);
+      },
+      back: () => void this.resultMenu?.controller.back(),
+    };
+    const scoresCtx: ScoresContext = {
+      inputMode: getInputMode(this),
+      model: this.scoresModel,
+      highlightIds: () => new Set(readLocalScores().map((s) => s.id)),
+      best: () => this.personalBest,
+    };
+    const builders: Record<string, PageBuilder> = {
+      result: (kit) => buildRankedResultPage(kit, this.resultContext(nav), nav),
+      scores: (kit) => buildScoresPage(kit, scoresCtx, nav),
+    };
+    this.resultMenu = new MenuView(this, 22, builders, 'result');
+  }
+
+  private resultContext(nav: PageNav): RankedResultContext {
+    const flow = this.rankedFlow as SubmissionFlow;
+    const input = this.nicknameInput as NicknameInput;
+    const challenge = this.rankedChallenge as RankedChallenge;
+    return {
+      inputMode: getInputMode(this),
+      flow,
+      input,
+      runScore: this.sim.totalScore,
+      endReason: this.timeUp ? 'time_limit' : 'game_over',
+      timeLimitLabel: formatClock(challenge.timeLimitTicks / FIXED_TICK_RATE),
+      priorBest: this.priorBest,
+      actions: {
+        playAgain: () => this.playAgain(),
+        toMenu: () => this.toMenu(),
+        openScores: () => nav.open('scores'),
+      },
+    };
+  }
+
+  private refreshBest(): void {
+    void refreshPersonalBest(getApiBase()).then((best) => {
+      this.personalBest = best;
+    });
+  }
+
+  /**
+   * Ranked only, once, when the run ends: freezes the recording, creates the submission flow, and shows the result page. NOTHING is sent
+   * yet: the player first gets to name the score (or skip). The game never posts a score of its own; the server replays the recording.
+   */
+  private beginRankedResult(): void {
+    const challenge = this.rankedChallenge;
+    const recorder = this.replayRecorder;
+    const menu = this.resultMenu;
+    if (!challenge || !recorder || !menu || this.rankedFlow) return;
+    this.rankedFlow = new SubmissionFlow({
+      base: getApiBase(),
+      challenge,
+      replay: recorder.exportReplay(),
+      controls: this.controlTracker.scheme(),
+      expired: () => this.rankedExpired || Date.now() >= this.rankedExpiresAt,
+    });
+    rankedSession.attach(challenge.runId, this.rankedFlow);
+    this.priorBest = localBest()?.score ?? null;
+    this.refreshBest();
+    const search = typeof window !== 'undefined' ? window.location.search : '';
+    this.nicknameInput = new NicknameInput(
+      this.game,
+      startingNickname(search),
+      () => void this.rankedFlow?.submit(this.nicknameInput?.value ?? ''),
+      document,
+      !this.touchUi,
+    );
+    this.resultOpenedAt = this.time.now;
+    this.resultDim?.setVisible(true);
+    this.setHudHidden(true); // the page has its own heading and score; the HUD would only show through the dim
+    menu.show(this.touchUi ? 'touch' : 'keys');
+  }
+
+  private get resultOpen(): boolean {
+    return this.resultMenu?.isOpen === true && this.rankedFlow !== null;
+  }
+
+  /** Keys and buttons that arrive in the instant after the run ends belong to the game that just stopped (the cannon, a held key), not to the page. */
+  private get resultSettled(): boolean {
+    return this.time.now - this.resultOpenedAt > 600;
+  }
+
+  /** Escape / BACK on the result page: closes the high scores, or leaves once there is nothing left to submit. Never throws a score away. */
+  private resultBack(): void {
+    const menu = this.resultMenu;
+    const flow = this.rankedFlow;
+    if (!menu || !flow) return;
+    if (!menu.controller.atRoot) void menu.controller.back();
+    else if (flow.finished) this.toMenu();
+  }
+
+  /** Another ranked run: the title screen asks the server for a new challenge (a spent one is never reused). */
+  private playAgain(): void {
+    this.scene.start(SCENE_START, { rankedAgain: true });
+  }
+
+  /** Leaving a ranked run before it ends: its challenge is simply never submitted. */
   private abandonRanked(): void {
-    if (this.sim.isGameOver) return;
+    if (this.runOver) return;
     if (this.rankedChallenge) rankedSession.set('abandoned');
     this.replayRecorder?.abandon();
   }
@@ -425,11 +592,13 @@ export class GameScene extends Phaser.Scene {
           break;
         case 'a':
           if (this.pauseMenuOpen) this.pauseMenu.controller.pad('a');
-          else this.retry();
+          else if (this.resultOpen) {
+            if (this.resultSettled) this.resultMenu?.controller.pad('a');
+          } else this.retry();
           break;
         case 'b':
-          // B is Boost while playing; it is the menu's cancel button only on the pause menu.
-          if (this.pauseMenuOpen) this.goBack();
+          // B is Boost while playing; it is the menu's cancel button only on the pause menu and on the ranked result page.
+          if (this.pauseMenuOpen || (this.resultOpen && this.resultSettled)) this.goBack();
           break;
         case 'back':
           this.goBack();
@@ -439,6 +608,7 @@ export class GameScene extends Phaser.Scene {
         case 'left':
         case 'right':
           if (this.pauseMenuOpen) this.pauseMenu.controller.pad(press.button);
+          else if (this.resultOpen && this.resultSettled) this.resultMenu?.controller.pad(press.button);
           break;
         default:
           break;
@@ -498,7 +668,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private togglePause(): void {
-    if (this.sim.isGameOver) return;
+    if (this.runOver) return;
     this.paused = !this.paused;
     this.fixedRunner?.setPaused(this.paused);
     // Touch is different from keys: a finger that was steering has no state to resume, so every touch is let go on pause.
@@ -516,6 +686,7 @@ export class GameScene extends Phaser.Scene {
    * abandon a run in progress; RETURN TO MENU does that.
    */
   private goBack(): void {
+    if (this.resultOpen) return this.resultBack();
     handleBack({
       gameOver: this.sim.isGameOver,
       paused: this.paused,
@@ -533,9 +704,15 @@ export class GameScene extends Phaser.Scene {
    * one-player game) retries.
    */
   private onKey(code: string): void {
-    if (code === 'KeyP') return this.togglePause();
+    if (code === 'KeyP' && !this.resultOpen) return this.togglePause();
     if (code === 'KeyM') return void this.audio.music.toggleMuted();
     if (code === 'Escape') return void this.goBack();
+    if (this.resultOpen) {
+      // The ranked result page takes the keys (typing in its name field never gets here: see NicknameInput). The first moments are the
+      // game that just stopped: a cannon key still held must not press a button.
+      if (this.resultSettled) this.resultMenu?.controller.key(code);
+      return;
+    }
     if (this.pauseMenuOpen) {
       this.pauseMenu.controller.key(code);
       return;
@@ -562,8 +739,13 @@ export class GameScene extends Phaser.Scene {
     return this.pauseMenu.controller.snapshot();
   }
 
+  /** For browser tests: where every button of the ranked result page is (null until a ranked run has ended). */
+  resultMenuSnapshot(): MenuSnapshot | null {
+    return this.resultOpen ? (this.resultMenu as MenuView).controller.snapshot() : null;
+  }
+
   private get pauseMenuOpen(): boolean {
-    return this.paused && !this.sim.isGameOver;
+    return this.paused && !this.runOver;
   }
 
   private createPauseMenu(): MenuView {
@@ -583,7 +765,7 @@ export class GameScene extends Phaser.Scene {
       actions: { play: () => undefined, resume: () => this.resumeFromMenu(), toMenu: () => this.toMenu(), switchInputMode: () => undefined },
     };
     const builders: Record<string, PageBuilder> = {
-      pause: (kit) => buildPausePage(kit, ctx, nav, () => this.padNote),
+      pause: (kit) => buildPausePage(kit, ctx, nav, () => this.pauseNote()),
       audio: (kit) => buildAudioPage(kit, ctx, nav),
       controls: (kit) => buildControlsPage(kit, ctx, nav),
       padlayout: (kit) => buildPadLayoutPage(kit, ctx, nav),
@@ -604,17 +786,15 @@ export class GameScene extends Phaser.Scene {
 
   private toMenu(): void {
     this.abandonRanked();
-    if (this.paused || this.sim.isGameOver) this.scene.start(SCENE_START);
+    if (this.paused || this.runOver) this.scene.start(SCENE_START);
   }
 
   private retry(): void {
+    // A ranked run ends on its own result page; RETRY is the casual game's. A ranked challenge is single-use and is never silently
+    // reused or downgraded to a casual restart (PLAY AGAIN on the result page asks the server for a new one).
+    if (this.rankedChallenge) return;
     this.abandonRanked();
-    if (this.sim.isGameOver && this.sim.retryDelay <= 0) {
-      // A ranked challenge is single-use: another ranked run must be requested from the title screen, never silently reused or
-      // downgraded to a casual restart.
-      if (this.rankedChallenge) this.scene.start(SCENE_START);
-      else this.scene.restart();
-    }
+    if (this.sim.isGameOver && this.sim.retryDelay <= 0) this.scene.restart();
   }
 
   // --- browser lifecycle -----------------------------------------------------
@@ -622,7 +802,7 @@ export class GameScene extends Phaser.Scene {
   /** Pauses automatically when the tab is hidden or the window loses focus, and cleans up on shutdown. */
   private setupLifecycle(): void {
     const autoPause = (): void => {
-      if (this.sim.isGameOver) return;
+      if (this.runOver) return;
       // Keys released while the window was unfocused never send a keyup; HeldKeys forgets them itself on blur / hide.
       this.paused = true;
       this.fixedRunner?.setPaused(true);
@@ -633,7 +813,7 @@ export class GameScene extends Phaser.Scene {
       if (event.type === 'connected') this.keyDiag?.note(`controller connected: #${event.pad.index} ${event.pad.name}`);
       else if (event.type === 'disconnected') this.keyDiag?.note(`controller DISCONNECTED: #${event.pad.index} ${event.pad.name}`);
       else if (event.type === 'disarmed') this.keyDiag?.note(`controllers neutral: ${event.reason}`);
-      if (event.type !== 'disconnected' || this.sim.isGameOver) return;
+      if (event.type !== 'disconnected' || this.runOver) return;
       const slot = this.playerCount === 2 ? event.slot : event.soloSlot;
       if (slot === null) return;
       this.paused = true;
@@ -666,6 +846,8 @@ export class GameScene extends Phaser.Scene {
       this.audio.music.setMegaPowerActive(false);
 
       this.abandonRanked();
+      this.nicknameInput?.destroy();
+      this.nicknameInput = null;
       if (this.isVerifiedMode && typeof window !== 'undefined') {
         delete (window as unknown as { __ASTEROIDS_REPLAY__?: unknown }).__ASTEROIDS_REPLAY__;
       }
@@ -675,14 +857,17 @@ export class GameScene extends Phaser.Scene {
   // --- presentation ----------------------------------------------------------
 
   private applyShake(): void {
-    const s = this.sim.isGameOver ? 0 : this.sim.screenShake;
+    const s = this.runOver ? 0 : this.sim.screenShake;
     if (s > 0) this.worldGfx.setPosition(Phaser.Math.FloatBetween(-s, s), Phaser.Math.FloatBetween(-s, s));
     else this.worldGfx.setPosition(0, 0);
   }
 
   private updateOverlays(): void {
-    const over = this.sim.isGameOver;
-    const showPause = this.paused && !over;
+    const runOver = this.runOver;
+    // The casual game-over screen is not used for a ranked run: its result page (see `beginRankedResult`) replaces it.
+    const over = runOver && !this.rankedChallenge;
+    this.resultMenu?.update(this.time.now);
+    const showPause = this.paused && !runOver;
     this.pauseDim.setVisible(showPause);
     // Controller hints appear only while a controller is actually driving a ship in this run.
     const padActive = over && this.padActive();
@@ -705,10 +890,9 @@ export class GameScene extends Phaser.Scene {
     const coop = sim.players.length > 1;
     this.gameOverOverlay.setLine(0, `Player 1: ${sim.player.score}`, CENTER_Y - 190, COLORS.player1, 30);
     // Two players: both scores, the team total and why the run ended. (Lines 3-5 stay empty in a one-player game.)
-    const rankedLine = this.rankedChallenge ? rankedSession.statusLine() : '';
     this.gameOverOverlay.setLine(
       3,
-      coop ? `Player 2: ${sim.player2?.score ?? 0}` : rankedLine,
+      coop ? `Player 2: ${sim.player2?.score ?? 0}` : '',
       CENTER_Y - 150,
       coop ? COLORS.player2 : COLORS.heading,
       coop ? 30 : 22,

@@ -13,6 +13,8 @@ export interface PublicScore {
   score: number;
   completedAt: string;
   durationSeconds: number;
+  /** Verified by the server: the ship ran out of lives, or was still alive when the ranked time limit ended the run. */
+  endReason: 'game_over' | 'time_limit';
 }
 
 export type Scope = 'all-time' | 'weekly';
@@ -24,6 +26,7 @@ interface ScoreRow {
   completed_at: number;
   duration_ms: number;
   rules_version: string;
+  end_reason: 'game_over' | 'time_limit';
 }
 
 export interface LeaderboardPage {
@@ -52,6 +55,7 @@ const toPublic = (row: ScoreRow, rank: number): PublicScore => ({
   score: row.score,
   completedAt: new Date(row.completed_at).toISOString(),
   durationSeconds: Math.round(row.duration_ms / 10) / 100,
+  endReason: row.end_reason,
 });
 
 function windowFilter(scope: Scope, window: WeekWindow | null): { sql: string; params: SqlValue[] } {
@@ -72,7 +76,7 @@ export async function getLeaderboard(
   const base: SqlValue[] = [settings.rulesVersion, ...f.params];
 
   const rows = await db.all<ScoreRow>(
-    `SELECT id, nickname, score, completed_at, duration_ms, rules_version FROM scores
+    `SELECT id, nickname, score, completed_at, duration_ms, rules_version, end_reason FROM scores
      WHERE ${ELIGIBLE}${f.sql} ORDER BY ${ORDER} LIMIT ? OFFSET ?`,
     [...base, limit, offset],
   );
@@ -109,7 +113,7 @@ export interface ScoreDetail {
 }
 
 export async function getScoreRow(db: Db, id: string): Promise<(ScoreRow & { visibility: string }) | null> {
-  return db.first(`SELECT id, nickname, score, completed_at, duration_ms, rules_version, visibility FROM scores WHERE id = ?`, [id]);
+  return db.first(`SELECT id, nickname, score, completed_at, duration_ms, rules_version, end_reason, visibility FROM scores WHERE id = ?`, [id]);
 }
 
 /** A single entry with its all-time and current-week ranks. Hidden entries are indistinguishable from unknown ones. */
