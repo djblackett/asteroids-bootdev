@@ -166,6 +166,7 @@ The verifier (`src/replay/verifier.ts`) is designed for untrusted server environ
 | `Unsupported schemaVersion: X` | Header Tampering | Client used an outdated or forged schema version. |
 | `Ticks must be strictly increasing` | Stream Corruption | Inputs were reordered or duplicate tick indices were submitted. |
 | `Unexpected input change at tick X after game over at tick Y` | Exploit Attempt | Client submitted controller inputs after the ship was already destroyed. |
+| `Unexpected simulation tick X after game over at tick Y` | Tick Padding Exploit | Client padded `totalTicks` with extra simulation frames after game over without additional inputs. |
 | `Score discrepancy: claimed X, calculated Y` | Score Forgery | Client manipulated its submitted score banner. The server rejects the claim and asserts the authoritative score. |
 | `Replay simulation completed without reaching game-over` | Abandoned / Truncated Run | Player quit mid-game or truncated recording before elimination. |
 | `Replay tick count exceeded maximum limit` | DoS Prevention | Replay exceeds 30 minutes of simulated time (`MAX_REPLAY_TICKS = 108,000`). |
@@ -178,13 +179,13 @@ Benchmarked on a clean modern development machine (Node v22.14.0, Windows x64, 2
 
 ### Empirical Performance Results
 
-| Scenario | Simulated Time | Total Ticks | Verified Score | Replay Size (Raw / Gzip) | Parse Time | Sim Execution | Wall Time (Avg / Min-Max) | CPU Time | Real-Time Factor |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **2-minute game** | 2.1 min | 7,621 | 9,114 | 679.9 KB / **43.4 KB** | 5.40 ms | 46.5 ms | **51.9 ms** (43.6–65.8 ms) | 99.0 ms | **2,445× real-time** |
-| **5-minute game** | 5.1 min | 18,222 | 31,640 | 1,682.2 KB / **108.7 KB** | 12.49 ms | 129.7 ms | **142.2 ms** (124.4–153.6 ms) | 171.7 ms | **2,136× real-time** |
-| **10-minute game** | 10.2 min | 36,554 | 40,634 | 3,266.1 KB / **209.0 KB** | 19.91 ms | 160.2 ms | **180.1 ms** (169.7–192.2 ms) | 182.3 ms | **3,383× real-time** |
-| **20-minute game** | 20.0 min | 72,000 | 40,634 | 3,266.1 KB / **209.0 KB** | 21.31 ms | 121.8 ms | **143.1 ms** (126.4–175.1 ms) | 151.0 ms | **8,388× real-time** |
-| **2-minute STRESS (high entity/combat)** | 2.0 min | 7,200 | 7,375 | 502.4 KB / **34.0 KB** | 3.28 ms | 16.2 ms | **19.5 ms** (18.7–20.4 ms) | 15.7 ms | **6,157× real-time** |
+| Scenario | Category | Simulated Time | Total Ticks | Verified Score | Replay Size (Raw / Gzip) | Parse Time | Sim Execution | Wall Time (Avg / Min-Max) | CPU Time | Real-Time Factor |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **2-minute game** | Authentic Game (Completed) | 2.1 min | 7,621 | 9,114 | 679.9 KB / **43.4 KB** | 5.42 ms | 47.2 ms | **52.6 ms** (42.0–65.3 ms) | 104.3 ms | **2,415× real-time** |
+| **5-minute game** | Authentic Game (Completed) | 5.1 min | 18,222 | 31,640 | 1,682.2 KB / **108.7 KB** | 12.21 ms | 118.0 ms | **130.2 ms** (115.1–141.6 ms) | 140.7 ms | **2,333× real-time** |
+| **10-minute game** | Authentic Game (Completed) | 10.2 min | 36,554 | 40,634 | 3,266.1 KB / **209.0 KB** | 27.12 ms | 245.3 ms | **272.4 ms** (255.0–281.5 ms) | 307.7 ms | **2,237× real-time** |
+| **2-minute STRESS** | Authentic Game (Completed) | 3.7 min | 13,416 | 15,042 | 953.5 KB / **63.8 KB** | 5.94 ms | 73.0 ms | **78.9 ms** (70.7–84.6 ms) | 78.0 ms | **2,833× real-time** |
+| **20-minute SYNTHETIC** | Synthetic Workload | 20.0 min | 72,000 | N/A (Synthetic) | N/A (Synthetic in-memory) | 0.00 ms | 184.4 ms | **184.4 ms** (51.3–261.1 ms) | 193.0 ms | **6,509× real-time** |
 
 ### Memory Footprint
 - Peak heap delta during verification of a 20-minute run is less than **14 MB**.

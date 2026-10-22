@@ -238,6 +238,21 @@ describe('Replay Validation & Adversarial Tampering', () => {
     expect(result.error).toContain('after game over occurred');
   });
 
+  it('rejects extra simulation ticks after game over even with NO additional input changes', () => {
+    const replay = createValidReplay();
+    const originalTicks = replay.totalTicks;
+    // Artificially pad totalTicks without adding any new input changes
+    replay.totalTicks += 100;
+    if (replay.claimedResult) {
+      replay.claimedResult.totalTicks = replay.totalTicks;
+    }
+
+    const result = verifyReplay(replay);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('Unexpected simulation tick');
+    expect(result.error).toContain(`after game over occurred at tick ${originalTicks - 1}`);
+  });
+
   it('rejects excessive tick count', () => {
     const replay = createValidReplay();
     replay.totalTicks = MAX_REPLAY_TICKS + 1;

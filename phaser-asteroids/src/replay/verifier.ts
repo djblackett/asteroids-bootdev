@@ -220,6 +220,15 @@ export function verifyReplay(
   let gameOverTick: number | null = null;
 
   for (let tick = 0; tick < totalTicks; tick++) {
+    // A replay must not continue simulating ticks once game over has occurred
+    if (gameOverTick !== null && tick > gameOverTick) {
+      const postGameOverInput = inputs.find((inp) => inp.tick > gameOverTick!);
+      if (postGameOverInput) {
+        return errorResult(`Unexpected input change at tick ${postGameOverInput.tick} after game over occurred at tick ${gameOverTick}`);
+      }
+      return errorResult(`Unexpected simulation tick ${tick} after game over occurred at tick ${gameOverTick}`);
+    }
+
     // Check if there is an input change at this tick
     while (inputIndex < inputs.length && inputs[inputIndex]!.tick === tick) {
       if (sim.isGameOver && gameOverTick !== null) {
