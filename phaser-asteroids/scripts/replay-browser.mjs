@@ -86,6 +86,9 @@ try {
 
   console.log('\n--- Part 2: Touch Assisted Flight in Chromium -> Node Verification ---');
   await runTouchTest(browser);
+
+  console.log('\n--- Part 3: Nonzero-score Gameplay in Chromium -> Node Verification ---');
+  await runNonzeroScoreTest(browser);
 } finally {
   await browser?.close();
   stopServer();
@@ -318,4 +321,178 @@ async function runTouchTest(browser) {
   const result = verifyReplay(replayRecord);
   check('[Assisted Flight] Node independently verified browser touch replay', result.valid === true);
   check('[Assisted Flight] Verified score matches browser score', result.calculatedScore === browserScore, `node=${result.calculatedScore} browser=${browserScore}`);
+}
+
+async function runNonzeroScoreTest(browser) {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  const seed = 101;
+
+  // 1. Launch game in verified mode with known seed
+  await page.goto(`${BASE}?verified=1&seed=${seed}&debug=1`);
+  await page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
+
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => window.__game?.scene.isActive('GameScene'), null, { timeout: 5000 });
+  await page.waitForFunction(() => window.__ASTEROIDS_REPLAY__?.isVerified === true, null, { timeout: 5000 });
+  check('[Nonzero Score] GameScene launched in verified mode', true);
+
+  console.log('  Running active browser combat gameplay to destroy asteroids and score points...');
+  let seekSuicide = false;
+  let currentlyRotating = null;
+  let currentlyThrusting = false;
+  let maxComboObserved = 0;
+
+  for (let step = 0; step < 300; step++) {
+    const status = await page.evaluate(() => {
+      const scene = window.__game.scene.getScene('GameScene');
+      const sim = scene.sim;
+      const isOver = window.__ASTEROIDS_REPLAY__?.isGameOver() === true;
+      if (isOver) return { isOver: true };
+
+      const px = sim.player.position.x;
+      const py = sim.player.position.y;
+      const rot = sim.player.rotation;
+      const score = sim.totalScore;
+      const combo = sim.combo.count;
+      const powerups = sim.powerups.filter((p) => p.alive);
+      const asteroids = sim.asteroids.filter((a) => a.alive && !a.dying);
+      const lasersRemaining = sim.player.laser.shotsRemaining;
+
+      return {
+        isOver: false,
+        px,
+        py,
+        rot,
+        score,
+        combo,
+        lasersRemaining,
+        powerups: powerups.map((p) => ({ x: p.position.x, y: p.position.y })),
+        asteroids: asteroids.map((a) => ({ x: a.position.x, y: a.position.y, radius: a.radius })),
+      };
+    });
+
+    if (status.isOver) break;
+
+    if (status.combo > maxComboObserved) maxComboObserved = status.combo;
+
+    // Once combat objectives are met (score > 60 and combo > 1, or score > 150), switch to conclude run naturally
+    if (!seekSuicide && ((status.score >= 60 && maxComboObserved >= 2) || status.score >= 150 || step >= 200)) {
+      seekSuicide = true;
+    }
+
+    let target = null;
+    let isPowerup = false;
+
+    if (!seekSuicide && status.powerups.length > 0) {
+      target = status.powerups[0];
+      isPowerup = true;
+    } else if (status.asteroids.length > 0) {
+      let minD = Infinity;
+      for (const a of status.asteroids) {
+        const d = Math.hypot(a.x - status.px, a.y - status.py);
+        if (d < minD) {
+          minD = d;
+          target = a;
+        }
+      }
+    }
+
+    if (!target) {
+      await sleep(50);
+      continue;
+    }
+
+    const dx = target.x - status.px;
+    const dy = target.y - status.py;
+    const dist = Math.hypot(dx, dy);
+    const heading = ((((Math.atan2(-dx, dy) * 180) / Math.PI) % 360) + 360) % 360;
+    let diff = heading - status.rot;
+    while (diff < -180) diff += 360;
+    while (diff > 180) diff -= 360;
+
+    // Handle turning with held keys
+    if (diff < -12) {
+      if (currentlyRotating !== 'KeyA') {
+        if (currentlyRotating) await page.keyboard.up(currentlyRotating);
+        await page.keyboard.down('KeyA');
+        currentlyRotating = 'KeyA';
+      }
+    } else if (diff > 12) {
+      if (currentlyRotating !== 'KeyD') {
+        if (currentlyRotating) await page.keyboard.up(currentlyRotating);
+        await page.keyboard.down('KeyD');
+        currentlyRotating = 'KeyD';
+      }
+    } else {
+      if (currentlyRotating) {
+        await page.keyboard.up(currentlyRotating);
+        currentlyRotating = null;
+      }
+    }
+
+    if (seekSuicide) {
+      // Steer straight into asteroid, don't shoot
+      if (!currentlyThrusting) {
+        await page.keyboard.down('KeyW');
+        currentlyThrusting = true;
+      }
+    } else {
+      // Aimed at target: fire shots and lasers
+      if (Math.abs(diff) < 30) {
+        await page.keyboard.press('Space');
+        if (status.lasersRemaining > 0 && step % 12 === 0) {
+          await page.keyboard.press('KeyE');
+        }
+      }
+      if (step === 25 || step === 55) {
+        await page.keyboard.press('ShiftLeft');
+      }
+
+      // Thrust towards target if powerup or far away
+      const shouldThrust = isPowerup || (dist > 350 && Math.abs(diff) < 20);
+      if (shouldThrust && !currentlyThrusting) {
+        await page.keyboard.down('KeyW');
+        currentlyThrusting = true;
+      } else if (!shouldThrust && currentlyThrusting) {
+        await page.keyboard.up('KeyW');
+        currentlyThrusting = false;
+      }
+    }
+
+    await sleep(60);
+  }
+
+  // Release keys before waiting for game over
+  if (currentlyRotating) await page.keyboard.up(currentlyRotating);
+  if (!currentlyThrusting) await page.keyboard.down('KeyW');
+
+  console.log('  Advancing simulation until legitimate game over...');
+  await page.waitForFunction(
+    () => window.__ASTEROIDS_REPLAY__?.isGameOver() === true,
+    null,
+    { timeout: 45000, polling: 50 },
+  );
+
+  const browserScore = await page.evaluate(() => window.__ASTEROIDS_REPLAY__?.getScore());
+  const browserTicks = await page.evaluate(() => window.__ASTEROIDS_REPLAY__?.getTicks());
+  const replayRecord = await page.evaluate(() => window.__ASTEROIDS_REPLAY__?.getReplay());
+
+  check('[Nonzero Score] Browser game reached legitimate game over', replayRecord?.claimedResult?.phase === 'gameOver');
+  check('[Nonzero Score] Browser achieved a nonzero score', browserScore > 0, `browserScore=${browserScore}`);
+  check('[Nonzero Score] Replay inputs captured non-empty stream', replayRecord?.inputs?.length > 0, `changes=${replayRecord?.inputs?.length}`);
+
+  console.log('  Running independent Node verification...');
+  const result = verifyReplay(replayRecord);
+
+  check('[Nonzero Score] Node verification succeeded without errors', result.valid === true, result.error ? `err=${result.error}` : 'ok');
+  check('[Nonzero Score] Independently calculated score matches browser score', result.calculatedScore === browserScore, `node=${result.calculatedScore} browser=${browserScore}`);
+  check('[Nonzero Score] Independently calculated score is strictly positive', result.calculatedScore > 0, `node=${result.calculatedScore}`);
+  check('[Nonzero Score] Node verified multiple asteroid destructions', result.stats.asteroidsDestroyed > 1, `asteroidsDestroyed=${result.stats.asteroidsDestroyed}`);
+  check(
+    '[Nonzero Score] Exercised combo or power-up collection',
+    result.stats.powerupsCollected > 0 || maxComboObserved > 1,
+    `powerups=${result.stats.powerupsCollected} maxCombo=${maxComboObserved}`,
+  );
+  check('[Nonzero Score] Independently calculated tick count matches browser ticks', result.totalTicks === browserTicks, `node=${result.totalTicks} browser=${browserTicks}`);
+  check('[Nonzero Score] Independently determined game phase is gameOver', result.phase === 'gameOver');
 }
