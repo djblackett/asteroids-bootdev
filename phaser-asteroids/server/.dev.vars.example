@@ -1,0 +1,5 @@
+# Copy to .dev.vars (git-ignored) for local `wrangler dev`. Production uses `wrangler secret put`.
+# ADMIN_TOKEN enables POST /api/v1/admin/scores/:id/visibility (must be 16+ characters). Omit it and the admin routes do not exist.
+ADMIN_TOKEN=change-me-to-a-long-random-string
+# Salt for hashing client IPs into rate-limit buckets.
+IP_HASH_SALT=change-me-too

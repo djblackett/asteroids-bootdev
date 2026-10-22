@@ -1,0 +1,19 @@
+{
+  "name": "asteroids-leaderboard-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Cloudflare Worker + D1 leaderboard that independently replays ranked runs. See ../docs/leaderboard-backend.md.",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "migrate:local": "wrangler d1 migrations apply asteroids-leaderboard --local",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --root .. server/tests",
+    "test:worker": "node scripts/worker-e2e.mjs",
+    "bench:workerd": "node scripts/bench-workerd.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "wrangler": "4.151.3"
+  }
+}

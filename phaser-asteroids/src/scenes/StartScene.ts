@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { getAudio, type AudioDirector } from '../audio/phaserAudio';
+import { SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
 import { defaultRng } from '../core/rng';
 import { Starfield } from '../core/starfield';
 import { getSetup, setSetup, type GameSetup } from '../gameSetup';
@@ -10,6 +11,8 @@ import { getInputMode, getMovement, getTouchControls } from '../input/gameTouch'
 import type { GamepadHub } from '../input/gamepadHub';
 import type { InputModeController } from '../input/inputMode';
 import { createKeyPressRouter } from '../input/keyPress';
+import { RankedApiError, rankedRequested, requestChallenge, resolveApiBase } from '../ranked/api';
+import { rankedSession } from '../ranked/session';
 import { drawStarfield } from '../render/worldRenderer';
 import type { MenuContext, PageNav } from '../ui/menu/context';
 import type { MenuSnapshot } from '../ui/menu/menuController';
@@ -20,6 +23,7 @@ import { buildCoopPage } from '../ui/menu/pages/coop';
 import { buildPadLayoutPage } from '../ui/menu/pages/padLayout';
 import { buildPowerupGuide } from '../ui/menu/pages/powerups';
 import { buildTitlePage } from '../ui/menu/pages/title';
+import { addText, COLORS } from '../ui/text';
 import { SCENE_GAME, SCENE_START } from './keys';
 
 /** A second mode switch inside this window is the same touch landing twice (two fingers, a bouncing thumb), not a decision. */
@@ -40,6 +44,8 @@ export class StartScene extends Phaser.Scene {
   private menu!: MenuView;
   private starting = false;
   private switchLockedUntil = 0;
+  /** One line at the bottom of the title screen, used only when a ranked run was asked for with `?ranked`. */
+  private rankedNote: Phaser.GameObjects.Text | null = null;
 
   constructor() {
     super(SCENE_START);
@@ -53,6 +59,7 @@ export class StartScene extends Phaser.Scene {
   create(): void {
     this.starting = false;
     this.switchLockedUntil = 0;
+    this.rankedNote = null;
     this.setup = getSetup(this.registry);
     this.audio = getAudio(this);
     this.audio.startMusicWhenUnlocked();
@@ -77,6 +84,8 @@ export class StartScene extends Phaser.Scene {
       padlayout: (kit) => buildPadLayoutPage(kit, ctx, nav),
     };
     this.menu = new MenuView(this, 10, builders, 'title');
+
+    if (this.rankedWanted()) this.showRankedNote('RANKED MODE: PLAY ASKS THE SERVER FOR A VERIFIED RUN', COLORS.heading);
 
     // Presses meant for the scene we came from (the BACK that opened this menu, a RETRY that was refused) are not ours.
     this.pads.discardPresses();
@@ -211,6 +220,39 @@ export class StartScene extends Phaser.Scene {
   private start(): void {
     if (this.starting) return;
     this.starting = true;
-    this.scene.start(SCENE_GAME);
+    if (this.rankedWanted()) void this.startRanked();
+    else this.scene.start(SCENE_GAME);
+  }
+
+  private rankedWanted(): boolean {
+    return typeof window !== 'undefined' && rankedRequested(window.location.search);
+  }
+
+  /**
+   * Ranked play starts only after the server has issued a challenge (seed + configuration). If it cannot be issued the player is told so
+   * and stays here: a ranked run is never started without one, and a casual game is never started in its place without the player asking.
+   */
+  private async startRanked(): Promise<void> {
+    rankedSession.beginRequest();
+    this.showRankedNote('REQUESTING A RANKED RUN...', COLORS.hint);
+    try {
+      const base = resolveApiBase(window.location.search, window.location.hostname, import.meta.env.VITE_LEADERBOARD_API_URL);
+      if (!base) throw new RankedApiError('unconfigured', 'Ranked play is not available in this build');
+      const challenge = await requestChallenge(base);
+      if (!this.scene.isActive(SCENE_START)) return;
+      rankedSession.setChallenge(challenge);
+      this.scene.start(SCENE_GAME);
+    } catch (e) {
+      const message = e instanceof RankedApiError ? e.message : 'Unexpected error';
+      rankedSession.set('failed', message);
+      if (!this.scene.isActive(SCENE_START)) return;
+      this.showRankedNote(`RANKED UNAVAILABLE: ${message.toUpperCase()}. PLAY TO TRY AGAIN.`, '#ff9696');
+      this.starting = false;
+    }
+  }
+
+  private showRankedNote(text: string, color: string): void {
+    this.rankedNote ??= addText(this, SCREEN_WIDTH / 2, SCREEN_HEIGHT - 28, '', { size: 18, originX: 0.5, originY: 0.5 }).setDepth(30);
+    this.rankedNote.setText(text).setColor(color);
   }
 }

@@ -1,0 +1,48 @@
+# Cloudflare Worker + D1 for the Phaser Asteroids ranked leaderboard. See ../docs/leaderboard-backend.md.
+#
+# NOTHING here deploys anything. `wrangler dev --local` (npm run dev) uses a local workerd + a local SQLite-backed D1 under
+# .wrangler/state and never contacts a Cloudflare account. Replay verification needs more than the 10 ms of CPU the Workers
+# *Free* plan allows (measured 40-250 ms), so a real deployment needs the Workers *Paid* plan (US$5/month).
+
+name = "asteroids-leaderboard"
+main = "src/worker.ts"
+compatibility_date = "2026-06-01"
+
+# Safety net against a runaway loop becoming a bill: far above a measured worst-case verification, far below the 30 s default.
+[limits]
+cpu_ms = 5000
+
+[triggers]
+crons = ["17 7 * * *"]   # daily cleanup (scheduled handler in src/worker.ts)
+
+[[d1_databases]]
+binding = "DB"
+database_name = "asteroids-leaderboard"
+# Local development ignores this id. For deployment, replace it with the id printed by `wrangler d1 create asteroids-leaderboard`.
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# Local / test defaults. Secrets (ADMIN_TOKEN, IP_HASH_SALT) are NOT set here: locally use .dev.vars (git-ignored), in production
+# use `wrangler secret put`.
+[vars]
+ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,http://127.0.0.1:4410"
+
+# Production: wrangler does not inherit bindings or vars into environments, so everything is repeated. Fill in before deploying:
+#   npx wrangler deploy --env production
+[env.production]
+name = "asteroids-leaderboard"
+
+[env.production.limits]
+cpu_ms = 5000
+
+[env.production.triggers]
+crons = ["17 7 * * *"]
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "asteroids-leaderboard"
+database_id = "REPLACE_WITH_ID_FROM_wrangler_d1_create"
+migrations_dir = "migrations"
+
+[env.production.vars]
+ALLOWED_ORIGINS = "https://djblackett.github.io"

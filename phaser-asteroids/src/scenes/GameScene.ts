@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { getAudio, type AudioDirector } from '../audio/phaserAudio';
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
 import { GameSim, type SimEvent } from '../core/game';
+import { resolveGameConfig } from '../core/gameConfig';
 import { NO_INPUT, type PlayerInput } from '../core/player';
 import { seededRng } from '../core/rng';
 import { getSetup, simConfigOf } from '../gameSetup';
@@ -20,8 +21,12 @@ import {
   type MountedDiagnostics,
 } from '../input/keyDiagnostics';
 import { createKeyPressRouter } from '../input/keyPress';
-import { keySchemesFor, type KeyScheme } from '../input/keyboardControls';
+import { keySchemesFor, readPlayerInput, type KeyScheme } from '../input/keyboardControls';
 import { readPlayerInputs } from '../input/playerInputs';
+import { RANKED_MAX_TICKS, resolveApiBase, submitRankedRun, type RankedChallenge } from '../ranked/api';
+import { ControlTracker } from '../ranked/controls';
+import { chosenNickname, rememberScore } from '../ranked/localScores';
+import { rankedSession } from '../ranked/session';
 import { drawStarfield, drawWorld } from '../render/worldRenderer';
 import {
   FIXED_DT,
@@ -133,6 +138,10 @@ export class GameScene extends Phaser.Scene {
   private verifiedSeed = 0;
   private fixedRunner: FixedStepRunner | null = null;
   private replayRecorder: ReplayRecorder | null = null;
+  // Ranked run (null in casual and in the experimental ?verified mode): issued by the server, submitted once at game over.
+  private rankedChallenge: RankedChallenge | null = null;
+  private rankedSubmitted = false;
+  private controlTracker = new ControlTracker();
 
   constructor() {
     super(SCENE_GAME);
@@ -142,9 +151,18 @@ export class GameScene extends Phaser.Scene {
     // State lives in init(), not the constructor, so every restart begins clean. The title screen's choices come from the
     // registry; the simulation (and with it every co-op detail) is always built from scratch.
     const setup = getSetup(this.registry);
-    const config = simConfigOf(setup);
+    // A ranked run takes its seed AND configuration from the server's challenge; nothing from the menu or the URL applies.
+    const challenge = rankedSession.takeChallenge();
+    this.rankedChallenge = challenge;
+    this.rankedSubmitted = false;
+    this.controlTracker = new ControlTracker();
+    const config = challenge ? resolveGameConfig(challenge.config) : simConfigOf(setup);
 
-    const verifiedInfo = typeof window !== 'undefined' ? parseVerifiedMode(window.location.search) : { verified: false, seed: 0 };
+    const verifiedInfo = challenge
+      ? { verified: true, seed: challenge.seed }
+      : typeof window !== 'undefined'
+        ? parseVerifiedMode(window.location.search)
+        : { verified: false, seed: 0 };
     this.isVerifiedMode = verifiedInfo.verified;
     this.verifiedSeed = verifiedInfo.seed;
 
@@ -254,6 +272,7 @@ export class GameScene extends Phaser.Scene {
       if (!this.paused) {
         runner.update(dt, (tick, fixedDt) => {
           const rawInputs = sim.isGameOver ? this.schemes.map(() => NO_INPUT) : this.readInputs();
+          if (this.rankedChallenge && !sim.isGameOver) this.observeControls();
           const p1Input = toPlayerInput(toRecordedInput(rawInputs[0] ?? NO_INPUT));
           if (!recorder.isFinalized) {
             recorder.recordTick(tick, p1Input);
@@ -262,6 +281,7 @@ export class GameScene extends Phaser.Scene {
           if (sim.isGameOver && !recorder.isFinalized) {
             recorder.markGameOver(sim);
           }
+          if (sim.isGameOver) this.beginRankedSubmit();
           this.audio.sfx.handle(events);
           if (this.touchUi) this.haptics.handle(events);
           this.announce(events, time);
@@ -320,6 +340,56 @@ export class GameScene extends Phaser.Scene {
     const playing = !this.paused && !this.sim.isGameOver;
     this.touch.setLayer(playing ? 'play' : this.paused && !this.sim.isGameOver ? 'menu' : 'off');
     if (playing) this.touch.setAbilities(abilityLabels(this.sim.player));
+  }
+
+  /** Ranked only: notes which input sources really drove the ship, for the (untrusted) control-scheme report. */
+  private observeControls(): void {
+    const scheme = this.schemes[0];
+    if (!scheme) return;
+    this.controlTracker.observe(
+      {
+        keyboard: readPlayerInput(this.held, scheme),
+        gamepad: this.pads.command(0, 1),
+        touch: this.touchUi ? this.touch.command() : null,
+      },
+      getMovement(this).mode,
+    );
+  }
+
+  /**
+   * Ranked only, once, at game over: sends the recording to the server, which replays it and decides the score. The game never
+   * posts a score of its own. Failure leaves the (unranked-looking) game over screen alone and just says the score was not recorded.
+   */
+  private beginRankedSubmit(): void {
+    const challenge = this.rankedChallenge;
+    const recorder = this.replayRecorder;
+    if (!challenge || !recorder || this.rankedSubmitted) return;
+    this.rankedSubmitted = true;
+    const search = typeof window !== 'undefined' ? window.location.search : '';
+    const base = typeof window !== 'undefined' ? resolveApiBase(search, window.location.hostname, import.meta.env.VITE_LEADERBOARD_API_URL) : null;
+    const replay = recorder.exportReplay();
+    rankedSession.set('submitting');
+    if (!base) {
+      rankedSession.finish(challenge.runId, { kind: 'failed', message: 'Ranked play is not available in this build' });
+      return;
+    }
+    if (replay.totalTicks > RANKED_MAX_TICKS) {
+      rankedSession.finish(challenge.runId, { kind: 'failed', message: 'This run was longer than the 20 minute ranked limit' });
+      return;
+    }
+    void submitRankedRun({ base, challenge, replay, nickname: chosenNickname(search), controls: this.controlTracker.scheme() })
+      .then((outcome) => {
+        if (outcome.kind === 'accepted') rememberScore({ id: outcome.score.id, score: outcome.score.score, at: outcome.score.completedAt });
+        rankedSession.finish(challenge.runId, outcome);
+      })
+      .catch(() => rankedSession.finish(challenge.runId, { kind: 'failed', message: 'Unexpected error while submitting' }));
+  }
+
+  /** Leaving a ranked run before game over: its challenge is simply never submitted. */
+  private abandonRanked(): void {
+    if (this.sim.isGameOver) return;
+    if (this.rankedChallenge) rankedSession.set('abandoned');
+    this.replayRecorder?.abandon();
   }
 
   /** One input per player: that player's own keys, merged with the controller assigned to them (if any). */
@@ -533,13 +603,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private toMenu(): void {
-    if (!this.sim.isGameOver) this.replayRecorder?.abandon();
+    this.abandonRanked();
     if (this.paused || this.sim.isGameOver) this.scene.start(SCENE_START);
   }
 
   private retry(): void {
-    if (!this.sim.isGameOver) this.replayRecorder?.abandon();
-    if (this.sim.isGameOver && this.sim.retryDelay <= 0) this.scene.restart();
+    this.abandonRanked();
+    if (this.sim.isGameOver && this.sim.retryDelay <= 0) {
+      // A ranked challenge is single-use: another ranked run must be requested from the title screen, never silently reused or
+      // downgraded to a casual restart.
+      if (this.rankedChallenge) this.scene.start(SCENE_START);
+      else this.scene.restart();
+    }
   }
 
   // --- browser lifecycle -----------------------------------------------------
@@ -590,6 +665,7 @@ export class GameScene extends Phaser.Scene {
       this.audio.music.setGamePaused(false);
       this.audio.music.setMegaPowerActive(false);
 
+      this.abandonRanked();
       if (this.isVerifiedMode && typeof window !== 'undefined') {
         delete (window as unknown as { __ASTEROIDS_REPLAY__?: unknown }).__ASTEROIDS_REPLAY__;
       }
@@ -629,7 +705,14 @@ export class GameScene extends Phaser.Scene {
     const coop = sim.players.length > 1;
     this.gameOverOverlay.setLine(0, `Player 1: ${sim.player.score}`, CENTER_Y - 190, COLORS.player1, 30);
     // Two players: both scores, the team total and why the run ended. (Lines 3-5 stay empty in a one-player game.)
-    this.gameOverOverlay.setLine(3, coop ? `Player 2: ${sim.player2?.score ?? 0}` : '', CENTER_Y - 150, COLORS.player2, 30);
+    const rankedLine = this.rankedChallenge ? rankedSession.statusLine() : '';
+    this.gameOverOverlay.setLine(
+      3,
+      coop ? `Player 2: ${sim.player2?.score ?? 0}` : rankedLine,
+      CENTER_Y - 150,
+      coop ? COLORS.player2 : COLORS.heading,
+      coop ? 30 : 22,
+    );
     this.gameOverOverlay.setLine(4, coop ? `TEAM TOTAL: ${sim.totalScore}` : '', CENTER_Y - 105, COLORS.white, 26);
     const reason = sim.gameOverReason === 'shared_lives_exhausted' ? 'THE SHARED LIVES ARE ALL USED UP' : 'BOTH PLAYERS ARE ELIMINATED';
     this.gameOverOverlay.setLine(5, coop ? reason : '', CENTER_Y - 65, COLORS.dim, 22);
