@@ -3,6 +3,7 @@ import { getAudio, type AudioDirector } from '../audio/phaserAudio';
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
 import { GameSim, type SimEvent } from '../core/game';
 import { NO_INPUT, type PlayerInput } from '../core/player';
+import { seededRng } from '../core/rng';
 import { getSetup, simConfigOf } from '../gameSetup';
 import { getHaptics } from '../haptics/gameHaptics';
 import type { HapticManager } from '../haptics/hapticManager';
@@ -22,6 +23,15 @@ import { createKeyPressRouter } from '../input/keyPress';
 import { keySchemesFor, type KeyScheme } from '../input/keyboardControls';
 import { readPlayerInputs } from '../input/playerInputs';
 import { drawStarfield, drawWorld } from '../render/worldRenderer';
+import {
+  FIXED_DT,
+  FIXED_TICK_RATE,
+  FixedStepRunner,
+  ReplayRecorder,
+  toPlayerInput,
+  toRecordedInput,
+  type ReplayRecord,
+} from '../replay';
 import { AbilityHud, ComboHud, Hud, KillStreakBanner, Overlay, playerColor, TeamHud, TOUCH_HUD_SCALE } from '../ui/hud';
 import { addText, COLORS } from '../ui/text';
 import { abilityLabels } from '../ui/touchLabels';
@@ -38,6 +48,29 @@ import { SCENE_GAME, SCENE_START } from './keys';
 
 const CENTER_X = SCREEN_WIDTH / 2;
 const CENTER_Y = SCREEN_HEIGHT / 2;
+
+function parseVerifiedMode(search: string): { verified: boolean; seed: number } {
+  try {
+    const params = new URLSearchParams(search);
+    const hasVerified = params.has('verified') || params.has('seed');
+    if (!hasVerified) return { verified: false, seed: 0 };
+    const rawSeed = params.get('seed');
+    const seed = rawSeed !== null && !isNaN(Number(rawSeed)) ? Number(rawSeed) >>> 0 : 1;
+    return { verified: true, seed };
+  } catch {
+    return { verified: false, seed: 0 };
+  }
+}
+
+export interface ReplayWindowApi {
+  isVerified: boolean;
+  seed: number;
+  getReplay: () => ReplayRecord | undefined;
+  getSerialized: () => string | undefined;
+  isGameOver: () => boolean;
+  getScore: () => number;
+  getTicks: () => number;
+}
 
 /**
  * Owns one `GameSim` per run and is only glue: it reads input, steps the simulation, draws the
@@ -95,6 +128,12 @@ export class GameScene extends Phaser.Scene {
   private touchUi = false;
   private touchOver: TouchGameOverButtons | null = null;
 
+  // Verified replay runner and recorder (null in casual play)
+  private isVerifiedMode = false;
+  private verifiedSeed = 0;
+  private fixedRunner: FixedStepRunner | null = null;
+  private replayRecorder: ReplayRecorder | null = null;
+
   constructor() {
     super(SCENE_GAME);
   }
@@ -104,7 +143,32 @@ export class GameScene extends Phaser.Scene {
     // registry; the simulation (and with it every co-op detail) is always built from scratch.
     const setup = getSetup(this.registry);
     const config = simConfigOf(setup);
-    this.sim = new GameSim({ config });
+
+    const verifiedInfo = typeof window !== 'undefined' ? parseVerifiedMode(window.location.search) : { verified: false, seed: 0 };
+    this.isVerifiedMode = verifiedInfo.verified;
+    this.verifiedSeed = verifiedInfo.seed;
+
+    if (this.isVerifiedMode) {
+      this.sim = new GameSim({ rng: seededRng(this.verifiedSeed), config });
+      this.fixedRunner = new FixedStepRunner(FIXED_TICK_RATE, FIXED_DT);
+      this.replayRecorder = new ReplayRecorder(this.verifiedSeed, config);
+      if (typeof window !== 'undefined') {
+        (window as unknown as { __ASTEROIDS_REPLAY__?: ReplayWindowApi }).__ASTEROIDS_REPLAY__ = {
+          isVerified: true,
+          seed: this.verifiedSeed,
+          getReplay: () => this.replayRecorder?.exportReplay(),
+          getSerialized: () => this.replayRecorder?.serialize(),
+          isGameOver: () => this.sim.isGameOver,
+          getScore: () => this.sim.totalScore,
+          getTicks: () => this.replayRecorder?.ticks ?? 0,
+        };
+      }
+    } else {
+      this.sim = new GameSim({ config });
+      this.fixedRunner = null;
+      this.replayRecorder = null;
+    }
+
     this.schemes = keySchemesFor(config.playerCount, setup.p2Keys);
     this.abilityHuds = [];
     this.teamHud = null;
@@ -183,25 +247,50 @@ export class GameScene extends Phaser.Scene {
       this.guardNextFrame = false;
       this.shotGuard = this.readInputsUnguarded().map((input) => input.shoot);
     }
-    const inputs = sim.isGameOver ? this.schemes.map(() => NO_INPUT) : this.readInputs();
-    if (!this.paused) {
-      const events = sim.step(dt, inputs[0] ?? NO_INPUT, inputs[1] ?? NO_INPUT);
-      this.audio.sfx.handle(events);
-      // Only the touch UI buzzes: the same events on a keyboard or controller run (or a second player's ship) never reach the phone's motor.
-      if (this.touchUi) this.haptics.handle(events);
-      this.announce(events, time);
-      this.applyShake();
+
+    if (this.isVerifiedMode && this.fixedRunner && this.replayRecorder) {
+      const runner = this.fixedRunner;
+      const recorder = this.replayRecorder;
+      if (!this.paused) {
+        runner.update(dt, (tick, fixedDt) => {
+          const rawInputs = sim.isGameOver ? this.schemes.map(() => NO_INPUT) : this.readInputs();
+          const p1Input = toPlayerInput(toRecordedInput(rawInputs[0] ?? NO_INPUT));
+          if (!recorder.isFinalized) {
+            recorder.recordTick(tick, p1Input);
+          }
+          const events = sim.step(fixedDt, p1Input, rawInputs[1] ?? NO_INPUT);
+          if (sim.isGameOver && !recorder.isFinalized) {
+            recorder.markGameOver(sim);
+          }
+          this.audio.sfx.handle(events);
+          if (this.touchUi) this.haptics.handle(events);
+          this.announce(events, time);
+        });
+        this.applyShake();
+      }
+    } else {
+      const inputs = sim.isGameOver ? this.schemes.map(() => NO_INPUT) : this.readInputs();
+      if (!this.paused) {
+        const events = sim.step(dt, inputs[0] ?? NO_INPUT, inputs[1] ?? NO_INPUT);
+        this.audio.sfx.handle(events);
+        // Only the touch UI buzzes: the same events on a keyboard or controller run (or a second player's ship) never reach the phone's motor.
+        if (this.touchUi) this.haptics.handle(events);
+        this.announce(events, time);
+        this.applyShake();
+      }
     }
+
     const [p1, p2] = sim.players;
+    const currentInputs = sim.isGameOver ? this.schemes.map(() => NO_INPUT) : this.readInputs();
     this.keyDiag?.update({
       phaserHeld: this.phaserDiagKeys.filter(([, key]) => key.isDown).map(([name]) => name),
       trackerHeld: this.held.snapshot(),
-      input: inputs[0] ?? NO_INPUT,
+      input: currentInputs[0] ?? NO_INPUT,
       pad: {
         lines: this.pads.diagnosticLines(this.playerCount),
         driven: [this.pads.padFor(0, this.playerCount) !== null, this.pads.padFor(1, this.playerCount) !== null],
       },
-      ...(p2 ? { input2: inputs[1] ?? NO_INPUT, sim2: this.diagSnapshot(p2) } : {}),
+      ...(p2 ? { input2: currentInputs[1] ?? NO_INPUT, sim2: this.diagSnapshot(p2) } : {}),
       sim: this.diagSnapshot(p1 ?? sim.player),
     });
 
@@ -341,6 +430,7 @@ export class GameScene extends Phaser.Scene {
   private togglePause(): void {
     if (this.sim.isGameOver) return;
     this.paused = !this.paused;
+    this.fixedRunner?.setPaused(this.paused);
     // Touch is different from keys: a finger that was steering has no state to resume, so every touch is let go on pause.
     if (this.paused) this.touch.releaseAll();
     // Held movement keys are deliberately NOT reset: the keyboard has not released them, so play resumes with them held.
@@ -443,10 +533,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private toMenu(): void {
+    if (!this.sim.isGameOver) this.replayRecorder?.abandon();
     if (this.paused || this.sim.isGameOver) this.scene.start(SCENE_START);
   }
 
   private retry(): void {
+    if (!this.sim.isGameOver) this.replayRecorder?.abandon();
     if (this.sim.isGameOver && this.sim.retryDelay <= 0) this.scene.restart();
   }
 
@@ -458,6 +550,7 @@ export class GameScene extends Phaser.Scene {
       if (this.sim.isGameOver) return;
       // Keys released while the window was unfocused never send a keyup; HeldKeys forgets them itself on blur / hide.
       this.paused = true;
+      this.fixedRunner?.setPaused(true);
     };
     // A controller that drives a ship in this run disappearing pauses the game at once (its commands are already neutral),
     // so nobody plays on with a dead ship; reconnecting it hands the ship back, and START resumes.
@@ -469,6 +562,7 @@ export class GameScene extends Phaser.Scene {
       const slot = this.playerCount === 2 ? event.slot : event.soloSlot;
       if (slot === null) return;
       this.paused = true;
+      this.fixedRunner?.setPaused(true);
       this.padNote = `PLAYER ${slot + 1}'S CONTROLLER DISCONNECTED - plug it in again`;
     });
     // Touch: the PAUSE button pauses; turning the phone upright (the rotate prompt covers the screen) pauses too, and stays paused on return.
@@ -495,6 +589,10 @@ export class GameScene extends Phaser.Scene {
       this.haptics.reset();
       this.audio.music.setGamePaused(false);
       this.audio.music.setMegaPowerActive(false);
+
+      if (this.isVerifiedMode && typeof window !== 'undefined') {
+        delete (window as unknown as { __ASTEROIDS_REPLAY__?: unknown }).__ASTEROIDS_REPLAY__;
+      }
     });
   }
 
