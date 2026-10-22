@@ -20,3 +20,5 @@ highscores.json
 
 # Windows reserved device names
 nul
+
+node_modules/
