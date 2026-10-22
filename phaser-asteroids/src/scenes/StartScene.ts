@@ -68,6 +68,9 @@ export class StartScene extends Phaser.Scene {
   /** `rankedAgain`: PLAY AGAIN on a ranked result screen, which goes straight on to ask for the next challenge. */
   init(data?: { rankedAgain?: boolean }): void {
     this.autoStartRanked = data?.rankedAgain === true;
+    // Phaser keeps settings.data when a later scene.start supplies no data. Consume this one-shot request so returning to the menu
+    // after PLAY AGAIN cannot silently issue another challenge and start another run.
+    if (data) data.rankedAgain = false;
   }
 
   /** For browser tests: where every button is and which page is open. */

@@ -199,11 +199,29 @@ try {
   // Leaving a run in progress never records a score.
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => window.__game.scene.getScene('GameScene').pauseMenuSnapshot().items.some((i) => i.id === 'menu'), null, { timeout: 5000 });
+  const unfinished = await page.evaluate(() => {
+    const scene = window.__game.scene.getScene('GameScene');
+    return { challenge: scene.rankedChallenge, replay: window.__ASTEROIDS_REPLAY__.getReplay() };
+  });
   await clickItem(page, 'menu', 'pause'); // first press only arms it ("QUIT THIS RUN? PRESS OR TAP AGAIN")
   await waitText(page, 'GameScene', /QUIT THIS RUN\?/, 5000);
+  check('the first quit press only asks for confirmation and keeps the unfinished run paused', await page.evaluate(() => window.__game.scene.getScene('GameScene').paused) && (await rankedState(page)).phase === 'playing' && submitCalls() === 1);
   await sleep(400); // a second contact inside 300 ms counts as the same accidental touch and is ignored
   await clickItem(page, 'menu', 'pause'); // second press confirms
   await page.waitForFunction(() => window.__game.scene.isActive('StartScene'), null, { timeout: 5000 });
+  await sleep(500);
+  check('quitting after PLAY AGAIN stays on the title screen without issuing another challenge', (await menuItems(page, 'title')).page === 'title' && await page.evaluate(() => window.__game.scene.isActive('StartScene') && !window.__game.scene.isActive('GameScene')) && apiCalls.filter((c) => c === 'POST /api/v1/runs').length === attempt + 1);
+  check('the abandoned run has no submission flow, and its recorder is abandoned and removed from the browser API', (await rankedState(page)).phase === 'abandoned' && await page.evaluate(() => {
+    const scene = window.__game.scene.getScene('GameScene');
+    return scene.replayRecorder.abandoned && !scene.rankedFlow && !window.__ASTEROIDS_REPLAY__;
+  }));
+  const abandonedSubmit = await fetch(`${API}/api/v1/runs/${unfinished.challenge.runId}/submit`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${unfinished.challenge.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ replay: unfinished.replay, nickname: 'Abandoned Pilot', controls: { scheme: 'keyboard' } }),
+  });
+  const abandonedOutcome = await abandonedSubmit.json();
+  check('even with its real token, the Worker refuses the unfinished recording', abandonedSubmit.status === 422 && abandonedOutcome.error?.reason === 'not_game_over', `status=${abandonedSubmit.status} reason=${abandonedOutcome.error?.reason}`);
   check('abandoning a ranked run leaves no score behind', (await (await fetch(`${API}/api/v1/leaderboard/all-time`)).json()).total === 1 && submitCalls() === 1);
 
   // Reload: the personal best is device-local and survives.
