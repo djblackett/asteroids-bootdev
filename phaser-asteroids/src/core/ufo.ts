@@ -237,7 +237,7 @@ export function chooseContinuousUfoType(difficultyLevel: number, rng: Rng): UfoT
  * The UFO appears on a random edge, 20-80 % along it, exactly as far outside the screen as an asteroid spawn
  * (Python reuses the asteroid edge table), so it spends a moment wrapping from side to side before it flies in.
  * Neither difficulty scaling nor Slow Motion affects the timing. The *type* does follow the difficulty level: large UFOs
- * only at first, small ones from level 4 on and more and more often (`UFO_SMALL_PROGRESSION`).
+ * only at first, small ones from level 2 on and more and more often (`UFO_SMALL_PROGRESSION`).
  */
 export function updateUfoSpawner(
   state: UfoSpawnerState,

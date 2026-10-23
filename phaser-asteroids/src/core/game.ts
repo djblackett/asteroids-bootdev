@@ -29,6 +29,8 @@ import {
   UFO_DESTROY_PARTICLES,
   UFO_DESTROY_SHAKE,
   UFO_SHIELD_CONTACT_GRACE,
+  VOLATILE_EXPLOSION_RADIUS,
+  VOLATILE_EXPLOSION_SHAKE,
 } from './constants';
 import {
   beginDeath,
@@ -107,7 +109,8 @@ export type SimEvent =
    * to `player` (absent when nobody was paid). `combo` / `multiplier` are present when it was a kill that counted
    * towards the combo.
    */
-  | { type: 'asteroid_destroyed'; radius: number; points: number; combo?: number; multiplier?: number; player?: number }
+  | { type: 'asteroid_destroyed'; radius: number; points: number; combo?: number; multiplier?: number; player?: number; volatile?: boolean }
+  | { type: 'volatile_exploded'; position: Vec2; radius: number; depth: number }
   | { type: 'asteroid_hit'; position: Vec2 }
   | { type: 'powerup_dropped'; powerType: PowerUpType }
   | { type: 'powerup_collected'; powerType: PowerUpType; player?: number }
@@ -137,6 +140,22 @@ export interface PickupFlash {
   age: number;
 }
 export const PICKUP_FLASH_DURATION = 0.4;
+
+/** Presentation only: negative age briefly staggers chain rings, never their damage. No RNG is used. */
+export interface VolatileFlash {
+  position: Vec2;
+  radius: number;
+  depth: number;
+  age: number;
+}
+export const VOLATILE_FLASH_DURATION = 0.32;
+export const VOLATILE_FLASH_LIMIT = 32;
+
+interface VolatileBlast {
+  position: Vec2;
+  scorer: PlayerState | null;
+  depth: number;
+}
 
 export interface GameSimOptions {
   rng?: Rng;
@@ -178,6 +197,7 @@ export class GameSim {
   ufoShots: UfoShot[] = [];
   lasers: LaserBeam[] = [];
   pickupFlashes: PickupFlash[] = [];
+  volatileFlashes: VolatileFlash[] = [];
   readonly particles = new ParticleSystem();
   readonly starfield: Starfield;
   readonly spawner: SpawnerState = createSpawner();
@@ -314,6 +334,7 @@ export class GameSim {
     // Entities freeze, but explosion particles finish and the retry countdown runs.
     this.retryDelay = Math.max(0, this.retryDelay - dt);
     this.particles.update(dt);
+    this.updateVolatileFlashes(dt);
   }
 
   private substep(dt: number, inputs: readonly PlayerInput[]): void {
@@ -332,6 +353,7 @@ export class GameSim {
   }
 
   private updateTimers(dt: number): void {
+    this.updateVolatileFlashes(dt);
     if (this.startCooldown > 0) this.startCooldown -= dt;
     this.time += dt;
     this.difficultyTimer += dt;
@@ -749,7 +771,9 @@ export class GameSim {
    * (flash + sparks, no points); a kill scores, starts the death animation and may drop a power-up.
    * `scorer` is the player credited (null for UFO shots, which pay nobody).
    */
-  private hitAsteroid(asteroid: Asteroid, scorer: PlayerState | null): void {
+  private hitAsteroid(asteroid: Asteroid, scorer: PlayerState | null, blasts?: VolatileBlast[], depth = 0): void {
+    // Keep the guard at the damage/score boundary as well as in collision callers.
+    if (!asteroid.alive || asteroid.dying) return;
     const result = takeHit(asteroid);
     if (!result.destroyed) {
       this.applyEffect(result.effect, 1);
@@ -762,13 +786,15 @@ export class GameSim {
     const points = scorer ? scaledPoints(getPoints(asteroid), credit.multiplier) : 0;
     if (scorer) scorer.score += points;
     const drop = maybeSpawnPowerUp(asteroid.position.x, asteroid.position.y, this.rng, this.reviveEligible);
-    this.applyEffect(beginDeath(asteroid), 1);
+    const effect = beginDeath(asteroid);
+    if (asteroid.archetype !== 'volatile') this.applyEffect(effect, 1);
     this.events.push({
       type: 'asteroid_destroyed',
       radius: asteroid.radius,
       points,
       combo: credit.count,
       multiplier: credit.multiplier,
+      ...(asteroid.archetype === 'volatile' ? { volatile: true } : {}),
       ...(scorer ? { player: scorer.playerNumber } : {}),
     });
 
@@ -780,6 +806,7 @@ export class GameSim {
       this.powerups.push(drop);
       this.events.push({ type: 'powerup_dropped', powerType: drop.type });
     }
+    this.detonateVolatile(asteroid, scorer, blasts, depth);
   }
 
   /**
@@ -807,9 +834,44 @@ export class GameSim {
   }
 
   private destroyWithoutScore(asteroid: Asteroid, shakeScale: number): void {
+    if (!asteroid.alive || asteroid.dying) return;
     const effect = beginDeath(asteroid);
-    this.applyEffect(effect, shakeScale);
-    if (effect) this.events.push({ type: 'asteroid_destroyed', radius: asteroid.radius, points: 0 });
+    const volatile = asteroid.archetype === 'volatile';
+    if (!volatile) this.applyEffect(effect, shakeScale);
+    if (effect) this.events.push({ type: 'asteroid_destroyed', radius: asteroid.radius, points: 0, ...(volatile ? { volatile: true } : {}) });
+    this.detonateVolatile(asteroid, null);
+  }
+
+  /**
+   * Breadth-first, synchronous damage in stable asteroid-list order. A nested kill only appends to the queue.
+   * beginDeath has already marked each source dying, so it can be queued once and cannot be paid again.
+   * Children appear after the usual death delay, outside this snapshot and this blast's lifetime.
+   */
+  private detonateVolatile(asteroid: Asteroid, scorer: PlayerState | null, pending?: VolatileBlast[], depth = 0): void {
+    if (asteroid.archetype !== 'volatile') return;
+    const blasts = pending ?? [];
+    blasts.push({ position: { ...asteroid.position }, scorer, depth });
+    if (pending) return;
+
+    const targets = this.asteroids.slice();
+    for (let i = 0; i < blasts.length; i++) {
+      const blast = blasts[i]!;
+      const radius = VOLATILE_EXPLOSION_RADIUS;
+      this.volatileFlashes.push({ position: { ...blast.position }, radius, depth: blast.depth, age: -Math.min(blast.depth, 4) * 0.025 });
+      if (this.volatileFlashes.length > VOLATILE_FLASH_LIMIT) this.volatileFlashes.shift();
+      this.events.push({ type: 'volatile_exploded', position: { ...blast.position }, radius, depth: blast.depth });
+      this.addScreenShake(VOLATILE_EXPLOSION_SHAKE);
+      // Visit each original target once per blast. Distinct blasts may each strip one armor hit.
+      for (const target of targets) {
+        if (!target.alive || target.dying || !circlesOverlap({ position: blast.position, radius }, target)) continue;
+        this.hitAsteroid(target, blast.scorer, blasts, blast.depth + 1);
+      }
+    }
+  }
+
+  private updateVolatileFlashes(dt: number): void {
+    for (const flash of this.volatileFlashes) flash.age += dt;
+    this.volatileFlashes = this.volatileFlashes.filter((flash) => flash.age < VOLATILE_FLASH_DURATION);
   }
 
   private applyEffect(effect: DeathEffect | null, shakeScale: number): void {

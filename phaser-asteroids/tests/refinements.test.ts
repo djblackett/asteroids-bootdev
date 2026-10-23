@@ -128,14 +128,16 @@ describe('0B: small UFOs are introduced gradually in continuous mode', () => {
     expect(sim.asteroidSpeedMultiplier).toBeCloseTo(1.6, 9);
   });
 
-  it('documented thresholds: 0 % before 2:00, 20 % from 2:00, 40 % from 4:00, 60 % from 6:00', () => {
+  it('documented thresholds: 0 % before 1:00, then 10 / 20 / 40 / 60 % at 1 / 2 / 4 / 6 minutes', () => {
     expect(UFO_SMALL_PROGRESSION).toEqual([
+      { level: 2, chance: 0.1 },
       { level: 4, chance: 0.2 },
       { level: 8, chance: 0.4 },
       { level: 12, chance: 0.6 },
     ]);
     const at = (seconds: number): number => smallUfoChance(Math.floor(seconds / DIFFICULTY_INCREASE_INTERVAL));
-    expect([0, 29, 60, 119].map(at)).toEqual([0, 0, 0, 0]);
+    expect([0, 29, 59.999].map(at)).toEqual([0, 0, 0]);
+    expect([60, 90, 119.999].map(at)).toEqual([0.1, 0.1, 0.1]);
     expect([120, 200, 239].map(at)).toEqual([0.2, 0.2, 0.2]);
     expect([240, 300, 359].map(at)).toEqual([0.4, 0.4, 0.4]);
     expect([360, 600, 3600].map(at)).toEqual([0.6, 0.6, 0.6]);
@@ -144,13 +146,15 @@ describe('0B: small UFOs are introduced gradually in continuous mode', () => {
   it('draws no random number while the chance is zero, so early games are exactly as before', () => {
     let draws = 0;
     const counting = (): number => (draws++, 0);
-    for (let level = 0; level < 4; level++) expect(chooseContinuousUfoType(level, counting)).toBe('large');
+    for (let level = 0; level < 2; level++) expect(chooseContinuousUfoType(level, counting)).toBe('large');
     expect(draws).toBe(0);
     expect(chooseContinuousUfoType(4, counting)).toBe('small');
     expect(draws).toBe(1);
   });
 
   it('the roll is deterministic under a controlled RNG: small exactly below the chance', () => {
+    expect(chooseContinuousUfoType(2, () => 0.0999)).toBe('small');
+    expect(chooseContinuousUfoType(2, () => 0.1)).toBe('large');
     expect(chooseContinuousUfoType(4, () => 0.19)).toBe('small');
     expect(chooseContinuousUfoType(4, () => 0.2)).toBe('large');
     expect(chooseContinuousUfoType(8, () => 0.39)).toBe('small');
@@ -159,7 +163,7 @@ describe('0B: small UFOs are introduced gradually in continuous mode', () => {
     expect(chooseContinuousUfoType(12, () => 0.6)).toBe('large');
   });
 
-  it('measured over many spawns the shares are about 0 / 20 / 40 / 60 %', () => {
+  it('measured over many spawns the shares are about 0 / 10 / 20 / 40 / 60 %', () => {
     const share = (level: number): number => {
       const rng = seededRng(77);
       let small = 0;
@@ -167,7 +171,9 @@ describe('0B: small UFOs are introduced gradually in continuous mode', () => {
       for (let i = 0; i < n; i++) if (chooseContinuousUfoType(level, rng) === 'small') small++;
       return small / n;
     };
-    expect(share(3)).toBe(0);
+    expect(share(1)).toBe(0);
+    expect(share(2)).toBeGreaterThan(0.07);
+    expect(share(2)).toBeLessThan(0.13);
     expect(share(4)).toBeGreaterThan(0.17);
     expect(share(4)).toBeLessThan(0.23);
     expect(share(8)).toBeGreaterThan(0.37);
@@ -194,7 +200,7 @@ describe('0B: small UFOs are introduced gradually in continuous mode', () => {
     expect(updateUfoSpawner(state, 5, 0, seededRng(1))?.type).toBe('large');
   });
 
-  it('in a real run no small UFO appears before 2:00 and some do afterwards', () => {
+  it('in a real run no small UFO appears before 1:00 and some do afterwards', () => {
     const sim = new GameSim({ rng: seededRng(9), startCooldown: 0 });
     sim.spawner.spawnTimer = -1e9;
     sim.player.lives = 999;
@@ -204,7 +210,7 @@ describe('0B: small UFOs are introduced gradually in continuous mode', () => {
       sim.ufos.length = 0;
     }
     expect(first['large']).toBeLessThan(6);
-    expect(first['small']).toBeGreaterThanOrEqual(120);
+    expect(first['small']).toBeGreaterThanOrEqual(60);
   });
 });
 

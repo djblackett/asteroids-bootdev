@@ -87,27 +87,50 @@ describe('spawn timing', () => {
 });
 
 describe('archetypes', () => {
-  it('only standard asteroids exist before 45 s', () => {
+  it('only standard asteroids exist before 25 s', () => {
     expect(availableArchetypes(0)).toEqual(['standard']);
-    expect(availableArchetypes(44.9)).toEqual(['standard']);
+    expect(availableArchetypes(24.999)).toEqual(['standard']);
   });
 
-  it('armored asteroids unlock at 45 s; volatile never spawns (weight 0)', () => {
-    expect(availableArchetypes(45)).toEqual(['standard', 'armored']);
-    expect(availableArchetypes(10_000)).toEqual(['standard', 'armored']);
+  it('armored unlocks at 25 s and volatile at 60 s', () => {
+    expect(availableArchetypes(25)).toEqual(['standard', 'armored']);
+    expect(availableArchetypes(59.999)).toEqual(['standard', 'armored']);
+    expect(availableArchetypes(60)).toEqual(['standard', 'armored', 'volatile']);
+    expect(availableArchetypes(10_000)).toEqual(['standard', 'armored', 'volatile']);
   });
 
   it('armored makes up about 0.35 / 1.35 of spawns once unlocked', () => {
     const rng = seededRng(8);
     let armored = 0;
     const n = 20_000;
-    for (let i = 0; i < n; i++) if (chooseArchetype(60, rng) === 'armored') armored++;
+    for (let i = 0; i < n; i++) if (chooseArchetype(30, rng) === 'armored') armored++;
     expect(armored / n).toBeCloseTo(0.35 / 1.35, 1);
   });
 
   it('never picks armored before it unlocks', () => {
     const rng = seededRng(8);
-    for (let i = 0; i < 2000; i++) expect(chooseArchetype(30, rng)).toBe('standard');
+    for (let i = 0; i < 2000; i++) expect(chooseArchetype(24.999, rng)).toBe('standard');
+  });
+
+  it('volatile takes its modest normalized share only after unlocking', () => {
+    const rng = seededRng(83);
+    let volatile = 0;
+    const n = 20_000;
+    for (let i = 0; i < n; i++) if (chooseArchetype(60, rng) === 'volatile') volatile++;
+    expect(volatile / n).toBeCloseTo(0.12 / 1.47, 2);
+  });
+
+  it('a volatile large asteroid can spawn and enter the field using the existing edge behavior', () => {
+    const rng = seededRng(21);
+    let found: Asteroid | undefined;
+    for (let i = 0; i < 200 && !found; i++) {
+      const candidate = spawnEdgeAsteroid(60, rng);
+      if (candidate.archetype === 'volatile' && candidate.radius === 60) found = candidate;
+    }
+    expect(found).toBeDefined();
+    expect(found!.hitPoints).toBe(1);
+    updateAsteroid(found!, 1 / 60, 1 / 60, rng);
+    expect(found!.alive).toBe(true);
   });
 });
 

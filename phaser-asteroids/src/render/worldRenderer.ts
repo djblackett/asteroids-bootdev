@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
 import { archetypeConfig, type Asteroid } from '../core/asteroid';
 import { BOOST_FLASH_COUNT, BOOST_FLASH_PERIOD, BOOST_WARNING_TIME } from '../core/constants';
-import { PICKUP_FLASH_DURATION, type GameSim } from '../core/game';
+import { PICKUP_FLASH_DURATION, VOLATILE_FLASH_DURATION, type GameSim } from '../core/game';
 import type { LaserBeam } from '../core/laser';
 import { getForwardVector } from '../core/math';
 import { shipTriangle, type PlayerState } from '../core/player';
@@ -217,6 +217,28 @@ export function drawWorld(g: Graphics, sim: GameSim, timeMs: number): void {
     // The original blends a grey that is already scaled by alpha, which fades roughly with alpha squared.
     g.fillStyle(WHITE, fade * fade);
     g.fillCircle(p.x, p.y, Math.max(1, p.size * fade));
+  }
+
+  // A few procedural strokes per blast, with no textures, emitters or gameplay RNG.
+  // Each source has its own ring; chain depth staggers/rotates the sparks for readable overlapping blasts.
+  for (const flash of sim.volatileFlashes) {
+    if (flash.age < 0) continue;
+    const t = flash.age / VOLATILE_FLASH_DURATION;
+    const fade = 1 - t;
+    const { x, y } = flash.position;
+    const radius = 8 + (flash.radius - 8) * (1 - fade * fade);
+    g.lineStyle(5 * fade + 1, 0xff8a24, fade * 0.45);
+    g.strokeCircle(x, y, radius);
+    g.lineStyle(2, 0xffe477, fade);
+    g.strokeCircle(x, y, radius * 0.94);
+    for (let i = 0; i < 12; i++) {
+      const angle = i * Math.PI / 6 + flash.depth * 0.7;
+      const distance = (12 + 100 * t) * (0.7 + (i % 3) * 0.15);
+      const dx = Math.cos(angle);
+      const dy = Math.sin(angle);
+      g.lineStyle(2, i % 2 ? 0xffa52a : 0xffee99, fade * fade);
+      g.lineBetween(x + dx * distance, y + dy * distance, x + dx * (distance + 9 * fade), y + dy * (distance + 9 * fade));
+    }
   }
 
   if (!sim.isGameOver) for (const laser of sim.lasers) drawLaser(g, laser, coop);

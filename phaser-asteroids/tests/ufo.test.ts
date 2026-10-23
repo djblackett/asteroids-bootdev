@@ -384,12 +384,12 @@ describe('UFO spawning', () => {
     expect(more).toBe(1);
   });
 
-  it('continuous mode: only large UFOs for the first two minutes, then small ones join in (see UFO_SMALL_PROGRESSION)', () => {
+  it('continuous mode: only large UFOs before 60 s, then small ones become eligible', () => {
     const sim = schedulerSim(21);
     const early = new Set<string>();
     const late = new Set<string>();
-    for (let i = 0; i < 60 * 600; i++) {
-      for (const e of eventsOfType(sim.step(FRAME), 'ufo_spawned')) (sim.time < 120 ? early : late).add(e.ufoType);
+    for (let i = 0; i < 60 * 120; i++) {
+      for (const e of eventsOfType(sim.step(FRAME), 'ufo_spawned')) (sim.time < 60 ? early : late).add(e.ufoType);
       sim.ufos.length = 0;
     }
     expect([...early]).toEqual(['large']);

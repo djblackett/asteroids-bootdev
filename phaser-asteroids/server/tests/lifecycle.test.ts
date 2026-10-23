@@ -16,7 +16,7 @@ describe('starting a ranked run', () => {
     expect(run.runId).toMatch(/^[0-9a-f-]{36}$/);
     expect(run.token.length).toBeGreaterThanOrEqual(40);
     expect(Number.isInteger(run.seed) && run.seed >= 0 && run.seed <= 0xffffffff).toBe(true);
-    expect(run.rulesVersion).toBe('1.0.0');
+    expect(run.rulesVersion).toBe('1.1.0');
     expect(run.tickRate).toBe(60);
     expect(run.config).toEqual({ playerCount: 1, livesMode: 'independent', friendlyFire: false, speed: [1, 1] });
     expect(Date.parse(run.expiresAt) - Date.parse(run.issuedAt)).toBe(h.settings.runTtlMs);
@@ -40,7 +40,7 @@ describe('starting a ranked run', () => {
     expect(res.status).toBe(201);
     expect(res.body.seed).not.toBe(1);
     expect(res.body.config.playerCount).toBe(1);
-    expect(res.body.rulesVersion).toBe('1.0.0');
+    expect(res.body.rulesVersion).toBe('1.1.0');
   });
 
   it('issues unique ids, tokens and (practically) unique seeds', async () => {
@@ -57,21 +57,23 @@ describe('submitting a legitimate run', () => {
     const h = makeHarness();
     const run = await h.start({ seed: REFERENCE_SEED });
     const bot = reference();
+    expect(bot.gameOver).toBe(true);
+    expect(bot.ticks).toBeGreaterThan(60 * 60); // Exercises both earlier unlocks, without padding or changing the run.
     const res = await h.playAndSubmit(run, bot.replay, { nickname: 'Dave J', controls: { scheme: 'keyboard' } });
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('accepted');
     expect(res.body.replayed).toBe(false);
-    expect(res.body.score.score).toBe(9114);
+    expect(res.body.score.score).toBe(13959);
     expect(res.body.score.nickname).toBe('Dave J');
     expect(res.body.ranks).toEqual({ allTime: 1, weekly: 1 });
 
     const row = await h.db.first<Record<string, unknown>>('SELECT * FROM scores');
-    expect(row).toMatchObject({ score: 9114, ticks: bot.ticks, reported_controls: 'keyboard', visibility: 'visible', rules_version: '1.0.0' });
+    expect(row).toMatchObject({ score: 13959, ticks: bot.ticks, reported_controls: 'keyboard', visibility: 'visible', rules_version: '1.1.0' });
     expect(await count(h.db, 'runs', "status = 'accepted'")).toBe(1);
     expect(await count(h.db, 'scores')).toBe(1);
 
     const board = await h.call('GET', '/api/v1/leaderboard/all-time');
-    expect(board.body.entries.map((e: { score: number }) => e.score)).toEqual([9114]);
+    expect(board.body.entries.map((e: { score: number }) => e.score)).toEqual([13959]);
   });
 
   it('ignores the score the client claims when it is not consistent, and never takes it as the score', async () => {
@@ -82,7 +84,7 @@ describe('submitting a legitimate run', () => {
     delete (bot.replay as { claimedResult?: unknown }).claimedResult;
     const res = await h.playAndSubmit(run, bot.replay);
     expect(res.status).toBe(200);
-    expect(res.body.score.score).toBe(9114);
+    expect(res.body.score.score).toBe(13959);
   });
 });
 
@@ -118,9 +120,9 @@ describe('forged and invalid recordings are rejected', () => {
   it('a run issued under older rules, after the server moved on, is rejected with a clear reason', async () => {
     const h = makeHarness();
     const run = await h.start({ seed: REFERENCE_SEED });
-    await h.db.run("UPDATE runs SET rules_version = '0.9.0' WHERE id = ?", [run.runId]);
+    await h.db.run("UPDATE runs SET rules_version = '1.0.0' WHERE id = ?", [run.runId]);
     const bot = botRun(REFERENCE_SEED);
-    bot.replay.header.rulesVersion = '0.9.0';
+    bot.replay.header.rulesVersion = '1.0.0';
     const res = await h.playAndSubmit(run, bot.replay);
     expect(res.status).toBe(422);
     expect(res.body.error.reason).toBe('rules_mismatch');
@@ -226,7 +228,7 @@ describe('credentials, ownership and expiry', () => {
     const mine = await h.start({ seed: REFERENCE_SEED });
     const theirs = await h.start({ seed: REFERENCE_SEED, ip: '198.51.100.9' });
     const bot = reference();
-    h.clock.advance(200_000);
+    h.clock.advance(bot.ticks / 60 * 1000 + 1500);
     expect((await h.submit(theirs, bot.replay, { token: mine.token })).status).toBe(401);
     expect((await h.submit(theirs, bot.replay, { token: null })).status).toBe(401);
     expect(await count(h.db, 'scores')).toBe(0);
@@ -283,7 +285,7 @@ describe('one-use runs', () => {
     const h = makeHarness();
     const run = await h.start({ seed: REFERENCE_SEED });
     const bot = reference();
-    h.clock.advance(200_000);
+    h.clock.advance(bot.ticks / 60 * 1000 + 1500);
     const results = await Promise.all(Array.from({ length: 12 }, () => h.submit(run, bot.replay, { nickname: 'Racer' })));
     const ok = results.filter((r) => r.status === 200);
     expect(ok.length).toBeGreaterThanOrEqual(1);
@@ -297,7 +299,7 @@ describe('one-use runs', () => {
     const h = makeHarness();
     const run = await h.start({ seed: REFERENCE_SEED });
     const bot = reference();
-    h.clock.advance(200_000);
+    h.clock.advance(bot.ticks / 60 * 1000 + 1500);
     const results = await Promise.all(['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo'].map((n) => h.submit(run, bot.replay, { nickname: n })));
     expect(results.filter((r) => r.status === 200).length).toBe(1);
     expect(await count(h.db, 'scores')).toBe(1);
@@ -314,7 +316,7 @@ describe('one-use runs', () => {
     try {
       const run = await instances[0]!.start({ seed: REFERENCE_SEED });
       const bot = reference();
-      clock.advance(200_000);
+      clock.advance(bot.ticks / 60 * 1000 + 1500);
       const results = await Promise.all(
         Array.from({ length: 16 }, (_, i) => instances[i % 4]!.submit(run, bot.replay, { nickname: `Inst${i % 4}` })),
       );
@@ -332,7 +334,7 @@ describe('one-use runs', () => {
     const run = await h.start({ seed: REFERENCE_SEED });
     await h.playAndSubmit(run, reference().replay);
     await expect(
-      h.db.run(`INSERT INTO scores (id, run_id, score, nickname, completed_at, rules_version, ticks, duration_ms) VALUES ('dup', ?, 1, 'Dup Dup', 1, '1.0.0', 1, 1)`, [run.runId]),
+      h.db.run(`INSERT INTO scores (id, run_id, score, nickname, completed_at, rules_version, ticks, duration_ms) VALUES ('dup', ?, 1, 'Dup Dup', 1, '1.1.0', 1, 1)`, [run.runId]),
     ).rejects.toThrow();
   });
 });
@@ -379,7 +381,7 @@ describe('request size and encoding limits', () => {
     const run = await h.start({ seed: REFERENCE_SEED });
     const res = await h.playAndSubmit(run, reference().replay, { gzip: true });
     expect(res.status).toBe(200);
-    expect(res.body.score.score).toBe(9114);
+    expect(res.body.score.score).toBe(13959);
   });
 
   it('truncated gzip and corrupt gzip -> 400, run not consumed', async () => {
@@ -405,7 +407,7 @@ describe('request size and encoding limits', () => {
     const run = await h.start({ seed: REFERENCE_SEED });
     const bot = reference();
     const json = JSON.stringify({ replay: bot.replay });
-    h.clock.advance(200_000);
+    h.clock.advance(bot.ticks / 60 * 1000 + 1500);
     for (const rawBody of [json.slice(0, json.length - 40), 'not json', '[]', '{}', '{"replay": 5}', '{"replay": []}', '']) {
       const res = await h.submit(run, null, { rawBody });
       expect([400]).toContain(res.status);
@@ -420,7 +422,7 @@ describe('nicknames', () => {
     const h = makeHarness();
     const run = await h.start({ seed: REFERENCE_SEED });
     const bot = reference();
-    h.clock.advance(200_000);
+    h.clock.advance(bot.ticks / 60 * 1000 + 1500);
     for (const nickname of ['ab', 'x'.repeat(17), '<script>alert(1)</script>', 'a<b c', 'bad"quote', 123, {}, '   ']) {
       const res = await h.submit(run, bot.replay, { nickname });
       // Whitespace-only collapses to the default name, everything else is refused.
@@ -524,7 +526,7 @@ describe('rate limits', () => {
     const h = makeHarness({ settings: { rate: { ...makeHarness().settings.rate, submitPerIp: 2 } } });
     const run = await h.start({ seed: REFERENCE_SEED });
     const bot = reference();
-    h.clock.advance(200_000);
+    h.clock.advance(bot.ticks / 60 * 1000 + 1500);
     await h.submit(run, bot.replay, { token: 'bad' });
     await h.submit(run, bot.replay, { token: 'bad' });
     const res = await h.submit(run, bot.replay);

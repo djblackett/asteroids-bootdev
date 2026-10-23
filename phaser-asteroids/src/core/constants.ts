@@ -34,15 +34,15 @@ export const ASTEROID_ARCHETYPES: Record<AsteroidArchetype, ArchetypeConfig> = {
 /** Seconds of play before each archetype can spawn (continuous mode). */
 export const ASTEROID_ARCHETYPE_TIME_UNLOCKS: Record<AsteroidArchetype, number> = {
   standard: 0,
-  armored: 45,
-  volatile: 120,
+  armored: 25,
+  volatile: 60,
 };
 
-/** Volatile has weight 0 in the original, so it never spawns. */
+/** Relative weights among unlocked archetypes; volatile remains uncommon. */
 export const ASTEROID_ARCHETYPE_SPAWN_WEIGHTS: Record<AsteroidArchetype, number> = {
   standard: 1.0,
   armored: 0.35,
-  volatile: 0.0,
+  volatile: 0.12,
 };
 
 export const ASTEROID_ARMORED_HIT_FLASH_DURATION = 0.12;
@@ -51,6 +51,10 @@ export const ASTEROID_ARMORED_HIT_SHAKE = 1;
 export const ASTEROID_DEATH_DURATION = 0.15;
 export const ASTEROID_DEATH_DURATION_MAX = 0.15;
 export const ASTEROID_SHAKE_INTENSITY = 3;
+
+/** Volatile blasts hit asteroid collision circles touching this radius; ships and UFOs are excluded. */
+export const VOLATILE_EXPLOSION_RADIUS = 110;
+export const VOLATILE_EXPLOSION_SHAKE = 6;
 
 export const POINTS_LARGE_ASTEROID = 10;
 export const POINTS_MEDIUM_ASTEROID = 20;
@@ -99,7 +103,7 @@ export const FRIENDLY_FIRE_DEFAULT = true;
 export const REVIVE_LIVES = 3;
 /**
  * Python defines `REVIVE_SPAWN_CHANCE` = 0.3 ("30 % chance to spawn revive when a player dies") but never uses it, so no
- * Revive ever appeared. Here it is the share of power-up drops (an asteroid's 8 % roll and the guaranteed UFO drop) that
+ * Revive ever appeared. Here it is the share of ordinary power-up drops (and the guaranteed UFO drop) that
  * turn into a Revive while a player is out of lives and their teammate is still alive and no Revive is already on the field.
  */
 export const REVIVE_SPAWN_CHANCE = 0.3;
@@ -119,7 +123,7 @@ export const POWERUP_LIFETIME = 12.0; // seconds before an uncollected pickup di
 export const REVIVE_LIFETIME = 15.0;
 export const POWERUP_SPEED = 30; // px/s drift
 /** Chance that a destroyed asteroid drops one of the four ordinary power-ups. */
-export const POWERUP_SPAWN_CHANCE = 0.08;
+export const POWERUP_SPAWN_CHANCE = 0.12;
 /** Checked first; a successful roll drops MEGA POWER instead. */
 export const MEGA_POWER_SPAWN_CHANCE = 0.015;
 
@@ -203,6 +207,7 @@ export const UFO_SMALL_SPAWN_CHANCE = 0.4;
  * asteroids faster. Each row is "from this difficulty level on, a UFO spawn is small with this probability" (the highest
  * row reached wins; before the first row every spawn is a large UFO and no random number is drawn).
  *
+ *   level 2  (1:00)  10 %  - an occasional early small UFO
  *   level 4  (2:00)  20 %  - the odd small UFO
  *   level 8  (4:00)  40 %  - the rate Python uses from wave 5
  *   level 12 (6:00)  60 %  - small UFOs are now the more likely spawn
@@ -211,6 +216,7 @@ export const UFO_SMALL_SPAWN_CHANCE = 0.4;
  * the original "large only" behaviour.
  */
 export const UFO_SMALL_PROGRESSION: ReadonlyArray<{ readonly level: number; readonly chance: number }> = [
+  { level: 2, chance: 0.1 },
   { level: 4, chance: 0.2 },
   { level: 8, chance: 0.4 },
   { level: 12, chance: 0.6 },
