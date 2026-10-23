@@ -28,7 +28,7 @@ import { buildPadLayoutPage } from '../ui/menu/pages/padLayout';
 import { buildPowerupGuide } from '../ui/menu/pages/powerups';
 import { buildRankedPage, type RankedMenuContext, type RankedRequestStatus } from '../ui/menu/pages/ranked';
 import { buildScoresPage, type ScoresContext } from '../ui/menu/pages/scores';
-import { buildTitlePage } from '../ui/menu/pages/title';
+import { buildTitlePage, usesMobilePlayEntry } from '../ui/menu/pages/title';
 import { formatClock } from '../ui/text';
 import { SCENE_GAME, SCENE_START } from './keys';
 
@@ -116,13 +116,20 @@ export class StartScene extends Phaser.Scene {
       best: () => this.personalBest,
     };
     const builders: Record<string, PageBuilder> = {
-      title: (kit) => buildTitlePage(kit, ctx, nav),
+      title: (kit) => buildTitlePage(kit, ctx, nav, {
+        practice: () => this.startPractice(),
+        timeLimitLabel: rankedCtx.timeLimitLabel,
+      }),
       audio: (kit) => buildAudioPage(kit, ctx, nav),
       controls: (kit) => buildControlsPage(kit, ctx, nav),
       coop: (kit) => buildCoopPage(kit, ctx, nav),
       powerups: (kit) => buildPowerupGuide(kit, ctx, nav),
       padlayout: (kit) => buildPadLayoutPage(kit, ctx, nav),
       ranked: (kit) => buildRankedPage(kit, rankedCtx, nav),
+      practice: (kit) => buildRankedPage(kit, {
+        ...rankedCtx, practice: true,
+        actions: { ...rankedCtx.actions, start: () => this.playNormally() },
+      }, nav),
       scores: (kit) => buildScoresPage(kit, scoresCtx, nav),
     };
     this.menu = new MenuView(this, 10, builders, 'title');
@@ -268,13 +275,22 @@ export class StartScene extends Phaser.Scene {
   private start(): void {
     if (this.starting) return;
     // `?ranked` (development and tests): PLAY goes through the same RANKED PLAY page a player reaches with the RANKED button.
-    if (this.rankedWanted()) {
+    if (usesMobilePlayEntry(this.makeContext()) || this.rankedWanted()) {
       if (this.menu.controller.currentPage !== 'ranked') this.menu.controller.open('ranked');
       this.requestRanked();
       return;
     }
     this.starting = true;
     this.scene.start(SCENE_GAME);
+  }
+
+  private startPractice(): void {
+    if (this.starting) return;
+    if (!this.rankedInputReady()) {
+      this.menu.controller.open('practice');
+      return;
+    }
+    this.playNormally();
   }
 
   /** A normal game, whatever the ranked service is doing. */

@@ -7,7 +7,7 @@ what the pick-ups do; everything that is a setting is one step away.** Gameplay,
 ## Hierarchy
 
 ```
-Title                                            Pause (during a run)
+Desktop title                                    Pause (during a run)
 ├── PLAY            (Space; start the run)       ├── RESUME           (P / START; continues, cannon kept quiet)
 ├── RANKED          (R; one player) ── RANKED PLAY page, see below
 ├── 1 PLAYER | 2 PLAYERS   (keyboard; 1 / 2)     ├── AUDIO       ──┐
@@ -63,12 +63,20 @@ used by the keyboard and the controller alike.
 
 ## Ranked play and High Scores (leaderboard pass)
 
-The title screen has a green PLAY and a gold RANKED side by side, and HIGH SCORES in the row with AUDIO and CONTROLS. They are ordinary pages of the same menu kit:
+The desktop title screen keeps green PLAY (unranked) and gold RANKED side by side, with HIGH SCORES beside the player-count selector. They are ordinary pages of the same menu kit:
 
-* `ranked` (RANKED PLAY): the rules in four lines including the time limit, the best verified score on this device, START RANKED RUN, HIGH SCORES, BACK. START asks the server for a challenge ("CONNECTING..."; BACK/Esc cancels); a failure replaces the page's content with a plain message and TRY AGAIN / PLAY NORMALLY / BACK.
+* `ranked` (RANKED PLAY): the rules in four lines including the time limit, the best verified score on this device, START RANKED RUN, HIGH SCORES, BACK. START asks the server for a challenge ("CONNECTING..."; BACK/Esc cancels); a failure replaces the page's content with a plain message and RETRY / PLAY PRACTICE INSTEAD / BACK. Builds requiring an update retain the reload instruction instead of offering a futile retry.
 * `scores` (HIGH SCORES): board tabs (`MenuChoice`, so Left/Right switch boards on a keyboard or D-pad), ten rows, PREVIOUS / BACK / NEXT. It is also opened from the ranked result page, inside the game scene's own menu view.
 * `result` (game scene only, ranked runs): name field, SUBMIT SCORE, SKIP; then the verdict pages. The name field is a new widget, `MenuField`, whose text is a real DOM `<input>` (`src/ui/nicknameInput.ts`).
 * With two players chosen RANKED is disabled and says `1 PLAYER ONLY`. Full description, states and tests: `docs/leaderboard-backend.md` section 15.
+
+### Mobile solo entry
+
+Touch mode, or a device whose primary pointer is coarse, gets a full-width green **PLAY** for ranked gameplay. Its caption says **ONLINE LEADERBOARD / 20:00 LIMIT**. PLAY, Space and assigned-controller START all request a challenge through the existing ranked flow immediately; the request page provides CONNECTING, CANCEL and input recovery. No run begins before the challenge and input readiness checks succeed, including a second input check after the response arrives.
+
+**PRACTICE** (caption: NO ONLINE SCORE) and gold **HIGH SCORES** occupy the next row. AUDIO, CONTROLS and **RANKED INFO** occupy a quieter third row. RANKED INFO preserves the full explanation, time limit and device best without issuing a challenge. Practice starts the normal game, even with the development `?ranked` flag, and never requests a challenge. Server errors offer an explicit **RETRY** and **PLAY PRACTICE INSTEAD**; there is no automatic casual fallback.
+
+A phone with touch controls off keeps its saved preference. Both PLAY and PRACTICE first require either an assigned controller or evidence of a physical keyboard; otherwise they show the same touch recovery controls. Enabling touch is an explicit choice followed by a separate start action, preserving which run type was requested. Keyboard-mode phones retain the player-count selector at the top left; choosing two players restores the existing co-op title layout and controls. Fine-pointer desktops, including touch-capable laptops, keep their original entry behavior.
 
 ## Where each existing setting lives now
 
@@ -101,7 +109,7 @@ Every device drives the same state machine (`menuController.ts`):
 
 ## Phones: safeguards kept
 
-- **No tap-anywhere start.** PLAY is a button; empty space does nothing. On a phone that is in keyboard mode the PLAY button is *keys only* ("PLAY WITH KEYBOARD", tapping it does nothing).
+- **No tap-anywhere start.** PLAY is a button; empty space does nothing. A phone's solo PLAY and PRACTICE actions check input readiness and explain how to recover touch controls when needed. The recovery page's START WITH KEYBOARD action is keys only; a finger cannot activate it. The existing two-player keyboard title keeps its keys-only PLAY WITH KEYBOARD button.
 - **Leaving touch mode takes two taps** on a deliberately plain button ("SWITCH TO KEYBOARD", then "TAP AGAIN TO SWITCH TO KEYBOARD CONTROLS"; the question lapses after 3 s; a second touch
   within 300 ms is not a confirmation). It exists only on the title screen's CONTROLS page: the mode cannot change during a run.
 - **A way back that cannot be missed.** On a touch-capable device in keyboard mode the title screen has a large green **TOUCH CONTROLS: OFF / TAP TO TURN ON** button top right, and the CONTROLS page starts with a full-width
@@ -140,9 +148,11 @@ rebuilt when its content changes (player count, mode, a controller assigned) wit
 | Focus geometry, wrap-around, page stack | `tests/menuNav.test.ts` |
 | The controller: keys, pad, mouse, touch, input lock, rebuild, no build-up | `tests/menuController.test.ts` |
 | Power-up text from the constants, the key / pad / touch reference against the real mappings, legend widths | `tests/menuContent.test.ts` |
+| Mobile entry selection from input mode, primary pointer and player count; recoverable failure wording | `tests/mobileEntry.test.ts` |
 | Haptics default ON, saved OFF kept, junk, blocked storage, nothing written | `tests/haptics.test.ts` |
 | Browser: hierarchy, keys listed are the keys that work, AUDIO / CONTROLS / CO-OP navigation and persistence, pause submenus keep the run paused, Space / A / held laser and boost never fire on resume, taps never reach the game, 25 + 20 open / close rounds leak nothing, controller navigation, **an automated layout review of every page at 5 phone and 5 desktop sizes**, reduced motion | `npm run test:menu` (`scripts/menu.mjs`, screenshots in `scripts/.smoke-output/menu-*.png`) |
 | Browser: ranked / High Scores / result pages with a real Worker and D1 (including gamepad and touch navigation of them) | `npm run test:ranked`, `npm run test:ranked:ui` |
+| Focused production browser + real Worker/D1: mobile direct ranked PLAY, explicit PRACTICE, High Scores/settings, phone landscape layout, backend failure/retry, touch-off recovery, controller disconnect, cancellation and unchanged desktop/co-op entry | `npm run test:mobile-entry` (`scripts/mobile-entry.mjs`, screenshots in `scripts/.smoke-output/mobile-entry-*.png`) |
 | Browser: the touch, keyboard, controller, music and co-op suites drive the new menus through `menuSnapshot()` / `pauseMenuSnapshot()` (the scene's debug hook lists every button's id, label and rectangle) | `npm run test:touch`, `test:input`, `test:gamepad`, `test:music`, `test:coop`, `test:browser`, `test:pages` |
 
 ## Known limits
