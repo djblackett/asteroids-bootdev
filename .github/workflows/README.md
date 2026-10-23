@@ -12,6 +12,8 @@ Builds the Phaser game in `phaser-asteroids/` and publishes it as the GitHub Pag
 Validation (blocks deployment): `npm ci`, typecheck, unit tests, production build, and a headless-Chrome check of the build
 (`phaser-asteroids/scripts/pages-check.mjs`).
 
+The build reads the repository Actions variable `VITE_LEADERBOARD_API_URL` (public HTTPS Worker origin, without `/api/v1`). Set it after backend verification; unset means ranked play remains unconfigured for production visitors. Backend `IP_HASH_SALT` and `ADMIN_TOKEN` are Cloudflare secrets and must never enter the frontend build. Preparing this wiring does not authorize a merge to `main` or a frontend deployment; see [the backend deployment guide](../../docs/leaderboard-backend.md#14-production-setup-and-deployment).
+
 Full details (one-time Pages setup, troubleshooting, rollback, custom domain, gamepad check):
 [phaser-asteroids/docs/deployment.md](../../phaser-asteroids/docs/deployment.md).
 

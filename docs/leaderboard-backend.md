@@ -1,6 +1,6 @@
 # Phaser Asteroids — Secure Online Leaderboard (Phase 2 backend, Phase 3 player experience)
 
-> **Status:** Implemented and tested locally (Node + real workerd/D1 runtime + real Chromium). **Not deployed.** Nothing in this repository talks to a Cloudflare account.
+> **Status:** Implemented and tested locally (Node + real workerd/D1 runtime + real Chromium). Production D1 created and both migrations applied on 2026-10-22; production secrets prepared in a local encrypted backup. **Worker deployment awaits approval.** Frontend GitHub Actions wiring is prepared but has not been published.
 > Phase 3 (the ranked menu, nickname entry, High Scores, personal best, and the time-limited ending) is described in [§15](#15-the-player-facing-experience-phase-3); the 20-minute limit decision is in [§3](#timing-policy).
 > **Code:** `phaser-asteroids/server/` (backend), `phaser-asteroids/src/ranked/` (browser client), builds on `phaser-asteroids/src/replay/` (Phase 1, see [deterministic-replay.md](deterministic-replay.md)).
 
@@ -53,7 +53,7 @@ Verified against Cloudflare's current documentation (fetched 2026-10-22):
 | Price | $0 | **US$5 / month** (10 M requests and 30 M CPU-ms included; then $0.30 / M requests, $0.02 / M CPU-ms) |
 | D1 | 5 GB, 5 M rows read/day, 100 k rows written/day | 5 GB, 25 B reads/month, 50 M writes/month included |
 
-**Free plan is not viable:** replay verification costs 50–250 ms of CPU, 5–25× the 10 ms cap. D1 itself would have been fine on Free; the Worker CPU limit is the blocker. The implementation therefore targets **Workers Paid. It is not activated; that needs your approval and your account.**
+**Free plan is not viable:** replay verification costs 50–250 ms of CPU, 5–25× the 10 ms cap. D1 itself would have been fine on Free; the Worker CPU limit is the blocker. The implementation therefore targets **Workers Paid**, which the account owner has activated.
 
 ### Measured: the verifier inside the Workers runtime
 
@@ -356,14 +356,54 @@ npm run dev                               # http://localhost:5173
 
 Nothing above is a test against production Cloudflare infrastructure.
 
-## 14. Deployment procedure (not executed; needs your approval and account)
+## 14. Production setup and deployment
+
+### Prepared on 2026-10-22; Worker deployment awaits approval
+
+The existing Cloudflare account is `620de0810a6cf29710d9fedb3a966d6f`. Production D1 `asteroids-leaderboard` is `cf4833f7-5fc9-45ca-a767-750df108f1e9` (ENAM). These identifiers are public configuration, not credentials. The `DB` binding in `env.production` points to this database; `0001_init.sql` and `0002_time_limit.sql` are applied remotely. No Worker was deployed during preparation.
+
+Production retains the 5,000 ms CPU cap, daily `17 7 * * *` UTC housekeeping, 20-minute ranked limit and `https://djblackett.github.io` CORS origin (origins have no repository path). Both secrets are declared required for production deployments. The API will use HTTPS on `workers.dev`; version preview URLs are disabled. GitHub Pages continues to host the game. The default D1 placeholder, local origins, `dev:lan`, `migrate:lan`, LAN proxy and `.wrangler/state-lan` remain separate from production.
+
+Preparation validation passed: frontend and backend typechecks, frontend production build, all 127 backend unit tests, all 32 real local Worker/D1 integration checks, production deployment dry-run with both secret bindings, and the existing LAN Chromium smoke test (ranked game, accepted replay, both boards and persistence after reload). The dry-run artifacts contain neither secret and no temporary plaintext upload file remains. Production health and public URL verification must follow the approved deployment.
+
+### Secrets and the first deployment (Windows)
+
+`server/scripts/production-secrets.ps1` prepares two independent 256-bit random secrets and saves only Windows DPAPI-encrypted SecureStrings in git-ignored `.wrangler/production-secrets/secrets.clixml`, with access restricted to the current Windows user. `Initialize` has already been run on this machine; it refuses to overwrite existing secrets. The backup is tied to this Windows user/machine; keep a password-manager copy of the admin token before replacing the machine or Windows profile.
+
+From `phaser-asteroids/server/`, in PowerShell:
+
+```powershell
+# Preparation only: validate the encrypted backup and compile without publishing.
+./scripts/production-secrets.ps1 -Action Check
+./scripts/production-secrets.ps1 -Action DryRun
+
+# Optional: copy ADMIN_TOKEN directly into your password manager without printing it.
+./scripts/production-secrets.ps1 -Action CopyAdminToken
+# After saving it, clear the clipboard:
+Set-Clipboard -Value ''
+
+# ONLY after explicit production deployment approval:
+./scripts/production-secrets.ps1 -Action Deploy
+```
+
+`Deploy` uses the installed Wrangler's `deploy --env production --no-autoconfig --secrets-file` to attach both secrets to the first version, so traffic never reaches a version with the development IP salt (see [Cloudflare's secrets documentation](https://developers.cloudflare.com/workers/configuration/secrets/)). Its temporary JSON file inherits the private directory's ACL and is removed in `finally`; Wrangler disk logging and metrics are disabled for this command, and secret values are redacted from console output. `DryRun` exercises this path with `--dry-run` and uploads nothing. Neither action changes `.dev.vars` or LAN settings. Do not pass secrets through `--var`, command arguments, frontend `.env` files or GitHub Actions variables.
+
+On other platforms, use a password manager and Wrangler's `--secrets-file` with a protected, temporary JSON or dotenv file. For later secret rotation, `wrangler secret put IP_HASH_SALT --env production` and `wrangler secret put ADMIN_TOKEN --env production` prompt without putting values in shell history. **These commands create a new deployment**, so use them only after deployment is approved. Changing the IP salt resets per-IP rate-limit identities; changing the admin token invalidates the old moderation credential. Do not rotate either accidentally.
+
+### GitHub Pages build wiring (prepared only)
+
+`.github/workflows/deploy-gh-pages.yml` supplies `${{ vars.VITE_LEADERBOARD_API_URL }}` to the existing production build step. After the Worker is deployed and verified, set the **repository Actions variable** `VITE_LEADERBOARD_API_URL` to the returned HTTPS origin, without `/api/v1`. This is a public URL, not a secret. Use a repository variable because the build job does not run in the `github-pages` environment. `IP_HASH_SALT` and `ADMIN_TOKEN` belong only in Cloudflare Worker secrets.
+
+Do not merge to `main`, push a production frontend change or manually run a Pages deployment as part of backend setup. Publishing the frontend is a separate release. Leaving the Actions variable unset retains the current unconfigured-ranked behavior for non-loopback visitors. The opt-in LAN config still selects its same-origin local proxy even when a production build URL exists.
+
+### General deployment checklist
 
 1. `cd phaser-asteroids/server && npx wrangler login` and upgrade the account to **Workers Paid** in the dashboard (US$5/month).
 2. `npx wrangler d1 create asteroids-leaderboard` — paste the printed `database_id` into `[env.production]` in `wrangler.toml`.
 3. Set `ALLOWED_ORIGINS` in `[env.production.vars]` (default `https://djblackett.github.io`; include a custom domain if used).
 4. `npx wrangler d1 migrations apply asteroids-leaderboard --env production --remote`
-5. Secrets: `npx wrangler secret put IP_HASH_SALT --env production` (any long random string) and, if you want moderation via API, `npx wrangler secret put ADMIN_TOKEN --env production` (≥ 16 chars).
-6. `npx wrangler deploy --env production` — note the `*.workers.dev` URL (or attach a custom domain).
+5. Prepare `IP_HASH_SALT` and `ADMIN_TOKEN` securely as above. Obtain approval before any command that publishes the Worker, including `secret put`.
+6. First deployment: use the helper's `Deploy` action above (or `npx wrangler deploy --env production --secrets-file <protected-file>`). Later code-only deployments preserve existing secrets. Note the `*.workers.dev` URL (or attach a custom domain).
 7. Check: `curl https://<worker>/api/v1/health`.
 8. Point the game at it: build the site with `VITE_LEADERBOARD_API_URL=https://<worker>` (for GitHub Pages, set it in the build workflow's environment). Until it is set, `?ranked` shows "Ranked play is not available in this build" and casual play is untouched.
 9. Smoke test: open `https://…/?ranked=1`, play a short game, confirm the score on `GET /api/v1/leaderboard/all-time`.

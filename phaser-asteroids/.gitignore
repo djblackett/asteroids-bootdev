@@ -7,3 +7,7 @@ scripts/.smoke-output/
 # Leaderboard backend local state and secrets
 server/.wrangler/
 server/.dev.vars
+server/.dev.vars.*
+!server/.dev.vars.example
+server/.env
+server/.env.*
