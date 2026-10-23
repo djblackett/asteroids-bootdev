@@ -145,7 +145,7 @@ describe('boost ramming', () => {
 
   it('can drop power-ups like any other kill', () => {
     const sim = boostSim();
-    // Force the next drop roll: not mega, under 8%, and pick index 0 (rapid fire).
+    // Force the next drop roll: not mega, under 12%, and pick index 0 (rapid fire).
     const asteroid = rock(PLAYER_START_X + 30, PLAYER_START_Y, 60);
     sim.asteroids.push(asteroid);
     const rolls = [0.5, 0.01, 0.0];
