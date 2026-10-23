@@ -11,6 +11,7 @@
     "preview:lan": "vite preview --host",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:feature": "node scripts/test-feature.mjs",
     "test:replay:browser": "npm run build && node scripts/replay-browser.mjs",
     "benchmark:replay": "npm run build && node scripts/benchmark-replay.mjs",
     "test:browser": "npm run build && node scripts/smoke.mjs",

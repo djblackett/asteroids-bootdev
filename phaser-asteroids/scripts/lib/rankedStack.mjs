@@ -7,6 +7,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { chromium } from 'playwright-core';
+import { timed } from './testTiming.mjs';
+import { waitTitleReady } from './menuWaits.mjs';
+import { stopTestProcess } from './stopTestProcess.mjs';
 
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const serverDir = path.join(root, 'server');
@@ -76,7 +79,9 @@ export class WorkerStack {
   }
 
   migrate() {
+    const start = performance.now();
     const r = spawnSync(process.execPath, [wranglerBin, 'd1', 'migrations', 'apply', 'asteroids-leaderboard', '--local', '--persist-to', this.persist], { cwd: serverDir, env, encoding: 'utf8' });
+    if (process.env.TEST_TIMINGS) console.log(`TIME D1 migration: ${((performance.now() - start) / 1000).toFixed(3)}s`);
     return { ok: r.status === 0, output: (r.stdout + r.stderr).slice(-400) };
   }
 
@@ -86,11 +91,11 @@ export class WorkerStack {
     this.proc = spawn(process.execPath, args, { cwd: serverDir, env, stdio: ['ignore', 'pipe', 'pipe'] });
     this.proc.stdout.on('data', (d) => (this.log += d));
     this.proc.stderr.on('data', (d) => (this.log += d));
-    await waitFor(`${this.API}/api/v1/health`);
+    await timed('Worker startup', () => waitFor(`${this.API}/api/v1/health`));
   }
 
   stop() {
-    this.proc?.kill();
+    stopTestProcess(this.proc);
     this.proc = null;
   }
 
@@ -127,14 +132,14 @@ export class WorkerStack {
 export async function startGameAndBrowser(gamePort) {
   const GAME = `http://127.0.0.1:${gamePort}/`;
   const preview = spawn(process.execPath, [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js'), 'preview', '--port', String(gamePort), '--strictPort', '--host', '127.0.0.1'], { cwd: root, stdio: 'ignore' });
-  await waitFor(GAME);
-  const browser = await chromium.launch({ executablePath: findChrome(), headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  await timed('preview startup', () => waitFor(GAME));
+  const browser = await timed('Chromium startup', () => chromium.launch({ executablePath: findChrome(), headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] }));
   return {
     GAME,
     browser,
     async close() {
       await browser.close().catch(() => undefined);
-      preview.kill();
+      stopTestProcess(preview);
     },
   };
 }
@@ -153,7 +158,7 @@ export async function openTitle(context, GAME, { api, query = '' } = {}) {
   if (api) q.set('api', api);
   await page.goto(`${GAME}?${q}`);
   await page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
-  await sleep(500);
+  await waitTitleReady(page);
   return page;
 }
 
