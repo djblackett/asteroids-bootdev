@@ -62,8 +62,9 @@ export function buildScoresPage(kit: PageKit, ctx: ScoresContext, nav: PageNav):
   }
   const best = ctx.best();
   if (best) {
-    const who = best.best.nickname ? `  (${best.best.nickname.toUpperCase()})` : '';
-    kit.text(CENTER_X, FOOT_Y + 28, `YOUR BEST VERIFIED SCORE: ${formatScore(best.best.score)}${who}`, { size: TEXT.hint + 2, originX: 0.5, originY: 0.5, color: COLORS.heading });
+    const who = best.best.nickname ? `  (${best.best.nickname})` : '';
+    const bestLabel = kit.text(CENTER_X, FOOT_Y + 28, `YOUR BEST VERIFIED SCORE: ${formatScore(best.best.score)}${who}`, { size: TEXT.hint + 2, originX: 0.5, originY: 0.5, color: COLORS.heading });
+    if (bestLabel.width > 1120) bestLabel.setScale(1120 / bestLabel.width);
   }
 
   const x0 = CENTER_X - (NAV_W * 3 + NAV_GAP * 2) / 2;

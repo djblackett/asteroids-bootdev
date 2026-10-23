@@ -1,3 +1,4 @@
+import { NICKNAME_INPUT_MAX } from '../ranked/nickname';
 import type Phaser from 'phaser';
 import { SCREEN_WIDTH } from '../core/constants';
 import './nickname.css';
@@ -59,7 +60,7 @@ export class NicknameInput implements NameField {
     this.el.className = 'nick-input';
     this.el.type = 'text';
     this.el.value = initial;
-    this.el.maxLength = 32; // room to paste something too long and be told so, rather than silently losing characters
+    this.el.maxLength = NICKNAME_INPUT_MAX; // room to paste something too long and be told so, rather than silently losing characters
     this.el.autocomplete = 'off';
     this.el.spellcheck = false;
     this.el.enterKeyHint = 'done';
@@ -83,7 +84,7 @@ export class NicknameInput implements NameField {
     this.listen('keydown', (event) => {
       event.stopPropagation(); // the game's key handlers listen on the window: typing must not steer, pause or retry
       const key = (event as KeyboardEvent).key;
-      if (key === 'Enter') {
+      if (key === 'Enter' && !(event as KeyboardEvent).isComposing) {
         event.preventDefault();
         this.el.blur(); // dismisses the phone keyboard; what was typed stays in the field
         this.onEnter();

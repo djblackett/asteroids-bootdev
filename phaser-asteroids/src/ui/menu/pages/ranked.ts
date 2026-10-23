@@ -93,8 +93,9 @@ export function buildRankedPage(kit: PageKit, ctx: RankedMenuContext, nav: PageN
 
   const best = ctx.best();
   if (best) {
-    const who = best.best.nickname ? ` (${best.best.nickname.toUpperCase()})` : '';
-    kit.text(CENTER_X, 318, `YOUR BEST VERIFIED SCORE: ${formatScore(best.best.score)}${who}`, { size: TEXT.body, originX: 0.5, originY: 0.5, color: COLORS.white });
+    const who = best.best.nickname ? ` (${best.best.nickname})` : '';
+    const bestLabel = kit.text(CENTER_X, 318, `YOUR BEST VERIFIED SCORE: ${formatScore(best.best.score)}${who}`, { size: TEXT.body, originX: 0.5, originY: 0.5, color: COLORS.white });
+    if (bestLabel.width > 1120) bestLabel.setScale(1120 / bestLabel.width);
   }
 
   const connecting = status.kind === 'connecting';

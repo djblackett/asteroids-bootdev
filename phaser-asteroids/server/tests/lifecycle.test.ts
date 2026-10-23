@@ -421,7 +421,7 @@ describe('nicknames', () => {
     const run = await h.start({ seed: REFERENCE_SEED });
     const bot = reference();
     h.clock.advance(200_000);
-    for (const nickname of ['ab', 'x'.repeat(17), '<script>alert(1)</script>', 'a&b c', 'bad"quote', 123, {}, '   ']) {
+    for (const nickname of ['ab', 'x'.repeat(17), '<script>alert(1)</script>', 'a<b c', 'bad"quote', 123, {}, '   ']) {
       const res = await h.submit(run, bot.replay, { nickname });
       // Whitespace-only collapses to the default name, everything else is refused.
       expect(res.status === 400 || (nickname === '   ' && res.status === 200)).toBe(true);
@@ -433,8 +433,8 @@ describe('nicknames', () => {
   it('normalises whitespace and keeps unicode letters', async () => {
     const h = makeHarness();
     const run = await h.start({ seed: REFERENCE_SEED });
-    const res = await h.playAndSubmit(run, reference().replay, { nickname: '  Élodie   B_2  ' });
-    expect(res.body.score.nickname).toBe('Élodie B_2');
+    const res = await h.playAndSubmit(run, reference().replay, { nickname: "  Élodie   O'Neil$  " });
+    expect(res.body.score.nickname).toBe("Élodie O'Neil$");
   });
 
   it('defaults to Anonymous', async () => {

@@ -336,7 +336,7 @@ describe('nickname rules (shared with the server)', () => {
   it('gives arcade-style feedback and states the rule', () => {
     expect(nicknameFeedback('ab')).toMatch(/SHORT/);
     expect(nicknameFeedback('a'.repeat(17))).toMatch(/LONG/);
-    expect(nicknameFeedback('Ace!?')).toMatch(/LETTERS/);
+    expect(nicknameFeedback('Ace<>')).toMatch(/MARKUP/);
     expect(nicknameFeedback('')).toBeNull();
     expect(NICKNAME_HELP).toMatch(/3-16/);
   });

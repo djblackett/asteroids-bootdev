@@ -11,6 +11,8 @@ gameplay; this folder is self-contained and does not touch it.
 
 ## Run it
 
+For physical Android ranked testing against local Worker/D1, use the opt-in [LAN startup and S25 checklist](../docs/android-lan-testing.md).
+
 Requires Node.js 20.19+ or 22.12+ (Vite 8's requirement; developed on Node 22.14).
 
 ```bash

@@ -15,3 +15,5 @@ From `phaser-asteroids/`: `npm run test:server` (unit/adversarial), `npm run tes
 Layout: `src/` portable service (+ `worker.ts`/`d1.ts` Cloudflare glue), `migrations/`, `tests/`, `testing/` (SQLite test adapter, autonomous bot), `scripts/` (integration and benchmark), `bench/` (feasibility Worker), `wrangler.toml`.
 
 Local secrets go in `.dev.vars` (git-ignored); copy `.dev.vars.example`. Nothing here deploys anything.
+
+Physical Android ranked testing: [`../../docs/android-lan-testing.md`](../../docs/android-lan-testing.md). Opt-in `migrate:lan` / `dev:lan` use separate local D1 state, loopback port 8788 and disabled admin routes. The frontend LAN proxy is the only phone-facing listener.

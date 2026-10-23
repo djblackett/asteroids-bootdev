@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:lan": "vite --config vite.lan.config.ts",
     "build": "tsc --noEmit && vite build && vite build --outDir dist/node --target node20 --ssr src/replay/index.ts",
     "preview": "vite preview",
     "preview:lan": "vite preview --host",
@@ -24,6 +25,7 @@
     "test:server": "vitest run server/tests",
     "test:ranked": "npm run build && node scripts/ranked-browser.mjs",
     "test:ranked:ui": "npm run build && node scripts/ranked-ui.mjs",
+    "test:lan": "node scripts/lan-check.mjs",
     "test:worker": "npm run build && node server/scripts/worker-e2e.mjs",
     "bench:workerd": "npm run build && node server/scripts/bench-workerd.mjs"
   },

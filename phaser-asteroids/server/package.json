@@ -6,6 +6,8 @@
   "description": "Cloudflare Worker + D1 leaderboard that independently replays ranked runs. See ../docs/leaderboard-backend.md.",
   "scripts": {
     "dev": "wrangler dev --local",
+    "dev:lan": "wrangler dev --local --ip 127.0.0.1 --port 8788 --inspector-ip 127.0.0.1 --inspector-port 9230 --persist-to .wrangler/state-lan --var ADMIN_TOKEN:disabled --var ALLOWED_ORIGINS:http://127.0.0.1:5173",
+    "migrate:lan": "wrangler d1 migrations apply asteroids-leaderboard --local --persist-to .wrangler/state-lan",
     "migrate:local": "wrangler d1 migrations apply asteroids-leaderboard --local",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --root .. server/tests",
