@@ -4,39 +4,45 @@ import { weekWindow } from '../src/week';
 import { botRun, insertScore, makeClock, makeHarness, REFERENCE_SEED, T0 } from './harness';
 
 const HOUR = 3_600_000;
-const DAY = 24 * HOUR;
 type Entry = { id: string; rank: number; nickname: string; score: number };
 const scores = (b: { entries: Entry[] }) => b.entries.map((e) => e.score);
 
 describe('leaderboard ordering', () => {
   it('sorts highest first, ties go to the earlier finisher, then to the smaller id; ranks are ordinal', async () => {
     const h = makeHarness();
-    await insertScore(h.db, { id: 'b', score: 500, completedAt: T0 - 5 * HOUR });
+    await insertScore(h.db, { id: 'b', score: 500, completedAt: T0 - 5 * HOUR, rules: '1.0.0' });
     await insertScore(h.db, { id: 'a', score: 500, completedAt: T0 - 5 * HOUR }); // same score, same instant: id decides
-    await insertScore(h.db, { id: 'c', score: 500, completedAt: T0 - 9 * HOUR }); // earlier: first among the 500s
+    await insertScore(h.db, { id: 'c', score: 500, completedAt: T0 - 9 * HOUR, rules: '1.0.0' }); // earlier: first among the 500s
     await insertScore(h.db, { id: 'd', score: 900, completedAt: T0 });
     await insertScore(h.db, { id: 'e', score: 100, completedAt: T0 });
     const res = await h.call('GET', '/api/v1/leaderboard/all-time');
     expect(res.body.entries.map((e: Entry) => [e.id, e.rank])).toEqual([['d', 1], ['c', 2], ['a', 3], ['b', 4], ['e', 5]]);
     expect(res.body.total).toBe(5);
+    expect(res.body.entries.map((e: { rulesVersion: string }) => e.rulesVersion)).toEqual(['1.1.0', '1.0.0', '1.1.0', '1.0.0', '1.1.0']);
+    const detail = await h.call('GET', '/api/v1/scores/b');
+    expect(detail.body).toMatchObject({ score: { rank: 4, rulesVersion: '1.0.0' }, ranks: { allTime: 4, weekly: null } });
   });
 
-  it('excludes hidden, zero-score and other-rules entries', async () => {
+  it('excludes hidden, zero-score and unsupported-rules entries', async () => {
     const h = makeHarness();
     await insertScore(h.db, { score: 300, completedAt: T0 });
-    await insertScore(h.db, { score: 9999, completedAt: T0, visibility: 'hidden' });
+    const hidden = await insertScore(h.db, { score: 9999, completedAt: T0, visibility: 'hidden', rules: '1.0.0' });
     await insertScore(h.db, { score: 0, completedAt: T0 });
     await insertScore(h.db, { score: 8888, completedAt: T0, rules: '0.9.0' });
+    const unknown = await insertScore(h.db, { score: 99999, completedAt: T0, rules: '9.0.0' });
     const res = await h.call('GET', '/api/v1/leaderboard/all-time');
     expect(scores(res.body)).toEqual([300]);
     expect(res.body.total).toBe(1);
+    expect((await h.call('GET', `/api/v1/scores/${hidden}`)).status).toBe(404);
+    const detail = await h.call('GET', `/api/v1/scores/${unknown}`);
+    expect(detail.body).toMatchObject({ score: { rulesVersion: '9.0.0', rank: null }, ranks: { allTime: null, weekly: null } });
   });
 
   it('exposes only public display fields', async () => {
     const h = makeHarness();
     await insertScore(h.db, { score: 300, completedAt: T0, nickname: 'Pilot One' });
     const entry = (await h.call('GET', '/api/v1/leaderboard/all-time')).body.entries[0];
-    expect(Object.keys(entry).sort()).toEqual(['completedAt', 'durationSeconds', 'endReason', 'id', 'nickname', 'rank', 'score']);
+    expect(Object.keys(entry).sort()).toEqual(['completedAt', 'durationSeconds', 'endReason', 'id', 'nickname', 'rank', 'rulesVersion', 'score']);
   });
 
   it('rejected and unsubmitted runs never appear', async () => {
@@ -53,7 +59,7 @@ describe('leaderboard ordering', () => {
 describe('pagination is bounded', () => {
   it('defaults to 10, honours limit/offset and reports total', async () => {
     const h = makeHarness();
-    for (let i = 1; i <= 25; i++) await insertScore(h.db, { score: i * 10, completedAt: T0 });
+    for (let i = 1; i <= 25; i++) await insertScore(h.db, { score: i * 10, completedAt: T0, rules: i % 2 ? '1.0.0' : '1.1.0' });
     const first = await h.call('GET', '/api/v1/leaderboard/all-time');
     expect(first.body.entries).toHaveLength(10);
     expect(first.body.entries[0].score).toBe(250);
@@ -61,6 +67,7 @@ describe('pagination is bounded', () => {
     expect(scores(page.body)).toEqual([150, 140, 130, 120, 110]);
     expect(page.body.entries[0].rank).toBe(11);
     expect(page.body.total).toBe(25);
+    expect((await h.call('GET', `/api/v1/scores/${page.body.entries[0].id}`)).body.ranks.allTime).toBe(11);
     expect((await h.call('GET', '/api/v1/leaderboard/all-time?limit=100')).body.entries).toHaveLength(25);
   });
 
@@ -82,11 +89,13 @@ describe('weekly leaderboard', () => {
     await insertScore(h.db, { id: 'in-end', score: 200, completedAt: w.endMs - 1 });
     await insertScore(h.db, { id: 'before', score: 9000, completedAt: w.startMs - 1 });
     await insertScore(h.db, { id: 'after', score: 9001, completedAt: w.endMs });
+    await insertScore(h.db, { id: 'historical', score: 9999, completedAt: T0, rules: '1.0.0' });
     const res = await h.call('GET', '/api/v1/leaderboard/weekly');
     expect(res.body.entries.map((e: Entry) => e.id)).toEqual(['in-end', 'in-start']);
     expect(res.body).toMatchObject({ timeZone: 'America/Halifax', weekStart: '2026-10-19T03:00:00.000Z', weekEnd: '2026-10-26T03:00:00.000Z' });
     const all = await h.call('GET', '/api/v1/leaderboard/all-time');
-    expect(all.body.total).toBe(4);
+    expect(all.body.total).toBe(5);
+    expect(all.body.entries[0]).toMatchObject({ id: 'historical', rulesVersion: '1.0.0' });
   });
 
   it('rolls over at Halifax Monday midnight', async () => {
@@ -101,7 +110,7 @@ describe('weekly leaderboard', () => {
 
   it('a verified run lands on both boards with consistent ranks', async () => {
     const h = makeHarness();
-    await insertScore(h.db, { score: 20000, completedAt: T0 - 30 * DAY, nickname: 'Old Champ' }); // all-time only
+    await insertScore(h.db, { score: 20000, completedAt: T0 - HOUR, nickname: 'Old Champ', rules: '1.0.0' }); // all-time only, despite being this week
     await insertScore(h.db, { score: 100, completedAt: T0 - HOUR });
     const run = await h.start({ seed: REFERENCE_SEED });
     const res = await h.playAndSubmit(run, botRun(REFERENCE_SEED).replay);
@@ -109,6 +118,18 @@ describe('weekly leaderboard', () => {
     const detail = await h.call('GET', `/api/v1/scores/${res.body.score.id}`);
     expect(detail.body.ranks).toEqual({ allTime: 2, weekly: 1 });
     expect(detail.body.score.score).toBe(13959);
+    expect(res.body.score.rulesVersion).toBe('1.1.0');
+    expect(detail.body.score.rulesVersion).toBe('1.1.0');
+  });
+
+  it('selects the weekly era from the active rules and excludes unmapped future rules safely', async () => {
+    const h = makeHarness({ settings: { rulesVersion: '1.0.0' } });
+    await insertScore(h.db, { id: 'v1', score: 200, completedAt: T0, rules: '1.0.0' });
+    await insertScore(h.db, { id: 'v2', score: 300, completedAt: T0 });
+    expect((await h.call('GET', '/api/v1/leaderboard/weekly')).body.entries.map((e: Entry) => e.id)).toEqual(['v1']);
+    h.settings.rulesVersion = '9.0.0';
+    expect((await h.call('GET', '/api/v1/leaderboard/weekly')).body.total).toBe(0);
+    expect((await h.call('GET', '/api/v1/scores/v2')).body.ranks).toEqual({ allTime: 1, weekly: null });
   });
 });
 

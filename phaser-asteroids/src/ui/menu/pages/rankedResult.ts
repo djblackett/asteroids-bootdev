@@ -1,5 +1,6 @@
 import { NICKNAME_HELP, nicknameFeedback } from '../../../ranked/nickname';
-import { formatScore } from '../../../ranked/scoresModel';
+import { formatEraScore, formatScore } from '../../../ranked/scoresModel';
+import { scoringEraLabel } from '../../../ranked/scoringEras';
 import type { SubmissionFlow } from '../../../ranked/submission';
 import { COLORS } from '../../text';
 import type { MenuContext, PageNav } from '../context';
@@ -26,6 +27,7 @@ export interface RankedResultContext {
   readonly timeLimitLabel: string;
   /** This device's best verified score from before this run (null: none yet), for the "new personal best" line. */
   readonly priorBest: number | null;
+  readonly priorBestRulesVersion?: string;
   readonly actions: {
     /** Another ranked run: back to the title screen, which asks the server for a new challenge. */
     playAgain(): void;
@@ -89,7 +91,7 @@ export function buildRankedResultPage(kit: PageKit, ctx: RankedResultContext, _n
   const again: ButtonSpec = { id: 'play-again', label: 'PLAY AGAIN', onTap: actions.playAgain };
   const menu: ButtonSpec = { id: 'menu', label: 'MAIN MENU', onTap: actions.toMenu };
   const scores: ButtonSpec = { id: 'scores', label: 'HIGH SCORES', onTap: actions.openScores };
-  const signature = (): string => `${flow.version}|${ctx.inputMode.isTouch}`;
+  const signature = (): string => `${flow.version}|${ctx.inputMode.isTouch}|${ctx.priorBestRulesVersion ?? ''}`;
 
   // The name field exists only while it can be edited; every other state hides it (and with it the phone keyboard).
   if (state.kind !== 'ready') ctx.input.hide();
@@ -145,7 +147,8 @@ export function buildRankedResultPage(kit: PageKit, ctx: RankedResultContext, _n
     case 'accepted': {
       const { score, ranks, replayed } = state;
       heading(kit, 'SCORE VERIFIED!', GOOD, 52);
-      kit.text(CENTER_X, 132, formatScore(score.score), { size: 80, originX: 0.5, originY: 0.5 });
+      const verifiedScore = kit.text(CENTER_X, 132, formatScore(score.score), { size: 80, originX: 0.5, originY: 0.5 });
+      kit.text(CENTER_X + verifiedScore.width / 2 + 16, 132, scoringEraLabel(score.rulesVersion), { size: TEXT.hint, originX: 0, originY: 0.5, color: COLORS.dim });
       const name = kit.text(CENTER_X, 200, score.nickname, { size: 34, originX: 0.5, originY: 0.5, color: COLORS.player1 }).setPadding(0, 0, 0, 8);
       if (name.width > 700) name.setScale(700 / name.width);
       const rankLines: string[] = [];
@@ -158,7 +161,7 @@ export function buildRankedResultPage(kit: PageKit, ctx: RankedResultContext, _n
         if (rankLines[1]) kit.text(CENTER_X, 306, rankLines[1], { size: 28, originX: 0.5, originY: 0.5, color: COLORS.hint });
       }
       const best = ctx.priorBest === null || score.score > ctx.priorBest;
-      kit.text(CENTER_X, 350, best ? 'NEW PERSONAL BEST!' : `YOUR BEST: ${formatScore(ctx.priorBest ?? 0)}`, { size: TEXT.small + 2, originX: 0.5, originY: 0.5, color: best ? GOOD : COLORS.hint });
+      kit.text(CENTER_X, 350, best ? 'NEW PERSONAL BEST!' : `YOUR BEST: ${formatEraScore(ctx.priorBest ?? 0, ctx.priorBestRulesVersion)}`, { size: TEXT.small + 2, originX: 0.5, originY: 0.5, color: best ? GOOD : COLORS.hint });
       const note = replayed ? 'THIS SCORE WAS ALREADY RECORDED.' : score.endReason === 'time_limit' || timed ? `YOU SURVIVED THE FULL ${ctx.timeLimitLabel}!` : '';
       if (note) kit.text(CENTER_X, 384, note, { size: TEXT.hint + 2, originX: 0.5, originY: 0.5, color: COLORS.dim });
       buttonGrid(kit, 420, [{ ...scores, label: 'VIEW HIGH SCORES', primary: true }, again, menu]);

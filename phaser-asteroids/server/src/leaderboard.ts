@@ -1,5 +1,6 @@
 import type { Db, SqlValue } from './db';
 import type { ServerSettings } from './config';
+import { rulesInScoringEra, SCORING_ERAS } from '../../src/ranked/scoringEras';
 import { weekWindow, type WeekWindow } from './week';
 
 /**
@@ -11,6 +12,7 @@ export interface PublicScore {
   rank: number;
   nickname: string;
   score: number;
+  rulesVersion: string;
   completedAt: string;
   durationSeconds: number;
   /** Verified by the server: the ship ran out of lives, or was still alive when the ranked time limit ended the run. */
@@ -43,16 +45,17 @@ export interface LeaderboardPage {
 
 /**
  * Ranking: highest verified score first; ties go to whoever finished first, then to the smaller id so the order is total and
- * stable. Ranks are therefore ordinal (1, 2, 3 ...) with no shared places. Only visible, positive, current-rules scores count.
+ * stable. Ranks are therefore ordinal (1, 2, 3 ...) with no shared places. Only visible, positive, supported-era scores count.
  */
 const ORDER = 'score DESC, completed_at ASC, id ASC';
-const ELIGIBLE = "visibility = 'visible' AND score > 0 AND rules_version = ?";
+const ELIGIBLE = "visibility = 'visible' AND score > 0";
 
 const toPublic = (row: ScoreRow, rank: number): PublicScore => ({
   id: row.id,
   rank,
   nickname: row.nickname,
   score: row.score,
+  rulesVersion: row.rules_version,
   completedAt: new Date(row.completed_at).toISOString(),
   durationSeconds: Math.round(row.duration_ms / 10) / 100,
   endReason: row.end_reason,
@@ -61,6 +64,20 @@ const toPublic = (row: ScoreRow, rank: number): PublicScore => ({
 function windowFilter(scope: Scope, window: WeekWindow | null): { sql: string; params: SqlValue[] } {
   if (scope === 'weekly' && window) return { sql: ' AND completed_at >= ? AND completed_at < ?', params: [window.startMs, window.endMs] };
   return { sql: '', params: [] };
+}
+
+function boardVersions(scope: Scope, currentRules: string): string[] {
+  return scope === 'weekly' ? rulesInScoringEra(currentRules) : Object.keys(SCORING_ERAS);
+}
+
+/** Shared by page totals, page entries and rank counts so pagination and detail/submission ranks agree. */
+function boardFilter(scope: Scope, currentRules: string, window: WeekWindow | null): { sql: string; params: SqlValue[] } {
+  const versions = boardVersions(scope, currentRules);
+  const f = windowFilter(scope, window);
+  return {
+    sql: `${ELIGIBLE} AND ${versions.length ? `rules_version IN (${versions.map(() => '?').join(', ')})` : '0'}${f.sql}`,
+    params: [...versions, ...f.params],
+  };
 }
 
 export async function getLeaderboard(
@@ -72,15 +89,14 @@ export async function getLeaderboard(
   offset: number,
 ): Promise<LeaderboardPage> {
   const window = scope === 'weekly' ? weekWindow(now, settings.timeZone) : null;
-  const f = windowFilter(scope, window);
-  const base: SqlValue[] = [settings.rulesVersion, ...f.params];
+  const f = boardFilter(scope, settings.rulesVersion, window);
 
   const rows = await db.all<ScoreRow>(
     `SELECT id, nickname, score, completed_at, duration_ms, rules_version, end_reason FROM scores
-     WHERE ${ELIGIBLE}${f.sql} ORDER BY ${ORDER} LIMIT ? OFFSET ?`,
-    [...base, limit, offset],
+     WHERE ${f.sql} ORDER BY ${ORDER} LIMIT ? OFFSET ?`,
+    [...f.params, limit, offset],
   );
-  const total = (await db.first<{ n: number }>(`SELECT COUNT(*) AS n FROM scores WHERE ${ELIGIBLE}${f.sql}`, base))?.n ?? 0;
+  const total = (await db.first<{ n: number }>(`SELECT COUNT(*) AS n FROM scores WHERE ${f.sql}`, f.params))?.n ?? 0;
 
   return {
     scope,
@@ -93,16 +109,16 @@ export async function getLeaderboard(
   };
 }
 
-/** 1-based ordinal rank of one score on a board, or null if it is not on that board (hidden, zero, other rules, other week). */
-export async function rankOf(db: Db, settings: ServerSettings, now: number, scope: Scope, row: ScoreRow): Promise<number | null> {
-  if (row.rules_version !== settings.rulesVersion || row.score <= 0) return null;
+/** 1-based ordinal rank, or null for hidden, zero, unsupported-era or out-of-scope scores. */
+export async function rankOf(db: Db, settings: ServerSettings, now: number, scope: Scope, row: ScoreRow & { visibility: string }): Promise<number | null> {
+  if (row.visibility !== 'visible' || row.score <= 0 || !boardVersions(scope, settings.rulesVersion).includes(row.rules_version)) return null;
   const window = scope === 'weekly' ? weekWindow(now, settings.timeZone) : null;
   if (window && (row.completed_at < window.startMs || row.completed_at >= window.endMs)) return null;
-  const f = windowFilter(scope, window);
+  const f = boardFilter(scope, settings.rulesVersion, window);
   const better = await db.first<{ n: number }>(
-    `SELECT COUNT(*) AS n FROM scores WHERE ${ELIGIBLE}${f.sql}
+    `SELECT COUNT(*) AS n FROM scores WHERE ${f.sql}
        AND (score > ? OR (score = ? AND (completed_at < ? OR (completed_at = ? AND id < ?))))`,
-    [settings.rulesVersion, ...f.params, row.score, row.score, row.completed_at, row.completed_at, row.id],
+    [...f.params, row.score, row.score, row.completed_at, row.completed_at, row.id],
   );
   return (better?.n ?? 0) + 1;
 }

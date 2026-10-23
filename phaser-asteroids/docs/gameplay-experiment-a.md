@@ -2,6 +2,8 @@
 
 Historical record of the approved A baseline. Experiment B now adds explosions on top of these settings;
 see `gameplay-experiment-b.md` for current behavior and the combined ranked reference result.
+The historical ranking policy below has since been replaced: ALL TIME now supports labeled V1/V2 scores,
+while THIS WEEK uses the current era. See `../../docs/leaderboard-backend.md` for that policy.
 
 Rules `1.1.0`, replay schema still `1`. Initial values:
 

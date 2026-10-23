@@ -29,8 +29,8 @@ export async function refreshPersonalBest(
         forgetScore(best.id, storage);
         continue;
       }
-      const confirmed = { ...best, score: detail.score.score, nickname: detail.score.nickname };
-      if (confirmed.score !== best.score || confirmed.nickname !== best.nickname) rememberScore(confirmed, storage);
+      const confirmed = { ...best, score: detail.score.score, nickname: detail.score.nickname, rulesVersion: detail.score.rulesVersion ?? best.rulesVersion };
+      if (confirmed.score !== best.score || confirmed.nickname !== best.nickname || confirmed.rulesVersion !== best.rulesVersion) rememberScore(confirmed, storage);
       return { best: confirmed, ranks: detail.ranks };
     } catch {
       return { best, ranks: null };

@@ -251,17 +251,19 @@ Query: `limit` (1–100, default 10), `offset` (0–1000). Anything else → 400
 
 ```json
 {
-  "scope": "weekly", "rulesVersion": "1.0.0",
+  "scope": "weekly", "rulesVersion": "1.1.0",
   "timeZone": "America/Halifax", "weekStart": "2026-10-19T03:00:00.000Z", "weekEnd": "2026-10-26T03:00:00.000Z",
   "limit": 10, "offset": 0, "total": 42,
-  "entries": [ { "id": "c649cb33-…", "rank": 1, "nickname": "Dave J", "score": 9114, "completedAt": "2026-10-22T15:03:11.204Z", "durationSeconds": 127.02 } ]
+  "entries": [ { "id": "c649cb33-…", "rank": 1, "nickname": "Dave J", "score": 13959, "rulesVersion": "1.1.0", "completedAt": "2026-10-22T15:03:11.204Z", "durationSeconds": 127.02 } ]
 }
 ```
 ### `GET /scores/:id` → 200 `{ "score": {…}, "ranks": { "allTime": 3, "weekly": 1 } }` (404 if unknown **or hidden**)
 ### `GET /health` → `{ "ok": true, "rulesVersion": "1.0.0", "schemaVersion": 1, "maxTicks": 72000, "timeLimitSeconds": 1200, "time": "…" }`
 ### `POST /admin/scores/:id/visibility` — body `{"visible": false, "reason": "offensive"}`, `Authorization: Bearer <ADMIN_TOKEN>`. The route does not exist (404) unless `ADMIN_TOKEN` (≥ 16 chars) is configured; never sends CORS headers; failed attempts are rate limited.
 
-Public entries expose only `id, rank, nickname, score, completedAt, durationSeconds, endReason` (`game_over` or `time_limit`).
+Public entries expose only `id, rank, nickname, score, rulesVersion, completedAt, durationSeconds, endReason` (`game_over` or `time_limit`).
+`rulesVersion` on an entry is the stored rules version for that score, also included in score-detail and accepted-submission responses.
+The page-level `rulesVersion` remains the server's current gameplay rules; all-time entries can belong to different versions.
 
 ## 7. Atomic, one-use submission
 
@@ -276,16 +278,25 @@ Tested: 12 simultaneous identical submissions and 5 simultaneous *different* one
 ## 8. Scoring-version compatibility policy
 
 * `GAMEPLAY_RULES_VERSION` (`src/replay/constants.ts`) must change whenever physics, spawning, collision or scoring changes. The server only verifies the version it was built with, and the replay header and the run must both match it.
-* Leaderboards **only rank scores of the current rules version**; older scores stay in the table (not deleted) but are not mixed in.
+* Public display support is defined separately in `src/ranked/scoringEras.ts`: `1.0.0` = **V1**, `1.1.0` = **V2**. These are deliberate scoring eras, not software release numbers. Compatible technical versions can be explicitly added to an existing era; introduce a new era only for substantial scoring/difficulty changes. Unknown versions receive no invented label and are excluded from public boards.
 * A client built for different rules refuses to start ranked play (`update_required`) when the challenge's rules version differs from its own.
 * Deploy the new game and the new Worker together. Runs issued before a server upgrade can no longer be reproduced and are rejected with `rules_mismatch` (a player mid-game at deploy time loses that one run).
 
 ## 9. Weekly / all-time definitions
 
-* **All-time:** visible scores > 0 under the current rules version.
-* **Weekly:** the same, with `completed_at` in `[Monday 00:00, next Monday 00:00)` in **America/Halifax**, from the server's own completion timestamp. Window boundaries are computed with real zone offsets, so a DST week is 167 or 169 hours. Tested: ordinary week, the exact instants either side of Monday midnight, spring (2026-03-08) and autumn (2026-11-01) changes, the New Year week, and a year of random instants tiling without gaps or overlaps.
-* **Order:** score descending, then earlier `completed_at`, then smaller `id`. Ranks are ordinal (no shared places). Hidden, zero-score, and other-version entries are excluded; ranks of lower entries shift when an entry is hidden.
+* **All-time:** all visible scores > 0 across explicitly supported scoring eras (V1 and V2). Every row displays its era, with a note that scores from different versions may not be directly comparable.
+* **Weekly:** visible scores > 0 from the current scoring era only (V2 for current rules `1.1.0`), with `completed_at` in `[Monday 00:00, next Monday 00:00)` in **America/Halifax**, from the server's own completion timestamp. Window boundaries are computed with real zone offsets, so a DST week is 167 or 169 hours. Tested: ordinary week, the exact instants either side of Monday midnight, spring (2026-03-08) and autumn (2026-11-01) changes, the New Year week, and a year of random instants tiling without gaps or overlaps.
+* **Order:** score descending, then earlier `completed_at`, then smaller `id`. Ranks are ordinal (no shared places). Hidden, zero-score and unsupported-version entries are excluded; ranks of lower entries shift when an entry is hidden. Pages, totals, score details and post-submission ranks use the same eligibility rules.
 * Zero-score runs are accepted (the run is finished, one-use) but never listed.
+
+Historical personal bests remain valid across eras, including when their weekly rank is null. This device's remembered score IDs
+and highlights are preserved. Stored rules metadata is refreshed from score detail and cached for offline labels; legacy cached
+records with no version show `VERSION UNKNOWN` until refreshed. Visible unknown-version score details retain their raw version
+and have null ranks. No dates or current-version defaults are used to guess an era.
+
+The existing `scores.rules_version` column and indexes support these reads. No data rewrite, reset or migration is required.
+To release this display change, deploy the Worker read/rank/API changes first, then the frontend labels and personal-best handling.
+The extra API field is additive; replay schema and gameplay rules remain unchanged. This does not enable V1 replay verification.
 
 ## 10. Abuse prevention
 

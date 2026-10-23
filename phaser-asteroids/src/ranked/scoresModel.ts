@@ -1,4 +1,5 @@
 import { fetchLeaderboard, type BoardPage, type BoardScope } from './api';
+import { scoringEraLabel } from './scoringEras';
 
 /** Entries per screen: a classic arcade table. The server allows up to 100 per request and offsets up to 1000; this never asks for more than one screen. */
 export const BOARD_PAGE_SIZE = 10;
@@ -115,4 +116,8 @@ export function formatScore(score: number): string {
   return Math.trunc(score)
     .toString()
     .replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+}
+
+export function formatEraScore(score: number, rulesVersion: string | undefined): string {
+  return `${formatScore(score)}  ${scoringEraLabel(rulesVersion)}`;
 }

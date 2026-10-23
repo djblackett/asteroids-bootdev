@@ -117,6 +117,8 @@ describe('forged and invalid recordings are rejected', () => {
   it('extra config keys', () => rejectedWith((r) => void ((r.header.config as unknown as Record<string, unknown>).godMode = true), 'config_mismatch'));
   it('speed handicap config', () => rejectedWith((r) => void (r.header.config = { ...r.header.config, speed: [2, 1] }), 'config_mismatch'));
   it('unsupported rules version', () => rejectedWith((r) => void (r.header.rulesVersion = '0.9.0'), 'rules_mismatch'));
+  it('historical display support does not allow a V1 replay on a current challenge', () =>
+    rejectedWith((r) => void (r.header.rulesVersion = '1.0.0'), 'rules_mismatch'));
   it('a run issued under older rules, after the server moved on, is rejected with a clear reason', async () => {
     const h = makeHarness();
     const run = await h.start({ seed: REFERENCE_SEED });

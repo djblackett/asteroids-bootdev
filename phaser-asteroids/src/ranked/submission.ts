@@ -144,7 +144,7 @@ export class SubmissionFlow {
 
     switch (result.kind) {
       case 'accepted':
-        rememberScore({ id: result.score.id, score: result.score.score, at: result.score.completedAt, nickname: result.score.nickname }, this.deps.storage);
+        rememberScore({ id: result.score.id, score: result.score.score, at: result.score.completedAt, nickname: result.score.nickname, rulesVersion: result.score.rulesVersion }, this.deps.storage);
         if (prepared.nickname) rememberNickname(prepared.nickname, this.deps.storage);
         return this.set({ kind: 'accepted', score: result.score, ranks: result.ranks, replayed: result.replayed });
       case 'rejected':
