@@ -403,7 +403,7 @@ On other platforms, use a password manager and Wrangler's `--secrets-file` with 
 
 `.github/workflows/deploy-gh-pages.yml` supplies `${{ vars.VITE_LEADERBOARD_API_URL }}` to the existing production build step. For the separately approved frontend release, set the **repository Actions variable** `VITE_LEADERBOARD_API_URL` to `https://asteroids-leaderboard.davejandrea.workers.dev`, without `/api/v1`. The repository variable was not changed during backend deployment. This is a public URL, not a secret. Use a repository variable because the build job does not run in the `github-pages` environment. `IP_HASH_SALT` and `ADMIN_TOKEN` belong only in Cloudflare Worker secrets.
 
-Do not merge to `main`, push a production frontend change or manually run a Pages deployment as part of backend setup. Publishing the frontend is a separate release. Leaving the Actions variable unset retains the current unconfigured-ranked behavior for non-loopback visitors. The opt-in LAN config still selects its same-origin local proxy even when a production build URL exists.
+Publishing the frontend is a separate release from backend setup. The GitHub Actions build fails if `VITE_LEADERBOARD_API_URL` is missing or empty, preventing publication with Ranked Play disabled. This guard applies only to the workflow; ordinary local builds can still omit the variable. The opt-in LAN config still selects its same-origin local proxy even when a production build URL exists.
 
 ### General deployment checklist
 

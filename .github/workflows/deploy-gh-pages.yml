@@ -62,7 +62,12 @@ jobs:
           # Public Worker origin; set this repository Actions variable after backend verification.
           # Backend secrets must never be supplied to Vite.
           VITE_LEADERBOARD_API_URL: ${{ vars.VITE_LEADERBOARD_API_URL }}
-        run: npm run build
+        run: |
+          if [ -z "$VITE_LEADERBOARD_API_URL" ]; then
+            echo "::error::Set the repository Actions variable VITE_LEADERBOARD_API_URL to the production Worker origin before building."
+            exit 1
+          fi
+          npm run build
 
       - name: Browser check of the production build
         # Uses the Chrome preinstalled on GitHub's ubuntu runners; fails (does not skip) if it is missing.
