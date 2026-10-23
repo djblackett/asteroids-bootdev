@@ -10,7 +10,7 @@ import {
  * Combo and kill-streak bookkeeping, ported from the Python `collisions.py` / `gamestate.py` / `killstreak.py`.
  *
  * What counts as a kill (each one advances the combo by exactly one and is scored at the new multiplier):
- * an asteroid that is actually destroyed by a player shot, a Laser Beam hit, a boost ram, or a UFO shot.
+ * an asteroid that is actually destroyed by a player shot, a Laser Beam hit, a boost ram, a UFO shot or a volatile blast.
  * It does NOT count: a non-lethal armored hit, an asteroid that crashes into the ship (shielded or not), or a UFO
  * (UFOs pay a flat 200 / 500). The combo is only reset by its 3 s timer or a new game, never by losing a life.
  */

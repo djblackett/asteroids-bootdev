@@ -27,23 +27,23 @@ describe('power-up drops', () => {
     expect(maybeSpawnPowerUp(100, 100, rng)?.type).toBe('mega_power');
   });
 
-  it('otherwise a roll under 8% drops one of the four ordinary types, picked uniformly', () => {
+  it('otherwise a roll under 12% drops one of the four ordinary types, picked uniformly', () => {
     const types = [];
     for (const pick of [0.0, 0.26, 0.51, 0.76]) {
       const rng = queueRng();
-      rng.queue(0.5 /* not mega */, 0.0799 /* drops */, pick /* which one */);
+      rng.queue(0.5 /* not mega */, 0.1199 /* drops */, pick /* which one */);
       types.push(maybeSpawnPowerUp(0, 0, rng)?.type);
     }
     expect(types).toEqual(['rapid_fire', 'shield', 'multi_shot', 'slow_motion']);
   });
 
-  it('does not drop on a roll of 8% or more', () => {
+  it('does not drop on a roll of 12% or more', () => {
     const rng = queueRng();
-    rng.queue(0.5, 0.08);
+    rng.queue(0.5, 0.12);
     expect(maybeSpawnPowerUp(0, 0, rng)).toBeNull();
   });
 
-  it('never drops Revive, and matches the original odds over many rolls (~9.4% overall, 1.5% mega)', () => {
+  it('never drops Revive, and matches the experimental odds over many rolls (~13.3% overall, 1.5% mega)', () => {
     const rng = seededRng(42);
     const counts: Record<string, number> = {};
     const n = 200_000;
@@ -52,11 +52,11 @@ describe('power-up drops', () => {
       if (drop) counts[drop.type] = (counts[drop.type] ?? 0) + 1;
     }
     const total = Object.values(counts).reduce((a, b) => a + b, 0);
-    expect(total / n).toBeCloseTo(0.015 + 0.985 * 0.08, 2);
+    expect(total / n).toBeCloseTo(0.015 + 0.985 * 0.12, 2);
     expect((counts['mega_power'] ?? 0) / n).toBeCloseTo(0.015, 2);
     expect(counts['revive']).toBeUndefined();
     for (const t of ['rapid_fire', 'shield', 'multi_shot', 'slow_motion']) {
-      expect((counts[t] ?? 0) / n).toBeCloseTo((0.985 * 0.08) / 4, 2);
+      expect((counts[t] ?? 0) / n).toBeCloseTo((0.985 * 0.12) / 4, 2);
     }
   });
 });

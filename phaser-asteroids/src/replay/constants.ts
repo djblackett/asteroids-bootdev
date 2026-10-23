@@ -4,8 +4,8 @@
 
 export const REPLAY_SCHEMA_VERSION = 1;
 
-/** Semantic rules version defining physics, collision, and scoring rules. */
-export const GAMEPLAY_RULES_VERSION = '1.0.0';
+/** Semantic rules version defining simulation outcomes, including spawn/drop balance. */
+export const GAMEPLAY_RULES_VERSION = '1.1.0';
 
 /** Authoritative simulation tick rate in Hz. */
 export const FIXED_TICK_RATE = 60;

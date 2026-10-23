@@ -34,6 +34,10 @@ describe('asteroid sizes and scoring', () => {
     [60, 'armored', 25],
     [40, 'armored', 40],
     [20, 'armored', 85],
+    // Volatile points remain int(base * 1.75 + 20); blast kills use the same formula.
+    [60, 'volatile', 37],
+    [40, 'volatile', 55],
+    [20, 'volatile', 107],
   ] as const)('radius %i %s asteroid is worth %i points', (radius, archetype, points) => {
     expect(getPoints(createAsteroid(0, 0, radius, archetype))).toBe(points);
   });

@@ -23,13 +23,13 @@ type Sound = Phaser.Sound.BaseSoundManager;
 class PhaserSfxBackend implements SfxBackend {
   constructor(private readonly manager: Sound) {}
 
-  play(key: SfxKey, volume: number, onFinished: () => void): PlayingSound | null {
+  play(key: SfxKey, volume: number, onFinished: () => void, rate = 1): PlayingSound | null {
     // While the browser's autoplay lock is on, Phaser would queue the sound and replay it as a burst on
     // unlock. A shot that nobody could hear is better dropped.
     if (this.manager.locked) return null;
     if (!this.manager.game.cache.audio.exists(key)) return null;
     try {
-      const sound = this.manager.add(key, { volume });
+      const sound = this.manager.add(key, { volume, rate });
       let done = false;
       const finish = (): void => {
         if (done) return;

@@ -114,8 +114,8 @@ try {
       .map((r, i) => {
         const id = `00000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`;
         const run = `00000000-0000-4000-9000-${String(i + 1).padStart(12, '0')}`;
-        return `INSERT INTO runs (id, token_hash, seed, rules_version, config_json, created_at, expires_at, status, finished_at, score_id) VALUES ('${run}', 'x', 1, '1.0.0', '{}', ${r.at - 60000}, ${r.at + 3600000}, 'accepted', ${r.at}, '${id}');
-INSERT INTO scores (id, run_id, score, nickname, completed_at, rules_version, ticks, duration_ms) VALUES ('${id}', '${run}', ${r.score}, '${r.nick}', ${r.at}, '1.0.0', 3600, 60000);`;
+        return `INSERT INTO runs (id, token_hash, seed, rules_version, config_json, created_at, expires_at, status, finished_at, score_id) VALUES ('${run}', 'x', 1, '1.1.0', '{}', ${r.at - 60000}, ${r.at + 3600000}, 'accepted', ${r.at}, '${id}');
+INSERT INTO scores (id, run_id, score, nickname, completed_at, rules_version, ticks, duration_ms) VALUES ('${id}', '${run}', ${r.score}, '${r.nick}', ${r.at}, '1.1.0', 3600, 60000);`;
       })
       .join('\n');
     check('seeded 24 verified scores (20 this week, 4 from last week) straight into D1', B.exec(sql));

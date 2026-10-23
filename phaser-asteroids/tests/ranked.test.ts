@@ -29,7 +29,7 @@ const challenge: RankedChallenge = {
   runId: '11111111-1111-4111-8111-111111111111',
   token: 't'.repeat(43),
   seed: 123456,
-  rulesVersion: '1.0.0',
+  rulesVersion: '1.1.0',
   schemaVersion: 1,
   tickRate: 60,
   config: { playerCount: 1, livesMode: 'independent', friendlyFire: false, speed: [1, 1] },
@@ -99,6 +99,7 @@ describe('requestChallenge', () => {
     await expect(requestChallenge('http://x', async () => reply(503, {}))).rejects.toMatchObject({ code: 'unavailable' });
   });
   it('refuses a challenge for different rules, an unsupported config or an implausible limit', async () => {
+    await expect(requestChallenge('http://x', async () => reply(201, { ...challenge, rulesVersion: '1.0.0' }))).rejects.toMatchObject({ code: 'update_required' });
     await expect(requestChallenge('http://x', async () => reply(201, { ...challenge, rulesVersion: '2.0.0' }))).rejects.toMatchObject({ code: 'update_required' });
     await expect(requestChallenge('http://x', async () => reply(201, { ...challenge, config: { ...challenge.config, playerCount: 2 } }))).rejects.toBeInstanceOf(RankedApiError);
     await expect(requestChallenge('http://x', async () => reply(201, { ...challenge, seed: -1 }))).rejects.toMatchObject({ code: 'bad_challenge' });
@@ -414,7 +415,7 @@ describe('local score memory and personal best', () => {
 
 describe('leaderboard client and ScoresModel', () => {
   const entry = (rank: number) => ({ id: `id${rank}`, rank, nickname: `Pilot ${rank}`, score: 1000 - rank, completedAt: '2026-10-22T15:00:00.000Z', durationSeconds: 60, endReason: 'game_over' });
-  const page = (over: Record<string, unknown> = {}) => ({ scope: 'weekly', rulesVersion: '1.0.0', limit: 10, offset: 0, total: 25, timeZone: 'America/Halifax', weekStart: '2026-10-19T03:00:00.000Z', weekEnd: '2026-10-26T03:00:00.000Z', entries: [1, 2, 3].map(entry), ...over });
+  const page = (over: Record<string, unknown> = {}) => ({ scope: 'weekly', rulesVersion: '1.1.0', limit: 10, offset: 0, total: 25, timeZone: 'America/Halifax', weekStart: '2026-10-19T03:00:00.000Z', weekEnd: '2026-10-26T03:00:00.000Z', entries: [1, 2, 3].map(entry), ...over });
 
   it('asks for one screen at a time and parses the answer', async () => {
     let url = '';

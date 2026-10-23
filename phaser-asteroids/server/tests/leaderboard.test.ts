@@ -108,7 +108,7 @@ describe('weekly leaderboard', () => {
     expect(res.body.ranks).toEqual({ allTime: 2, weekly: 1 });
     const detail = await h.call('GET', `/api/v1/scores/${res.body.score.id}`);
     expect(detail.body.ranks).toEqual({ allTime: 2, weekly: 1 });
-    expect(detail.body.score.score).toBe(9114);
+    expect(detail.body.score.score).toBe(13959);
   });
 });
 
@@ -198,7 +198,7 @@ describe('routing hygiene', () => {
   it('health reports the supported rules version', async () => {
     const h = makeHarness();
     const res = await h.call('GET', '/api/v1/health');
-    expect(res.body).toMatchObject({ ok: true, rulesVersion: '1.0.0', schemaVersion: 1 });
+    expect(res.body).toMatchObject({ ok: true, rulesVersion: '1.1.0', schemaVersion: 1 });
   });
   it('wrong methods and unknown paths get JSON errors', async () => {
     const h = makeHarness();

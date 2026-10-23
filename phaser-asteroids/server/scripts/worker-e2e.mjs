@@ -87,10 +87,10 @@ try {
 
   // --- challenge issuance -------------------------------------------------------------------------------------------------
   const health = await api('GET', '/api/v1/health');
-  check('health reports rules version', health.json?.rulesVersion === '1.0.0');
+  check('health reports rules version', health.json?.rulesVersion === '1.1.0');
   const probe = await api('POST', '/api/v1/runs', { body: JSON.stringify({ seed: 1, config: { playerCount: 2 } }), headers: { 'content-type': 'application/json' } });
   check('POST /runs issues a challenge (201) with server-chosen seed and approved config', probe.status === 201 && probe.json.seed !== 1 && probe.json.config.playerCount === 1);
-  check('challenge carries id, secret token, rules version, expiry', !!probe.json.runId && probe.json.token?.length >= 40 && probe.json.rulesVersion === '1.0.0' && Date.parse(probe.json.expiresAt) > Date.now());
+  check('challenge carries id, secret token, rules version, expiry', !!probe.json.runId && probe.json.token?.length >= 40 && probe.json.rulesVersion === '1.1.0' && Date.parse(probe.json.expiresAt) > Date.now());
 
   // --- prepare several real games, all played against server-issued seeds -----------------------------------------------------
   const honest = await playableRun();

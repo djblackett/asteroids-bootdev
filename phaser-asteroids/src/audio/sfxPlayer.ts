@@ -19,6 +19,7 @@ import { clampVolume } from './audioSettings';
 export interface SoundCue {
   key: SfxKey;
   volume: number;
+  rate?: number;
 }
 
 const SHOOT_KEYS: readonly SfxKey[] = ['shoot_low', 'shoot_mid', 'shoot_high'];
@@ -43,9 +44,13 @@ export function cueForEvent(event: SimEvent, rng: Rng): SoundCue | null {
       return { key, volume: SFX_GAIN[key] };
     }
     case 'asteroid_destroyed': {
+      if (event.volatile) return null; // its dedicated blast cue replaces the ordinary breakup sound
       const key = explosionKey(event.radius);
       return { key, volume: SFX_GAIN[key] };
     }
+    case 'volatile_exploded':
+      // A deeper boom even for small volatile rocks; rising pitch separates successive links in a chain.
+      return { key: 'explosion_large', volume: SFX_GAIN.explosion_large, rate: 0.8 + Math.min(event.depth, 4) * 0.06 };
     case 'ufo_destroyed': {
       const key = explosionKey(event.radius);
       return { key, volume: SFX_GAIN[key] * UFO_EXPLOSION_GAIN_SCALE };
@@ -68,7 +73,7 @@ export interface PlayingSound {
 
 /** What the player needs from the audio engine. Returns null when the sound could not be started. */
 export interface SfxBackend {
-  play(key: SfxKey, volume: number, onFinished: () => void): PlayingSound | null;
+  play(key: SfxKey, volume: number, onFinished: () => void, rate?: number): PlayingSound | null;
 }
 
 export interface SfxPlayerOptions {
@@ -187,7 +192,7 @@ export class SfxPlayer {
     handle = this.backend.play(cue.key, volume, () => {
       finished = true;
       if (handle) voices.delete(handle);
-    });
+    }, cue.rate);
     if (!handle) return;
     this.played++;
     if (!finished) voices.set(handle, now);
