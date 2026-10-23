@@ -1,6 +1,6 @@
 # Phaser Asteroids — Secure Online Leaderboard (Phase 2 backend, Phase 3 player experience)
 
-> **Status:** Implemented and tested locally (Node + real workerd/D1 runtime + real Chromium). Production D1 created and both migrations applied on 2026-10-22; production secrets prepared in a local encrypted backup. **Worker deployment awaits approval.** Frontend GitHub Actions wiring is prepared but has not been published.
+> **Status:** Production Worker deployed with approval and verified on 2026-10-22 at **https://asteroids-leaderboard.davejandrea.workers.dev**. Production D1 has both migrations applied and both Worker secrets are configured. Frontend GitHub Actions wiring is prepared but has not been published.
 > Phase 3 (the ranked menu, nickname entry, High Scores, personal best, and the time-limited ending) is described in [§15](#15-the-player-facing-experience-phase-3); the 20-minute limit decision is in [§3](#timing-policy).
 > **Code:** `phaser-asteroids/server/` (backend), `phaser-asteroids/src/ranked/` (browser client), builds on `phaser-asteroids/src/replay/` (Phase 1, see [deterministic-replay.md](deterministic-replay.md)).
 
@@ -358,13 +358,22 @@ Nothing above is a test against production Cloudflare infrastructure.
 
 ## 14. Production setup and deployment
 
-### Prepared on 2026-10-22; Worker deployment awaits approval
+### Deployed and verified on 2026-10-22
 
-The existing Cloudflare account is `620de0810a6cf29710d9fedb3a966d6f`. Production D1 `asteroids-leaderboard` is `cf4833f7-5fc9-45ca-a767-750df108f1e9` (ENAM). These identifiers are public configuration, not credentials. The `DB` binding in `env.production` points to this database; `0001_init.sql` and `0002_time_limit.sql` are applied remotely. No Worker was deployed during preparation.
+The existing Cloudflare account is `620de0810a6cf29710d9fedb3a966d6f`. Production D1 `asteroids-leaderboard` is `cf4833f7-5fc9-45ca-a767-750df108f1e9` (ENAM). These identifiers are public configuration, not credentials. The `DB` binding in `env.production` points to this database; `0001_init.sql` and `0002_time_limit.sql` are applied remotely. Immediately before the approved deployment, Cloudflare confirmed that the Worker did not exist, so no existing Worker was overwritten.
 
-Production retains the 5,000 ms CPU cap, daily `17 7 * * *` UTC housekeeping, 20-minute ranked limit and `https://djblackett.github.io` CORS origin (origins have no repository path). Both secrets are declared required for production deployments. The API will use HTTPS on `workers.dev`; version preview URLs are disabled. GitHub Pages continues to host the game. The default D1 placeholder, local origins, `dev:lan`, `migrate:lan`, LAN proxy and `.wrangler/state-lan` remain separate from production.
+Production retains the 5,000 ms CPU cap, daily `17 7 * * *` UTC housekeeping, 20-minute ranked limit and `https://djblackett.github.io` CORS origin (origins have no repository path). Both secrets are declared required for production deployments. The API uses HTTPS on `workers.dev`; version preview URLs are disabled. GitHub Pages continues to host the game. The default D1 placeholder, local origins, `dev:lan`, `migrate:lan`, LAN proxy and `.wrangler/state-lan` remain separate from production.
 
-Preparation validation passed: frontend and backend typechecks, frontend production build, all 127 backend unit tests, all 32 real local Worker/D1 integration checks, production deployment dry-run with both secret bindings, and the existing LAN Chromium smoke test (ranked game, accepted replay, both boards and persistence after reload). The dry-run artifacts contain neither secret and no temporary plaintext upload file remains. Production health and public URL verification must follow the approved deployment.
+Preparation validation passed: frontend and backend typechecks, frontend production build, all 127 backend unit tests, all 32 real local Worker/D1 integration checks, production deployment dry-run with both secret bindings, and the existing LAN Chromium smoke test (ranked game, accepted replay, both boards and persistence after reload). The dry-run artifacts contain neither secret and no temporary plaintext upload file remains.
+
+The approved first production deployment completed at 21:51 Atlantic daylight time on 2026-10-22 (2026-10-23T00:51:03Z). Version `626de7c9-34e5-4b82-b0d3-ea11774075fa` serves 100% of traffic at **https://asteroids-leaderboard.davejandrea.workers.dev**. Verification results:
+
+* `wrangler secret list --env production` confirmed `ADMIN_TOKEN` and `IP_HASH_SALT`, both type `secret_text`, without reading or printing values. The temporary plaintext upload file was removed.
+* `GET /api/v1/health` returned HTTP 200 with `ok: true`, `rulesVersion: "1.0.0"`, `schemaVersion: 1`, `maxTicks: 72000` and `timeLimitSeconds: 1200`.
+* `GET /api/v1/leaderboard/all-time?limit=10` and `/api/v1/leaderboard/weekly?limit=10` both returned HTTP 200 with `total: 0` and `entries: []`, exercising the production D1 binding. Both allowed the configured GitHub Pages origin; the weekly response used `America/Halifax`.
+* A live `wrangler tail` captured all three verification requests on this version: every outcome was `ok`, every response was HTTP 200, and all exception and application-log arrays were empty. No errors were observed during this verification window. The tail was then stopped.
+
+No production scores were written during these checks. No frontend merge or deployment, billing changes, or unrelated Cloudflare changes were made. Production replay submission and scheduled cleanup have not yet been exercised on Cloudflare; their local integration tests passed during preparation.
 
 ### Secrets and the first deployment (Windows)
 
@@ -392,7 +401,7 @@ On other platforms, use a password manager and Wrangler's `--secrets-file` with 
 
 ### GitHub Pages build wiring (prepared only)
 
-`.github/workflows/deploy-gh-pages.yml` supplies `${{ vars.VITE_LEADERBOARD_API_URL }}` to the existing production build step. After the Worker is deployed and verified, set the **repository Actions variable** `VITE_LEADERBOARD_API_URL` to the returned HTTPS origin, without `/api/v1`. This is a public URL, not a secret. Use a repository variable because the build job does not run in the `github-pages` environment. `IP_HASH_SALT` and `ADMIN_TOKEN` belong only in Cloudflare Worker secrets.
+`.github/workflows/deploy-gh-pages.yml` supplies `${{ vars.VITE_LEADERBOARD_API_URL }}` to the existing production build step. For the separately approved frontend release, set the **repository Actions variable** `VITE_LEADERBOARD_API_URL` to `https://asteroids-leaderboard.davejandrea.workers.dev`, without `/api/v1`. The repository variable was not changed during backend deployment. This is a public URL, not a secret. Use a repository variable because the build job does not run in the `github-pages` environment. `IP_HASH_SALT` and `ADMIN_TOKEN` belong only in Cloudflare Worker secrets.
 
 Do not merge to `main`, push a production frontend change or manually run a Pages deployment as part of backend setup. Publishing the frontend is a separate release. Leaving the Actions variable unset retains the current unconfigured-ranked behavior for non-loopback visitors. The opt-in LAN config still selects its same-origin local proxy even when a production build URL exists.
 
