@@ -9,8 +9,11 @@ what the pick-ups do; everything that is a setting is one step away.** Gameplay,
 ```
 Title                                            Pause (during a run)
 ├── PLAY            (Space; start the run)       ├── RESUME           (P / START; continues, cannon kept quiet)
+├── RANKED          (R; one player) ── RANKED PLAY page, see below
 ├── 1 PLAYER | 2 PLAYERS   (keyboard; 1 / 2)     ├── AUDIO       ──┐
-├── AUDIO       ───────────────┐                 ├── CONTROLS    ──┤  the same pages as on the title
+├── HIGH SCORES     (H) ── THIS WEEK | ALL TIME  ├── CONTROLS    ──┤  the same pages as on the title
+├── AUDIO       ───────────────┐                 │
+
 ├── CONTROLS    ───────────────┤                 └── RETURN TO MENU   (two presses; Esc goes straight there)
 ├── CO-OP       (two players only)  ── TWO-PLAYER OPTIONS
 └── POWER-UPS card ── POWER-UP GUIDE              AUDIO:    MUSIC on | off · MUSIC TRACK < > · MUSIC VOLUME - + · SOUND EFFECTS - +
@@ -57,6 +60,15 @@ used by the keyboard and the controller alike.
 - **AUDIO** and **CONTROLS** as secondary buttons. Nothing else is a setting: no volumes, music, haptics, steering or controller status on the first screen
   (a controller that was found but not given to a player says so in the top-left corner until it joins).
 - The **FULLSCREEN** pill (DOM, top right, touch mode) is unchanged and kept clear of every button.
+
+## Ranked play and High Scores (leaderboard pass)
+
+The title screen has a green PLAY and a gold RANKED side by side, and HIGH SCORES in the row with AUDIO and CONTROLS. They are ordinary pages of the same menu kit:
+
+* `ranked` (RANKED PLAY): the rules in four lines including the time limit, the best verified score on this device, START RANKED RUN, HIGH SCORES, BACK. START asks the server for a challenge ("CONNECTING..."; BACK/Esc cancels); a failure replaces the page's content with a plain message and TRY AGAIN / PLAY NORMALLY / BACK.
+* `scores` (HIGH SCORES): board tabs (`MenuChoice`, so Left/Right switch boards on a keyboard or D-pad), ten rows, PREVIOUS / BACK / NEXT. It is also opened from the ranked result page, inside the game scene's own menu view.
+* `result` (game scene only, ranked runs): name field, SUBMIT SCORE, SKIP; then the verdict pages. The name field is a new widget, `MenuField`, whose text is a real DOM `<input>` (`src/ui/nicknameInput.ts`).
+* With two players chosen RANKED is disabled and says `1 PLAYER ONLY`. Full description, states and tests: `docs/leaderboard-backend.md` section 15.
 
 ## Where each existing setting lives now
 
@@ -114,7 +126,7 @@ Without `navigator.vibrate` the TEST VIBRATION button is not offered and the pag
 | `src/ui/menu/widgets.ts` | Drawn pieces: `MenuButton`, `MenuStepper` (`-  bar  +`, `<  name  >`), `MenuChoice` (`[ ON \| OFF ]`), `PageKit` (owns what one page made). |
 | `src/ui/menu/menuView.ts` | Puts a controller on a scene: builds each page when it opens and destroys it when it closes, forwards the pointer. |
 | `src/ui/menu/context.ts` | `MenuContext`: what pages read and change (audio, haptics, input mode, movement, pads, setup). Title and pause build the same pages from it. |
-| `src/ui/menu/pages/*.ts` | `title`, `audio`, `controls`, `coop`, `powerups`, `padLayout`, `pause`, plus `reference.ts` (key caps and touch icons) and `common.ts`. |
+| `src/ui/menu/pages/*.ts` | `title`, `audio`, `controls`, `coop`, `powerups`, `padLayout`, `pause`, `ranked`, `scores`, `rankedResult`, plus `reference.ts` (key caps and touch icons) and `common.ts`. |
 | `src/ui/menu/controlHelp.ts`, `powerupInfo.ts` | The control reference and power-up text as pure data (unit tested against the real key schemes, `padToInput` and the sim constants). |
 | `src/scenes/StartScene.ts`, `GameScene.ts` | Own the menu view, route keys and controller buttons, start / resume / leave. |
 
@@ -130,6 +142,7 @@ rebuilt when its content changes (player count, mode, a controller assigned) wit
 | Power-up text from the constants, the key / pad / touch reference against the real mappings, legend widths | `tests/menuContent.test.ts` |
 | Haptics default ON, saved OFF kept, junk, blocked storage, nothing written | `tests/haptics.test.ts` |
 | Browser: hierarchy, keys listed are the keys that work, AUDIO / CONTROLS / CO-OP navigation and persistence, pause submenus keep the run paused, Space / A / held laser and boost never fire on resume, taps never reach the game, 25 + 20 open / close rounds leak nothing, controller navigation, **an automated layout review of every page at 5 phone and 5 desktop sizes**, reduced motion | `npm run test:menu` (`scripts/menu.mjs`, screenshots in `scripts/.smoke-output/menu-*.png`) |
+| Browser: ranked / High Scores / result pages with a real Worker and D1 (including gamepad and touch navigation of them) | `npm run test:ranked`, `npm run test:ranked:ui` |
 | Browser: the touch, keyboard, controller, music and co-op suites drive the new menus through `menuSnapshot()` / `pauseMenuSnapshot()` (the scene's debug hook lists every button's id, label and rectangle) | `npm run test:touch`, `test:input`, `test:gamepad`, `test:music`, `test:coop`, `test:browser`, `test:pages` |
 
 ## Known limits

@@ -279,10 +279,12 @@ async function run() {
   let snap = await d.menu();
   let words = await d.words();
   const ids = snap.items.map((i) => i.id);
-  check('the title page offers PLAY, the player count, AUDIO, CONTROLS and the power-up legend (and no CO-OP page in a one-player game)', JSON.stringify(ids) === JSON.stringify(['play', 'players', 'audio', 'controls', 'powerups']), JSON.stringify(ids));
+  check('the title page offers PLAY, RANKED, the player count, AUDIO, CONTROLS, HIGH SCORES and the power-up legend (and no CO-OP page in a one-player game)', JSON.stringify(ids) === JSON.stringify(['play', 'ranked', 'players', 'audio', 'controls', 'scores', 'powerups']), JSON.stringify(ids));
   const play = snap.items.find((i) => i.id === 'play');
-  const others = snap.items.filter((i) => ['players', 'audio', 'controls'].includes(i.id));
-  check('PLAY is the biggest button and sits above the secondary buttons, with PLAY focused first', play.h > Math.max(...others.map((i) => i.h)) && play.y < Math.min(...others.map((i) => i.y)) && play.w * play.h > Math.max(...others.map((i) => i.w * i.h)) && snap.focus === 'play');
+  const others = snap.items.filter((i) => ['players', 'audio', 'controls', 'scores'].includes(i.id));
+  const ranked = snap.items.find((i) => i.id === 'ranked');
+  // RANKED is PLAY's twin (same size, same row, to its right); every secondary button is smaller and below them.
+  check('PLAY (with RANKED beside it) is the biggest button and sits above the secondary buttons, with PLAY focused first', play.h > Math.max(...others.map((i) => i.h)) && play.y < Math.min(...others.map((i) => i.y)) && ranked.y === play.y && ranked.h === play.h && ranked.w === play.w && ranked.x > play.x + play.w && snap.focus === 'play');
   check('the title screen answers "how do I control my ship": the real keys with what they do', ['HOW TO PLAY', 'W', 'S', 'A', 'D', 'SPACE', 'E', 'SHIFT', 'Move forward / back', 'Turn left / right', 'Laser beam', 'Boost'].every((t) => words.includes(t)) && words.some((t) => /^Shoot/.test(t)), words.slice(0, 20).join(' | '));
   check('...and "what do the power-ups do": all five with their in-game names and a few words each', ['RAPID FIRE', 'MULTI-SHOT', 'SHIELD', 'SLOW MOTION', 'MEGA POWER', 'Shoot faster', 'Triple shot', 'Blocks 1 hit', 'Slow asteroids', 'All powers!'].every((t) => words.includes(t)) && !words.includes('REVIVE'), words.join(' | ').slice(0, 300));
   check('no settings on the first screen: no volumes, music, track, haptics, steering, controller status', !words.some((t) => /VOLUME|SOUND EFFECTS|^MUSIC|HAPTIC|STEERING|TRACK|Controller/i.test(t)), words.join(' | ').slice(0, 300));

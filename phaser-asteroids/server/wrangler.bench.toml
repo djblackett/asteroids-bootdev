@@ -1,0 +1,3 @@
+name = "asteroids-verify-bench"
+main = "bench/worker.ts"
+compatibility_date = "2026-06-01"

@@ -88,6 +88,23 @@ export class ReplayRecorder {
       score: sim.totalScore,
       gameOverReason: sim.gameOverReason,
       phase: sim.phase,
+      endReason: 'game_over',
+    };
+  }
+
+  /**
+   * Finalizes a ranked run that reached the tick limit the server issued while the ship was still alive. Like `markGameOver` it only
+   * records what the client believes (the server never trusts it); the recording simply stops here and nothing further is recorded.
+   */
+  markTimeLimit(sim: GameSim): void {
+    if (this.completedGameOver) return;
+    this.completedGameOver = true;
+    this.claimedResult = {
+      totalTicks: this.currentTicks,
+      score: sim.totalScore,
+      gameOverReason: sim.gameOverReason,
+      phase: sim.phase,
+      endReason: 'time_limit',
     };
   }
 

@@ -12,6 +12,7 @@ import {
 } from './constants';
 import {
   toPlayerInput,
+  type ReplayEndReason,
   type ReplayRecord,
   type VerificationResult,
   type VerificationStats,
@@ -168,10 +169,18 @@ export function validateReplayStructure(raw: unknown): { ok: true; record: Repla
 /**
  * Independently executes and verifies a serialized or parsed replay in Node without any browser APIs.
  */
-export function verifyReplay(
-  replayData: string | unknown,
-  options: { maxTicks?: number; requireGameOver?: boolean } = {},
-): VerificationResult {
+export interface VerifyOptions {
+  maxTicks?: number;
+  requireGameOver?: boolean;
+  /**
+   * Ranked runs only: the tick count at which a run that is still alive ends by itself (the server issued it with the challenge).
+   * A replay that has not reached game over is then valid if, and only if, it covers exactly this many ticks. Any other length
+   * without a game over is still rejected, so a client can neither stop early nor run on. Omitted: game over is always required.
+   */
+  timeLimitTicks?: number;
+}
+
+export function verifyReplay(replayData: string | unknown, options: VerifyOptions = {}): VerificationResult {
   const requireGameOver = options.requireGameOver ?? true;
   let parsed: unknown;
   if (typeof replayData === 'string') {
@@ -252,7 +261,11 @@ export function verifyReplay(
 
   stats.finalLives = sim.player.lives;
 
-  if (requireGameOver && !sim.isGameOver) {
+  // A natural game over always wins; the limit only ends a run that is still alive, and only at exactly the issued tick.
+  const timeLimited = !sim.isGameOver && options.timeLimitTicks !== undefined && totalTicks === options.timeLimitTicks;
+  const endReason: ReplayEndReason | undefined = sim.isGameOver ? 'game_over' : timeLimited ? 'time_limit' : undefined;
+
+  if (requireGameOver && !sim.isGameOver && !timeLimited) {
     return {
       valid: false,
       calculatedScore: sim.totalScore,
@@ -274,6 +287,8 @@ export function verifyReplay(
       discrepancy = `Tick mismatch: claimed ${claimedResult.totalTicks} but replay contained ${totalTicks}`;
     } else if (claimedResult.gameOverReason !== sim.gameOverReason) {
       discrepancy = `GameOverReason mismatch: claimed ${claimedResult.gameOverReason} but calculated ${sim.gameOverReason}`;
+    } else if (claimedResult.endReason !== undefined && endReason !== undefined && claimedResult.endReason !== endReason) {
+      discrepancy = `End reason mismatch: claimed ${claimedResult.endReason} but calculated ${endReason}`;
     }
   }
 
@@ -284,6 +299,7 @@ export function verifyReplay(
     simulatedDuration: totalTicks * FIXED_DT,
     phase: sim.phase,
     gameOverReason: sim.gameOverReason,
+    ...(endReason && { endReason }),
     stats,
     discrepancy,
     error: discrepancy,

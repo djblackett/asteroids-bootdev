@@ -21,7 +21,7 @@ export function backButton(kit: PageKit, onBack: () => void): MenuButton {
 }
 
 /** A dim one-line hint (the keys that work here) along the bottom, for people with a keyboard; a phone does not need it. */
-export function keyHint(kit: PageKit, ctx: MenuContext, text: string): void {
+export function keyHint(kit: PageKit, ctx: Pick<MenuContext, 'inputMode'>, text: string): void {
   if (ctx.inputMode.isTouch) return;
   kit.text(CENTER_X, 702, text, { size: TEXT.hint, originX: 0.5, originY: 0.5, color: COLORS.dim, bold: false });
 }

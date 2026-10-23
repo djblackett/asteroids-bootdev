@@ -1,0 +1,55 @@
+# Cloudflare Worker + D1 for the Phaser Asteroids ranked leaderboard. See ../docs/leaderboard-backend.md.
+#
+# `wrangler dev --local` (npm run dev) uses a local workerd + a local SQLite-backed D1 under
+# .wrangler/state and never contacts a Cloudflare account. Replay verification needs more than the 10 ms of CPU the Workers
+# *Free* plan allows (measured 40-250 ms), so a real deployment needs the Workers *Paid* plan (US$5/month).
+
+name = "asteroids-leaderboard"
+main = "src/worker.ts"
+compatibility_date = "2026-06-01"
+
+# Safety net against a runaway loop becoming a bill: far above a measured worst-case verification, far below the 30 s default.
+[limits]
+cpu_ms = 5000
+
+[triggers]
+crons = ["17 7 * * *"]   # daily cleanup (scheduled handler in src/worker.ts)
+
+[[d1_databases]]
+binding = "DB"
+database_name = "asteroids-leaderboard"
+# Local-only placeholder. Keep the real database binding in env.production so LAN/local state remains separate.
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# Local / test defaults. Secrets (ADMIN_TOKEN, IP_HASH_SALT) are NOT set here: locally use .dev.vars (git-ignored), in production
+# use `wrangler secret put`.
+[vars]
+ALLOWED_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173,http://127.0.0.1:4410"
+
+# Production: wrangler does not inherit bindings or vars into environments, so everything is repeated.
+# First deployment with securely prepared secrets: see scripts/production-secrets.ps1 and ../../docs/leaderboard-backend.md.
+[env.production]
+name = "asteroids-leaderboard"
+account_id = "620de0810a6cf29710d9fedb3a966d6f"
+workers_dev = true
+preview_urls = false
+
+# Fail deployment if either secret is missing instead of using the local development fallback.
+[env.production.secrets]
+required = ["IP_HASH_SALT", "ADMIN_TOKEN"]
+
+[env.production.limits]
+cpu_ms = 5000
+
+[env.production.triggers]
+crons = ["17 7 * * *"]
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "asteroids-leaderboard"
+database_id = "cf4833f7-5fc9-45ca-a767-750df108f1e9"
+migrations_dir = "migrations"
+
+[env.production.vars]
+ALLOWED_ORIGINS = "https://djblackett.github.io"

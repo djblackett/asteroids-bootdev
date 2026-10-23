@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:lan": "vite --config vite.lan.config.ts",
     "build": "tsc --noEmit && vite build && vite build --outDir dist/node --target node20 --ssr src/replay/index.ts",
     "preview": "vite preview",
     "preview:lan": "vite preview --host",
@@ -20,7 +21,13 @@
     "test:touch": "npm run build && node scripts/touch.mjs",
     "test:music": "npm run build && node scripts/music.mjs",
     "test:menu": "npm run build && node scripts/menu.mjs",
-    "test:pages": "npm run build && node scripts/pages-check.mjs"
+    "test:pages": "npm run build && node scripts/pages-check.mjs",
+    "test:server": "vitest run server/tests",
+    "test:ranked": "npm run build && node scripts/ranked-browser.mjs",
+    "test:ranked:ui": "npm run build && node scripts/ranked-ui.mjs",
+    "test:lan": "node scripts/lan-check.mjs",
+    "test:worker": "npm run build && node server/scripts/worker-e2e.mjs",
+    "bench:workerd": "npm run build && node server/scripts/bench-workerd.mjs"
   },
   "dependencies": {
     "phaser": "4.2.1"

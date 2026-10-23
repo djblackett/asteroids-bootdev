@@ -46,7 +46,15 @@ export interface ReplayResultClaim {
   score: number;
   gameOverReason: GameOverReason | null;
   phase: GamePhase;
+  /** Absent in recordings made before time-limited runs existed, which all ended in game over. */
+  endReason?: ReplayEndReason;
 }
+
+/**
+ * How a run legitimately ended. `game_over`: the ship ran out of lives. `time_limit`: a ranked run reached the tick limit the server
+ * issued for it while the player was still alive; the score is whatever the simulation had reached at that exact tick.
+ */
+export type ReplayEndReason = 'game_over' | 'time_limit';
 
 /**
  * Serialized replay container.
@@ -82,6 +90,8 @@ export interface VerificationResult {
   simulatedDuration: number;
   phase: GamePhase;
   gameOverReason: GameOverReason | null;
+  /** Set on a valid result: why the replay's final tick is a legitimate end of the run. */
+  endReason?: ReplayEndReason;
   stats: VerificationStats;
   discrepancy?: string;
   error?: string;
