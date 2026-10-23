@@ -1,5 +1,6 @@
 import type { PersonalBest } from '../../../ranked/personalBest';
-import { formatScore, weekLabel, BOARD_PAGE_SIZE, type ScoresModel } from '../../../ranked/scoresModel';
+import { formatEraScore, formatScore, weekLabel, BOARD_PAGE_SIZE, type ScoresModel } from '../../../ranked/scoresModel';
+import { scoringEra } from '../../../ranked/scoringEras';
 import { COLORS } from '../../text';
 import type { MenuContext, PageNav } from '../context';
 import type { PageDef } from '../menuView';
@@ -21,7 +22,8 @@ const RANK_X = 236;
 const NAME_X = 276;
 const NAME_MAX_W = 470;
 const SCORE_X = 1010;
-const TAG_X = 1046;
+const ERA_X = 1032;
+const TAG_X = 1090;
 const FOOT_Y = 548;
 const NAV_Y = 596;
 const NAV_W = 280;
@@ -50,7 +52,7 @@ export function buildScoresPage(kit: PageKit, ctx: ScoresContext, nav: PageNav):
   });
 
   const week = model.scope === 'weekly' && model.page ? weekLabel(model.page) : null;
-  const caption = model.scope === 'weekly' ? (week ? `WEEK OF ${week}  (ATLANTIC TIME)` : 'THIS WEEK') : 'BEST VERIFIED SCORES OF ALL TIME';
+  const caption = model.scope === 'weekly' ? (week ? `WEEK OF ${week}  (ATLANTIC TIME)` : 'THIS WEEK') : 'SCORES FROM DIFFERENT VERSIONS MAY NOT BE DIRECTLY COMPARABLE.';
   kit.text(CENTER_X, 184, caption, { size: TEXT.hint, originX: 0.5, originY: 0.5, color: COLORS.dim, bold: false });
 
   drawBody(kit, ctx);
@@ -63,7 +65,7 @@ export function buildScoresPage(kit: PageKit, ctx: ScoresContext, nav: PageNav):
   const best = ctx.best();
   if (best) {
     const who = best.best.nickname ? `  (${best.best.nickname})` : '';
-    const bestLabel = kit.text(CENTER_X, FOOT_Y + 28, `YOUR BEST VERIFIED SCORE: ${formatScore(best.best.score)}${who}`, { size: TEXT.hint + 2, originX: 0.5, originY: 0.5, color: COLORS.heading });
+    const bestLabel = kit.text(CENTER_X, FOOT_Y + 28, `YOUR BEST VERIFIED SCORE: ${formatEraScore(best.best.score, best.best.rulesVersion)}${who}`, { size: TEXT.hint + 2, originX: 0.5, originY: 0.5, color: COLORS.heading });
     if (bestLabel.width > 1120) bestLabel.setScale(1120 / bestLabel.width);
   }
 
@@ -80,7 +82,7 @@ export function buildScoresPage(kit: PageKit, ctx: ScoresContext, nav: PageNav):
   keyHint(kit, ctx, 'LEFT / RIGHT: THIS WEEK / ALL TIME     UP / DOWN: CHOOSE     ESC: BACK');
   return {
     defaultFocus: 'back',
-    signature: () => `${model.version}|${touch}|${ctx.highlightIds().size}|${ctx.best()?.best.id ?? ''}`,
+    signature: () => `${model.version}|${touch}|${ctx.highlightIds().size}|${ctx.best()?.best.id ?? ''}|${ctx.best()?.best.rulesVersion ?? ''}`,
   };
 }
 
@@ -111,13 +113,14 @@ function drawBody(kit: PageKit, ctx: ScoresContext): void {
     const isMine = mine.has(entry.id);
     if (isMine) {
       g.fillStyle(PALETTE.gold, 0.16);
-      g.fillRect(RANK_X - 70, y - ROW_STEP / 2 + 2, SCORE_X - RANK_X + 190, ROW_STEP - 4);
+      g.fillRect(RANK_X - 70, y - ROW_STEP / 2 + 2, SCORE_X - RANK_X + 220, ROW_STEP - 4);
     }
     const color = isMine ? COLORS.heading : entry.rank <= 3 ? COLORS.white : COLORS.hint;
     kit.text(RANK_X, y, `#${entry.rank}`, { size: TEXT.body, originX: 1, originY: 0.5, color });
     const name = kit.text(NAME_X, y, entry.nickname, { size: TEXT.body, originX: 0, originY: 0.5, color }).setPadding(0, 0, 0, 6); // room for an underscore's tail
     if (name.width > NAME_MAX_W) name.setScale(NAME_MAX_W / name.width);
     kit.text(SCORE_X, y, formatScore(entry.score), { size: TEXT.body, originX: 1, originY: 0.5, color });
+    kit.text(ERA_X, y, scoringEra(entry.rulesVersion) ?? '?', { size: TEXT.hint, originX: 0, originY: 0.5, color: COLORS.dim });
     if (isMine) kit.text(TAG_X, y, 'YOU', { size: TEXT.hint, originX: 0, originY: 0.5, color: COLORS.heading });
   });
 }

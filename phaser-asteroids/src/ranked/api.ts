@@ -27,6 +27,8 @@ export interface VerifiedScore {
   id: string;
   nickname: string;
   score: number;
+  /** Stored gameplay rules. Absent on older API responses; never infer an era from that absence. */
+  rulesVersion?: string;
   completedAt: string;
   durationSeconds: number;
   endReason?: ReplayEndReason;
@@ -266,6 +268,7 @@ function parseAccepted(data: Record<string, unknown>): SubmitResult | null {
       id: s.id,
       nickname: s.nickname,
       score: s.score,
+      ...(typeof s.rulesVersion === 'string' ? { rulesVersion: s.rulesVersion } : {}),
       completedAt: s.completedAt,
       durationSeconds: finiteNumber(s.durationSeconds) ? s.durationSeconds : 0,
       ...(s.endReason === 'game_over' || s.endReason === 'time_limit' ? { endReason: s.endReason } : {}),
@@ -336,6 +339,7 @@ export interface BoardEntry {
   rank: number;
   nickname: string;
   score: number;
+  rulesVersion?: string;
   completedAt: string;
   durationSeconds: number;
 }
@@ -370,6 +374,7 @@ function parseEntry(v: unknown): BoardEntry | null {
     rank: v.rank as number,
     nickname: v.nickname,
     score: v.score,
+    ...(typeof v.rulesVersion === 'string' ? { rulesVersion: v.rulesVersion } : {}),
     completedAt: typeof v.completedAt === 'string' ? v.completedAt : '',
     durationSeconds: finiteNumber(v.durationSeconds) ? v.durationSeconds : 0,
   };

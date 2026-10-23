@@ -278,6 +278,7 @@ async function buildAccepted(deps: ServiceDeps, scoreId: string, replayed: boole
       id: row.id,
       nickname: row.nickname,
       score: row.score,
+      rulesVersion: row.rules_version,
       completedAt: new Date(row.completed_at).toISOString(),
       durationSeconds: Math.round(row.duration_ms / 10) / 100,
       endReason: row.end_reason,
