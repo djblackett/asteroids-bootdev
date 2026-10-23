@@ -76,6 +76,8 @@ Touch mode, or a device whose primary pointer is coarse, gets a full-width green
 
 **PRACTICE** (caption: NO ONLINE SCORE) and gold **HIGH SCORES** occupy the next row. AUDIO, CONTROLS and **RANKED INFO** occupy a quieter third row. RANKED INFO preserves the full explanation, time limit and device best without issuing a challenge. Practice starts the normal game, even with the development `?ranked` flag, and never requests a challenge. Server errors offer an explicit **RETRY** and **PLAY PRACTICE INSTEAD**; there is no automatic casual fallback.
 
+The mobile title supplies explicit vertical focus neighbours so Down from the wide PLAY button reaches PRACTICE, then the settings row. Left/Right still use the existing navigation within each row. Other menus retain geometric navigation; keyboards and gamepads share the same focus links.
+
 A phone with touch controls off keeps its saved preference. Both PLAY and PRACTICE first require either an assigned controller or evidence of a physical keyboard; otherwise they show the same touch recovery controls. Enabling touch is an explicit choice followed by a separate start action, preserving which run type was requested. Keyboard-mode phones retain the player-count selector at the top left; choosing two players restores the existing co-op title layout and controls. Fine-pointer desktops, including touch-capable laptops, keep their original entry behavior.
 
 ## Where each existing setting lives now

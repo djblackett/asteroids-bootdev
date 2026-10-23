@@ -112,6 +112,17 @@ export function buildTitlePage(kit: PageKit, ctx: MenuContext, nav: PageNav, pla
   return {
     hotkeys,
     defaultFocus: 'play',
+    ...(mobileEntry ? { focusNeighbours: {
+      play: { down: 'practice', up: touch ? 'powerups' : 'touch-on' },
+      practice: { up: 'play', down: 'audio' },
+      scores: { up: 'play', down: 'ranked' },
+      audio: { up: 'practice', down: 'powerups' },
+      controls: { up: 'practice', down: 'powerups' },
+      ranked: { up: 'scores', down: 'powerups' },
+      powerups: { up: 'audio', down: 'play' },
+      players: { down: 'play' },
+      'touch-on': { down: 'play' },
+    } } : {}),
     signature: () => {
       const s = ctx.setup();
       return `${ctx.inputMode.mode}|${s.game.playerCount}|${s.p2Keys}|${s.game.livesMode}|${s.game.friendlyFire}|${s.game.speed.join(",")}|${ctx.movement.mode}|${ctx.pads.status(s.game.playerCount).map((p) => p.text).join('|')}`;
