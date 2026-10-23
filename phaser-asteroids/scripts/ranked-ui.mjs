@@ -152,7 +152,7 @@ INSERT INTO scores (id, run_id, score, nickname, completed_at, rules_version, ti
     await waitText(page, 'StartScene', /^Old 4$/);
     texts = await sceneTexts(page, 'StartScene');
     check('ALL TIME includes last week\'s scores and ranks them above (24 scores = 3 pages)', texts.includes('Old 4') && texts.includes('PAGE 1 / 3') && texts.indexOf('Old 4') < texts.indexOf('Week 01'));
-    check('...with a caption that is not a week', texts.includes('BEST VERIFIED SCORES OF ALL TIME') && !texts.some((t) => t.startsWith('WEEK OF')));
+    check('...with a caption that is not a week', texts.includes('SCORES FROM DIFFERENT VERSIONS MAY NOT BE DIRECTLY COMPARABLE.') && !texts.some((t) => t.startsWith('WEEK OF')));
     await page.keyboard.press('Escape');
     await ctx.close();
   }
@@ -195,7 +195,7 @@ INSERT INTO scores (id, run_id, score, nickname, completed_at, rules_version, ti
     await tap(BTN.UP);
     check('D-pad Up reaches the board tabs', (await focus()) === 'scope', await focus());
     await tap(BTN.RIGHT);
-    await waitText(page, 'StartScene', /^BEST VERIFIED SCORES OF ALL TIME$/);
+    await waitText(page, 'StartScene', /^SCORES FROM DIFFERENT VERSIONS MAY NOT BE DIRECTLY COMPARABLE\.$/);
     check('D-pad Right switches THIS WEEK to ALL TIME', true);
     await tap(BTN.LEFT);
     await waitText(page, 'StartScene', /^WEEK OF /);
@@ -455,7 +455,7 @@ INSERT INTO scores (id, run_id, score, nickname, completed_at, rules_version, ti
     const k = scale;
     const c = await centre('canvas');
     await finger.tap(c.left + (tab.x + tab.w / 2) * k, c.top + (tab.y + tab.h / 2) * k);
-    await waitText(page, 'StartScene', /^BEST VERIFIED SCORES OF ALL TIME$/);
+    await waitText(page, 'StartScene', /^SCORES FROM DIFFERENT VERSIONS MAY NOT BE DIRECTLY COMPARABLE\.$/);
     check('a finger switches THIS WEEK / ALL TIME', true);
     await tapItem('back', 'title');
     await tapItem('ranked', 'title');

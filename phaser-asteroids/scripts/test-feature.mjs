@@ -14,6 +14,7 @@ const suites = {
   'mobile-entry': 'scripts/mobile-entry.mjs', pages: 'scripts/pages-check.mjs',
   replay: 'scripts/replay-browser.mjs', ranked: 'scripts/ranked-browser.mjs',
   'ranked-ui': 'scripts/ranked-ui.mjs', 'ranked-input': 'scripts/ranked-input.mjs',
+  history: 'scripts/historical-leaderboard.mjs',
   worker: 'server/scripts/worker-e2e.mjs',
 };
 const args = process.argv.slice(2).filter((arg) => arg !== '--');

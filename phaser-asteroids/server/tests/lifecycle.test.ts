@@ -2,7 +2,7 @@ import { gzipSync } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
 import type { ReplayRecord } from '../../src/replay';
 import { faultyDb, openSqliteDb } from '../testing/sqliteDb';
-import { botRun, count, makeClock, makeHarness, REFERENCE_SEED, T0 } from './harness';
+import { botRun, count, insertScore, makeClock, makeHarness, REFERENCE_SEED, T0 } from './harness';
 
 // Replaying real games is CPU-heavy; do not let a busy machine turn that into a spurious timeout.
 vi.setConfig({ testTimeout: 60_000 });
@@ -117,6 +117,8 @@ describe('forged and invalid recordings are rejected', () => {
   it('extra config keys', () => rejectedWith((r) => void ((r.header.config as unknown as Record<string, unknown>).godMode = true), 'config_mismatch'));
   it('speed handicap config', () => rejectedWith((r) => void (r.header.config = { ...r.header.config, speed: [2, 1] }), 'config_mismatch'));
   it('unsupported rules version', () => rejectedWith((r) => void (r.header.rulesVersion = '0.9.0'), 'rules_mismatch'));
+  it('historical display support does not allow a V1 replay on a current challenge', () =>
+    rejectedWith((r) => void (r.header.rulesVersion = '1.0.0'), 'rules_mismatch'));
   it('a run issued under older rules, after the server moved on, is rejected with a clear reason', async () => {
     const h = makeHarness();
     const run = await h.start({ seed: REFERENCE_SEED });
@@ -248,6 +250,7 @@ describe('credentials, ownership and expiry', () => {
 describe('one-use runs', () => {
   it('re-sending the identical body after success is idempotent: same score, no second row', async () => {
     const h = makeHarness();
+    await insertScore(h.db, { score: 20000, completedAt: T0, rules: '1.0.0' });
     const run = await h.start({ seed: REFERENCE_SEED });
     const bot = reference();
     const first = await h.playAndSubmit(run, bot.replay, { nickname: 'Dave J' });
@@ -255,7 +258,11 @@ describe('one-use runs', () => {
     expect(again.status).toBe(200);
     expect(again.body.replayed).toBe(true);
     expect(again.body.score.id).toBe(first.body.score.id);
-    expect(await count(h.db, 'scores')).toBe(1);
+    expect(again.body.score.rulesVersion).toBe('1.1.0');
+    expect(again.body.ranks).toEqual({ allTime: 2, weekly: 1 });
+    expect(first.body.ranks).toEqual(again.body.ranks);
+    expect((await h.call('GET', `/api/v1/scores/${again.body.score.id}`)).body.ranks).toEqual(again.body.ranks);
+    expect(await count(h.db, 'scores')).toBe(2);
   });
 
   it('a different body for an accepted run is refused (409) and cannot change the stored score', async () => {

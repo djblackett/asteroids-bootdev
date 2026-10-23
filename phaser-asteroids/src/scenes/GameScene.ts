@@ -25,7 +25,7 @@ import { keySchemesFor, readPlayerInput, type KeyScheme } from '../input/keyboar
 import { readPlayerInputs } from '../input/playerInputs';
 import { getApiBase, type RankedChallenge } from '../ranked/api';
 import { ControlTracker } from '../ranked/controls';
-import { localBest, readLocalScores, startingNickname } from '../ranked/localScores';
+import { localBest, readLocalScores, startingNickname, type LocalScore } from '../ranked/localScores';
 import { refreshPersonalBest, type PersonalBest } from '../ranked/personalBest';
 import { ScoresModel } from '../ranked/scoresModel';
 import { rankedSession } from '../ranked/session';
@@ -161,7 +161,7 @@ export class GameScene extends Phaser.Scene {
   private scoresModel!: ScoresModel;
   private personalBest: PersonalBest | null = null;
   /** The best verified score before this run, fixed when the run ends (for the "new personal best" line). */
-  private priorBest: number | null = null;
+  private priorBest: LocalScore | null = null;
   private resultOpenedAt = 0;
   private rankedLabel: Phaser.GameObjects.Text | null = null;
   private rankedClock: Phaser.GameObjects.Text | null = null;
@@ -474,6 +474,7 @@ export class GameScene extends Phaser.Scene {
     const flow = this.rankedFlow as SubmissionFlow;
     const input = this.nicknameInput as NicknameInput;
     const challenge = this.rankedChallenge as RankedChallenge;
+    const bestBeforeRun = () => this.priorBest;
     return {
       inputMode: getInputMode(this),
       flow,
@@ -481,7 +482,8 @@ export class GameScene extends Phaser.Scene {
       runScore: this.sim.totalScore,
       endReason: this.timeUp ? 'time_limit' : 'game_over',
       timeLimitLabel: formatClock(challenge.timeLimitTicks / FIXED_TICK_RATE),
-      priorBest: this.priorBest,
+      priorBest: this.priorBest?.score ?? null,
+      get priorBestRulesVersion() { return bestBeforeRun()?.rulesVersion; },
       actions: {
         playAgain: () => this.playAgain(),
         toMenu: () => this.toMenu(),
@@ -493,6 +495,9 @@ export class GameScene extends Phaser.Scene {
   private refreshBest(): void {
     void refreshPersonalBest(getApiBase()).then((best) => {
       this.personalBest = best;
+      if (best && this.priorBest && best.best.id === this.priorBest.id) {
+        this.priorBest = { ...this.priorBest, rulesVersion: best.best.rulesVersion };
+      }
     });
   }
 
@@ -513,7 +518,7 @@ export class GameScene extends Phaser.Scene {
       expired: () => this.rankedExpired || Date.now() >= this.rankedExpiresAt,
     });
     rankedSession.attach(challenge.runId, this.rankedFlow);
-    this.priorBest = localBest()?.score ?? null;
+    this.priorBest = localBest();
     this.refreshBest();
     const search = typeof window !== 'undefined' ? window.location.search : '';
     this.nicknameInput = new NicknameInput(

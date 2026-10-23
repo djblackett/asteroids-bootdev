@@ -14,6 +14,8 @@ export interface LocalScore {
   at: string;
   /** The nickname the server stored with it. Several can exist on one device; none identifies a person. */
   nickname?: string;
+  /** Absent on legacy cached records until refreshed from the server. */
+  rulesVersion?: string;
 }
 
 export const LOCAL_SCORES_KEY = 'asteroids.rankedScores';
@@ -26,7 +28,11 @@ export function readLocalScores(storage: StorageLike | undefined = safeStorage()
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((s): s is LocalScore => !!s && typeof s.id === 'string' && Number.isFinite(s.score) && typeof s.at === 'string')
-      .map((s) => ({ id: s.id, score: s.score, at: s.at, ...(typeof s.nickname === 'string' ? { nickname: s.nickname } : {}) }));
+      .map((s) => ({
+        id: s.id, score: s.score, at: s.at,
+        ...(typeof s.nickname === 'string' ? { nickname: s.nickname } : {}),
+        ...(typeof s.rulesVersion === 'string' ? { rulesVersion: s.rulesVersion } : {}),
+      }));
   } catch {
     return [];
   }
