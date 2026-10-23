@@ -13,6 +13,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { timed } from './lib/testTiming.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = path.join(root, 'scripts', '.smoke-output');
@@ -67,14 +68,14 @@ process.on('exit', stopServer);
 let browser;
 let browserVersion = '?';
 try {
-  await waitForServer();
-  browser = await chromium.launch({
+  await timed('preview startup', waitForServer);
+  browser = await timed('Chromium startup', () => chromium.launch({
     executablePath: findChrome(),
     headless: true,
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
-  });
+  }));
   browserVersion = browser.version();
-  await run(browser);
+  await timed('combat browser checks', () => run(browser));
 } finally {
   await browser?.close();
   stopServer();
@@ -110,6 +111,7 @@ async function run(browser) {
       keys: g.sound.sounds.map((s) => s.key) }; })()`);
   const keyTap = async (key, ms = 60) => (await page.keyboard.down(key), await sleep(ms), await page.keyboard.up(key));
   const evalSim = (body) => page.evaluate(`(() => { const s = ${S}.sim; ${body} })()`);
+  const waitSim = (condition) => page.waitForFunction(`(() => { const s = ${S}.sim; return ${condition}; })()`, null, { timeout: 5000 });
   /** Stops asteroids and the UFO schedule and clears the field, so a scenario starts from a known state. */
   const quiet = () =>
     evalSim(`s.spawner.spawnTimer = -1e9; s.ufoSpawner.enabled = false; s.asteroids.length = 0; s.shots.length = 0;
@@ -140,7 +142,7 @@ async function run(browser) {
   await page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
   await page.keyboard.press('Space');
   await page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
-  await sleep(500);
+  await waitSim('s.time > 0');
   const baseline = await page.evaluate(`({ blur: window.__game.events.listenerCount('blur'), hidden: window.__game.events.listenerCount('hidden') })`);
   const baselineChildren = await page.evaluate(`${S}.children.list.length`);
   // Counts the simulation events the scene hands to the audio, so 'exactly once' can be checked without racing the ship.
@@ -176,7 +178,7 @@ async function run(browser) {
   await addUfo('large', 300, 200, true);
   await addUfo('small', 950, 250, true);
   await evalSim(`s.ufos.forEach((u) => { u.shootTimer = 0.3; });`);
-  await sleep(700);
+  await waitSim('s.ufoShots.length >= 1');
   st = await sim();
   check('a large and a small UFO are in play and have fired', st.ufos.length === 2 && st.ufoShots >= 1, JSON.stringify({ ufos: st.ufos.length, shots: st.ufoShots }));
   await shot('ufos');
@@ -189,7 +191,7 @@ async function run(browser) {
   await place(640, 360, 0);
   const a0 = await audio();
   await addUfoShot(640, 360);
-  await sleep(250);
+  await waitSim('s.ufoShots.length === 0');
   st = await sim();
   let a1 = await audio();
   check('a UFO shot costs a life, sends the ship to the respawn point and plays one sound', st.lives === 2 && Math.abs(st.x - 320) < 20 && st.respawning && st.ufoShots === 0 && a1.played === a0.played + 1, JSON.stringify({ lives: st.lives, x: st.x, played: a1.played - a0.played }));
@@ -199,13 +201,13 @@ async function run(browser) {
   await evalSim(`s.player.shieldActive = true;`);
   const a2 = await audio();
   await addUfoShot(640, 360);
-  await sleep(250);
+  await waitSim('s.ufoShots.length === 0');
   st = await sim();
   a1 = await audio();
   check('a shield absorbs a UFO shot: no life lost, shield gone, no death sound', st.lives === 3 && !st.shield && a1.played === a2.played, JSON.stringify({ lives: st.lives, shield: st.shield, played: a1.played - a2.played }));
   await evalSim(`s.player.isRespawning = true; s.player.respawnTimer = 5;`);
   await addUfoShot(640, 360);
-  await sleep(250);
+  await waitSim('s.ufoShots.length === 0');
   st = await sim();
   check('a respawning (invulnerable) ship takes no damage from a UFO shot', st.lives === 3 && st.ufoShots === 0);
   await evalSim(`s.player.isRespawning = false; s.player.respawnTimer = 0;`);
@@ -216,7 +218,7 @@ async function run(browser) {
   await addUfo('small', 700, 360);
   await resetEv();
   await page.keyboard.down('Space');
-  await sleep(1500);
+  await waitSim('s.ufos.length === 0');
   await page.keyboard.up('Space');
   await sleep(200);
   st = await sim();
@@ -250,7 +252,7 @@ async function run(browser) {
   await quiet();
   await place(640, 360, 0);
   await addUfo('large', 660, 360);
-  await sleep(250);
+  await waitSim('s.player.lives === 2');
   st = await sim();
   check('touching a UFO without boosting costs a life; the UFO flies on', st.lives === 2 && st.ufos.length === 1);
 
@@ -350,7 +352,7 @@ async function run(browser) {
   await place(60, 360, 270);
   await addRock(400, 360, 20, 'armored');
   await keyTap('Space', 40);
-  await sleep(1100);
+  await waitSim('s.asteroids[0]?.hitPoints === 1');
   st = await sim();
   check('the first hit on an armored rock is not a kill (no combo, no score)', st.combo === 0 && st.score === 0 && st.asteroids === 1, JSON.stringify({ combo: st.combo, score: st.score, rocks: st.asteroids }));
 
@@ -361,13 +363,13 @@ async function run(browser) {
   await evalSim(`s.ufos[0].shootTimer = 0.2;`);
   await sleep(900);
   await keyTap('KeyP');
-  await sleep(200);
+  await page.waitForFunction(`${S}.paused`, null, { timeout: 5000 });
   const pausedA = await sim();
   await sleep(1200);
   const pausedB = await sim();
   check('pausing freezes UFOs, UFO shots and the clock', pausedA.paused && JSON.stringify(pausedA.ufos) === JSON.stringify(pausedB.ufos) && pausedA.ufoShots === pausedB.ufoShots && pausedA.time === pausedB.time, JSON.stringify({ a: pausedA.ufos[0], b: pausedB.ufos[0] }));
   await keyTap('KeyP');
-  await sleep(500);
+  await waitSim(`!${S}.paused && s.time > ${pausedB.time} + 0.3`);
   const resumed = await sim();
   check('resuming moves them again', !resumed.paused && resumed.time > pausedB.time + 0.3 && JSON.stringify(resumed.ufos) !== JSON.stringify(pausedB.ufos));
 
@@ -434,7 +436,7 @@ async function run(browser) {
     check(`game over #${round + 1} with UFOs on screen: banner and combo HUD are gone`, st.banner === null && !(await texts()).some((t) => /COMBO|KILLS/.test(t)), JSON.stringify(await texts()));
     await page.waitForFunction(`${S}.sim.retryDelay === 0`, null, { timeout: 5000 });
     await keyTap('KeyR');
-    await sleep(500);
+    await waitSim("s.phase === 'playing' && s.time > 0");
     st = await sim();
     const au = await audio();
     check(`restart #${round + 1}: no UFOs, enemy shots, combo or banner left over; one music instance`, st.phase === 'playing' && st.ufos.length === 0 && st.ufoShots === 0 && st.combo === 0 && st.banner === null && st.lives === 3 && st.score === 0 && au.musicInstances === 1, JSON.stringify({ ufos: st.ufos.length, shots: st.ufoShots, combo: st.combo, music: au.musicInstances }));

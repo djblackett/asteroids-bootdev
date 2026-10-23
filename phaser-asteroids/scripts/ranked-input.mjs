@@ -1,5 +1,6 @@
 // Focused release-blocker checks. Real local Worker/D1 + production browser build; no legacy browser sweep.
 import { clickItem, itemPoint, makeChecker, menuItems, openTitle, requireBuild, sceneTexts, sleep, startGameAndBrowser, WorkerStack } from './lib/rankedStack.mjs';
+import { settleTitleInput } from './lib/menuWaits.mjs';
 
 const PORT = 4416;
 const worker = new WorkerStack({ port: 8796, gamePort: PORT, vars: { RANKED_TIME_LIMIT_SECONDS: '5' } });
@@ -28,7 +29,7 @@ try {
   const tap = async (page, id) => {
     const p = await itemPoint(page, id);
     await page.touchscreen.tap(p.x, p.y);
-    await sleep(350);
+    await settleTitleInput(page);
   };
   const playing = (page) => page.waitForFunction(() => window.__game.scene.isActive('GameScene') && window.__ASTEROIDS_REPLAY__?.isVerified, null, { timeout: 15000 });
   const storedOff = (page) => page.evaluate(() => localStorage.getItem('asteroids.inputMode') === 'desktop' && localStorage.getItem('asteroids.touchMovement') === 'pointToFly');
