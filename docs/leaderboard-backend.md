@@ -1,6 +1,6 @@
 # Phaser Asteroids — Secure Online Leaderboard (Phase 2 backend, Phase 3 player experience)
 
-> **Status:** Production Worker deployed with approval and verified on 2026-10-22 at **https://asteroids-leaderboard.davejandrea.workers.dev**. Production D1 has both migrations applied and both Worker secrets are configured. Frontend GitHub Actions wiring is prepared but has not been published.
+> **Status:** Production Worker deployed with approval and verified on 2026-10-22 at **https://asteroids-leaderboard.davejandrea.workers.dev**. Production D1 has both migrations applied and both Worker secrets are configured. The coordinated Worker + Pages release workflow is prepared for review; see the [deployment guide](../phaser-asteroids/docs/deployment.md) for required CI credentials and recovery.
 > Phase 3 (the ranked menu, nickname entry, High Scores, personal best, and the time-limited ending) is described in [§15](#15-the-player-facing-experience-phase-3); the 20-minute limit decision is in [§3](#timing-policy).
 > **Code:** `phaser-asteroids/server/` (backend), `phaser-asteroids/src/ranked/` (browser client), builds on `phaser-asteroids/src/replay/` (Phase 1, see [deterministic-replay.md](deterministic-replay.md)).
 
@@ -399,13 +399,34 @@ Set-Clipboard -Value ''
 
 On other platforms, use a password manager and Wrangler's `--secrets-file` with a protected, temporary JSON or dotenv file. For later secret rotation, `wrangler secret put IP_HASH_SALT --env production` and `wrangler secret put ADMIN_TOKEN --env production` prompt without putting values in shell history. **These commands create a new deployment**, so use them only after deployment is approved. Changing the IP salt resets per-IP rate-limit identities; changing the admin token invalidates the old moderation credential. Do not rotate either accidentally.
 
-### GitHub Pages build wiring (prepared only)
+### Coordinated GitHub Actions release
 
-`.github/workflows/deploy-gh-pages.yml` supplies `${{ vars.VITE_LEADERBOARD_API_URL }}` to the existing production build step. For the separately approved frontend release, set the **repository Actions variable** `VITE_LEADERBOARD_API_URL` to `https://asteroids-leaderboard.davejandrea.workers.dev`, without `/api/v1`. The repository variable was not changed during backend deployment. This is a public URL, not a secret. Use a repository variable because the build job does not run in the `github-pages` environment. `IP_HASH_SALT` and `ADMIN_TOKEN` belong only in Cloudflare Worker secrets.
+`.github/workflows/deploy-gh-pages.yml` validates and builds the frontend (including server unit tests), typechecks the
+server, deploys the existing Worker with locked Wrangler, verifies public health against the shared rules/schema
+versions in that build, then publishes the same frontend artifact. Worker deploy/verification failure blocks Pages.
+Releases are serialized through both deployments and stale commits are rejected. PRs only validate.
 
-Publishing the frontend is a separate release from backend setup. The GitHub Actions build fails if `VITE_LEADERBOARD_API_URL` is missing or empty, preventing publication with Ranked Play disabled. This guard applies only to the workflow; ordinary local builds can still omit the variable. The opt-in LAN config still selects its same-origin local proxy even when a production build URL exists.
+Before merging/enabling this workflow, set the **repository Actions secret** `CLOUDFLARE_API_TOKEN` to a token with
+Editor access scoped to this existing Worker, as detailed in the
+[one-time setup](../phaser-asteroids/docs/deployment.md#one-time-setup-repository-owner). Deploying the existing D1
+binding requires no D1 data permission. The account ID is already configured in `wrangler.toml`. Code-only deployments
+preserve the existing Cloudflare-managed `IP_HASH_SALT` and `ADMIN_TOKEN`; neither secret belongs in GitHub or Vite.
 
-### General deployment checklist
+Set the **repository Actions variable** `VITE_LEADERBOARD_API_URL` to
+`https://asteroids-leaderboard.davejandrea.workers.dev`, without `/api/v1`. This public URL is supplied to the existing
+production build, which fails if it is missing or empty. Use a repository variable because the build job does not use
+the `github-pages` environment. Ordinary local builds may omit it; the opt-in LAN config still selects its local proxy.
+
+No production migrations are run by CI. V1/V2 score history needs no new migration. Schema changes are separately
+reviewed, controlled operations; keep migration credentials out of the release workflow. Existing scores and the
+`env.production.DB` binding are preserved. For verification, partial releases, manual fallback and rollback, use the
+[release/recovery guide](../phaser-asteroids/docs/deployment.md#rolling-back). These changes do not configure repository
+settings, commit, push or publish anything by themselves.
+
+### Initial provisioning reference (already completed; not a release checklist)
+
+Do not repeat database creation, first-deployment secret upload or migrations for a routine release. Use the
+coordinated workflow above. The following records initial provisioning for a new installation only.
 
 1. `cd phaser-asteroids/server && npx wrangler login` and upgrade the account to **Workers Paid** in the dashboard (US$5/month).
 2. `npx wrangler d1 create asteroids-leaderboard` — paste the printed `database_id` into `[env.production]` in `wrangler.toml`.
@@ -419,7 +440,11 @@ Publishing the frontend is a separate release from backend setup. The GitHub Act
 
 **Monitoring:** `npx wrangler tail --env production` (look for `run_rejected`, `verifier_threw`, `submit_failed`, `unhandled`); Cloudflare dashboard → Workers → Metrics (CPU time p50/p99, errors) and D1 metrics. Confirm real-world CPU per verification stays well under the 5 s cap.
 
-**Rollback:** `npx wrangler rollback --env production` restores the previous Worker version (also available in the dashboard). Migrations are forward-only; 0001 is additive. For data problems, D1 Time Travel: `npx wrangler d1 time-travel restore asteroids-leaderboard --env production --timestamp=<RFC3339>`. Removing `VITE_LEADERBOARD_API_URL` from the site build turns ranked play off without touching the backend.
+**Rollback:** Prefer reverting the change on `main` so the workflow restores both frontend and Worker together.
+For an urgent Worker-only rollback after a partial release, first stop competing releases and confirm the version
+matches the currently published client; see the [recovery procedure](../phaser-asteroids/docs/deployment.md#rolling-back).
+Code rollback does not require D1 restore or migration changes. Removing `VITE_LEADERBOARD_API_URL` from a local build
+disables ranked play, but the Actions production build deliberately rejects an empty value.
 
 ## 15. The player-facing experience (Phase 3)
 
