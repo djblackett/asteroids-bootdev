@@ -21,6 +21,7 @@
     "test:touch": "npm run build && node scripts/touch.mjs",
     "test:music": "npm run build && node scripts/music.mjs",
     "test:menu": "npm run build && node scripts/menu.mjs",
+    "test:mobile-entry": "npm run build && node scripts/mobile-entry.mjs",
     "test:pages": "npm run build && node scripts/pages-check.mjs",
     "test:server": "vitest run server/tests",
     "test:ranked": "npm run build && node scripts/ranked-browser.mjs",

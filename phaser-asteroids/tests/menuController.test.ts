@@ -143,6 +143,38 @@ describe('MenuController: keyboard and controller', () => {
     expect(menu.currentPage).toBe('controls');
     expect(menu.focusId).toBe('back');
   });
+
+  it('uses explicit page neighbours for mixed-width rows with both keys and gamepad', () => {
+    const menu = new MenuController(() => ({
+      id: 'mobile',
+      items: [
+        new Item('play', { x: 680, y: 112, w: 560, h: 120 }),
+        new Item('practice', { x: 680, y: 244, w: 272, h: 90 }),
+        new Item('scores', { x: 968, y: 244, w: 272, h: 90 }),
+        new Item('controls', { x: 872, y: 346, w: 176, h: 90 }),
+      ],
+      focusNeighbours: { play: { down: 'practice' }, scores: { up: 'play' } },
+    }), 'mobile', () => 0);
+    menu.start();
+    menu.key('ArrowDown');
+    expect(menu.focusId).toBe('practice');
+    menu.pad('right'); // No override: geometric navigation still works within the row.
+    expect(menu.focusId).toBe('scores');
+    menu.pad('up');
+    expect(menu.focusId).toBe('play');
+    menu.pad('down');
+    expect(menu.focusId).toBe('practice');
+  });
+
+  it('ignores an explicit neighbour missing from the current page', () => {
+    const menu = new MenuController(() => ({
+      id: 'p', items: [new Item('a', row(0)), new Item('b', row(100))],
+      focusNeighbours: { a: { down: 'missing' } },
+    }), 'p', () => 0);
+    menu.start();
+    menu.key('ArrowDown');
+    expect(menu.focusId).toBe('b');
+  });
 });
 
 describe('MenuController: mouse and touch', () => {

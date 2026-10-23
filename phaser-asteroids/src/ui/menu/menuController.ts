@@ -31,6 +31,8 @@ export interface MenuPageSpec {
   readonly onBack?: () => boolean;
   /** The item focused when the page opens (the first one by default). */
   readonly defaultFocus?: string;
+  /** Explicit neighbours for layouts with mixed button widths; unspecified directions keep geometric navigation. */
+  readonly focusNeighbours?: Readonly<Record<string, Partial<Record<Direction, string>>>>;
   /** Changes whenever the page's content must be rebuilt (the player count, a controller being assigned...). */
   readonly signature?: () => string;
   /** Called once when the page is closed or rebuilt: removes everything it made. */
@@ -217,6 +219,11 @@ export class MenuController {
       return true;
     }
     if ((direction === 'left' || direction === 'right') && focused.adjust?.(direction === 'right' ? 1 : -1)) return true;
+    const explicit = this.page?.focusNeighbours?.[focused.id]?.[direction];
+    if (explicit && items.some((i) => i.id === explicit)) {
+      this.focusId = explicit;
+      return true;
+    }
     const targets: NavTarget[] = items.map((i) => ({ id: i.id, rect: i.rect }));
     const next = neighbour({ id: focused.id, rect: focused.rect }, targets, direction);
     if (next !== null) this.focusId = next;

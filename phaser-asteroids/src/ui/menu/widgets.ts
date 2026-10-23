@@ -165,6 +165,8 @@ export interface ButtonOptions {
   confirm?: { armedLabel: string };
   /** A tiny caption under the label (`SPACE`, a key hint). */
   hint?: string;
+  /** A larger caption when it explains the action rather than just naming a shortcut. */
+  hintSize?: number;
   color?: string;
   /** Only a key or a controller button may press it; a click or tap does nothing (PLAY on a phone that has no touch controls, where a tap would start a run nobody can steer). */
   keysOnly?: boolean;
@@ -195,7 +197,7 @@ export class MenuButton implements Widget {
     const cy = this.rect.y + this.rect.h / 2;
     this.text = kit.text(cx, cy - (opts.hint ? 10 : 0), '', { size: opts.size ?? TEXT.button, originX: 0.5, originY: 0.5, color: opts.color ?? COLORS.white }).setAlign('center');
     if (opts.hint) {
-      const hint = kit.text(cx, this.rect.y + this.rect.h - 20, opts.hint, { size: TEXT.hint, originX: 0.5, originY: 0.5, color: COLORS.dim, bold: false });
+      const hint = kit.text(cx, this.rect.y + this.rect.h - 20, opts.hint, { size: opts.hintSize ?? TEXT.hint, originX: 0.5, originY: 0.5, color: COLORS.dim, bold: false });
       fit(hint, this.rect.w - 16); // a long hint in a narrow button shrinks instead of spilling over the edge
     }
     kit.add(this);
