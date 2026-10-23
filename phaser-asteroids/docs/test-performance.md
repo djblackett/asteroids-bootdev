@@ -21,7 +21,8 @@ It stops at the first failed suite. Each child command has a ten-minute limit; e
 Longer legacy suites can still use their existing commands. Run from `phaser-asteroids/`.
 
 Available names: `smoke`, `keyboard`, `combat`, `coop`, `gamepad`, `touch`, `music`, `menu`,
-`mobile-entry`, `pages`, `replay`, `ranked`, `ranked-ui`, `ranked-input`, `worker`.
+`mobile-entry`, `pages`, `replay`, `ranked`, `ranked-ui`, `ranked-input`, `history`, `worker`.
+Use `history` for the V1/V2 board, label and personal-best regression against an isolated local Worker/D1.
 For a mobile-entry feature, select `mobile-entry`; this already covers PLAY, PRACTICE, touch readiness,
 error paths and desktop entry. It is unnecessary for a cosmetic label edit.
 

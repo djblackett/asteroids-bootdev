@@ -16,6 +16,9 @@ and runs only those suites. After changing test scripts alone, `npm run test:fea
 can reuse that build. Rebuild after source or asset changes. See [focused testing and timings](docs/test-performance.md).
 Minor cosmetic UI edits use the existing Vite server and only relevant focused checks; two minutes is the ceiling.
 
+`npm run test:feature -- history` checks the V1/V2 boards, labels, legacy personal bests and a verified V2 submission
+against a temporary local Worker/D1 database and Chromium. It does not access production data.
+
 For physical Android ranked testing against local Worker/D1, use the opt-in [LAN startup and S25 checklist](../docs/android-lan-testing.md).
 
 Requires Node.js 20.19+ or 22.12+ (Vite 8's requirement; developed on Node 22.14).

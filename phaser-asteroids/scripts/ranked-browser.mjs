@@ -180,7 +180,7 @@ try {
   const allTime = scopeZones.find((z) => z.name === 'ALL TIME');
   const cp = await page.evaluate(([x, y]) => { const c = document.querySelector('canvas').getBoundingClientRect(); return { x: c.left + (x * c.width) / 1280, y: c.top + (y * c.height) / 720 }; }, [allTime.x + allTime.w / 2, allTime.y + allTime.h / 2]);
   await page.mouse.click(cp.x, cp.y);
-  await waitText(page, 'GameScene', /^BEST VERIFIED SCORES OF ALL TIME$/);
+  await waitText(page, 'GameScene', /^SCORES FROM DIFFERENT VERSIONS MAY NOT BE DIRECTLY COMPARABLE\.$/);
   await waitText(page, 'GameScene', new RegExp(`^${NICK}$`));
   check('switching to ALL TIME shows the same entry', true);
   check('the player\'s best verified score is shown under the table', (await sceneTexts(page, 'GameScene')).some((t) => t.startsWith('YOUR BEST VERIFIED SCORE:')));

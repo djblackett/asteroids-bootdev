@@ -295,7 +295,8 @@ records with no version show `VERSION UNKNOWN` until refreshed. Visible unknown-
 and have null ranks. No dates or current-version defaults are used to guess an era.
 
 The existing `scores.rules_version` column and indexes support these reads. No data rewrite, reset or migration is required.
-To release this display change, deploy the Worker read/rank/API changes first, then the frontend labels and personal-best handling.
+After review and approval, the coordinated CI release on `main` deploys the Worker read/rank/API changes, verifies its health,
+then publishes the frontend labels and personal-best handling. PR validation does not deploy either component.
 The extra API field is additive; replay schema and gameplay rules remain unchanged. This does not enable V1 replay verification.
 
 ## 10. Abuse prevention
