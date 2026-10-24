@@ -30,7 +30,7 @@ const challenge: RankedChallenge = {
   runId: '11111111-1111-4111-8111-111111111111',
   token: 't'.repeat(43),
   seed: 123456,
-  rulesVersion: '1.2.0',
+  rulesVersion: '1.3.0',
   schemaVersion: 1,
   tickRate: 60,
   config: { playerCount: 1, livesMode: 'independent', friendlyFire: false, speed: [1, 1] },
@@ -459,6 +459,8 @@ describe('leaderboard client and ScoresModel', () => {
     expect(scoringEra('1.1.0')).toBe('V2');
     expect(rulesInScoringEra('1.1.0')).toEqual(['1.1.0']);
     expect(scoringEra('1.2.0')).toBe('V3');
+    expect(scoringEra('1.3.0')).toBe('V4');
+    expect(rulesInScoringEra('1.3.0')).toEqual(['1.3.0']);
     expect(rulesInScoringEra('1.2.0')).toEqual(['1.2.0']);
     for (const version of ['1.1.1', '2.0.0', 'constructor', undefined]) expect(scoringEra(version)).toBeNull();
     expect(rulesInScoringEra('9.0.0')).toEqual([]);

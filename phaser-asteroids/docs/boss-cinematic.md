@@ -2,8 +2,9 @@
 
 Run from `phaser-asteroids` with `npm run dev`. Open the Vite localhost URL with
 `?bosstrial=1`, then start a casual game. `?bosstrial=1&bosscore=1` starts directly
-with the reactor exposed. Production builds and recorded/ranked runs never import
-the trial. No encounter schedule or leaderboard version changed.
+with the reactor exposed. These controls remain development-only. Normal games,
+production builds, and ranked replays use the shared encounter scheduled at 60
+active seconds; see [Phase 4 integration](boss-integration.md).
 
 ## Entrance and audio
 

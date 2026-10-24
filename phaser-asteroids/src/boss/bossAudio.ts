@@ -1,7 +1,7 @@
 import { SFX_GAIN } from '../audio/audioConfig';
 import type { SoundCue } from '../audio/sfxPlayer';
-import type { BossEvent } from './bossTrialSim';
-import type { Mothership } from './bossTrialSim';
+import type { BossEvent } from './bossSim';
+import type { Mothership } from './bossSim';
 import type { MusicController } from '../audio/musicController';
 import type { SfxPlayer } from '../audio/sfxPlayer';
 import { BOSS_CINEMATIC as C } from './bossCinematic';

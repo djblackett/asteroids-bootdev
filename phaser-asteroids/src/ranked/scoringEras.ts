@@ -6,6 +6,7 @@ export const SCORING_ERAS = Object.freeze({
   '1.0.0': 'V1',
   '1.1.0': 'V2',
   '1.2.0': 'V3',
+  '1.3.0': 'V4',
 } as const);
 
 export type ScoringEra = (typeof SCORING_ERAS)[keyof typeof SCORING_ERAS];

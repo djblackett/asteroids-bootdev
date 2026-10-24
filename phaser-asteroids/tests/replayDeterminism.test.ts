@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GameSim } from '../src/core/game';
+import { MothershipGameSim as GameSim } from '../src/boss/bossSim';
 import { DEFAULT_GAME_CONFIG } from '../src/core/gameConfig';
 import { NO_INPUT, type PlayerInput } from '../src/core/player';
 import { seededRng } from '../src/core/rng';

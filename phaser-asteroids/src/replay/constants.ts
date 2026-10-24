@@ -5,7 +5,7 @@
 export const REPLAY_SCHEMA_VERSION = 1;
 
 /** Semantic rules version defining simulation outcomes, including spawn/drop balance. */
-export const GAMEPLAY_RULES_VERSION = '1.2.0';
+export const GAMEPLAY_RULES_VERSION = '1.3.0';
 
 /** Authoritative simulation tick rate in Hz. */
 export const FIXED_TICK_RATE = 60;

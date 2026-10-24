@@ -130,7 +130,7 @@ describe('volatile blasts', () => {
     expect(a.rng()).toBe(b.rng());
   });
 
-  it('accepts a short genuine recording with the current local ranked verifier under rules 1.2.0', () => {
+  it('accepts a short genuine recording with the current local ranked verifier under rules 1.3.0', () => {
     const seed = 54321;
     const sim = new GameSim({ rng: seededRng(seed), config: RANKED_CONFIG });
     const recorder = new ReplayRecorder(seed, RANKED_CONFIG);
@@ -141,7 +141,7 @@ describe('volatile blasts', () => {
       expect(sim.isGameOver).toBe(false);
     }
     recorder.markTimeLimit(sim);
-    expect(GAMEPLAY_RULES_VERSION).toBe('1.2.0');
+    expect(GAMEPLAY_RULES_VERSION).toBe('1.3.0');
     const replay = JSON.parse(recorder.serialize());
     const verdict = verifyRankedReplay(replay, {
       seed, rulesVersion: GAMEPLAY_RULES_VERSION, config: RANKED_CONFIG, createdAt: 0, timeLimitTicks: ticks,

@@ -22,21 +22,34 @@ export function generateBotReplay(engine, opts) {
   const recorder = new ReplayRecorder(seed, config);
   const sim = new GameSim({ rng: seededRng(seed), config });
 
+  const encounter = { startTick: null, combatTick: null, victoryTick: null, bonuses: 0, hits: 0, bossHits: 0, fires: [], beam: false };
   for (let tick = 0; tick < maxTicks; tick++) {
     const rawInput = opts.idle
       ? { rotate: 0, move: 0, shoot: false }
       : opts.spin
         ? { rotate: tick % 240 < 120 ? 1 : -1, move: 0, shoot: true }
-        : decide(sim, tick, !!opts.stress);
+        : opts.bossFight && sim.encounterStarted && !sim.ordinaryPlay
+          ? fightBoss(sim, tick, opts.bossDelay ?? 0) : decide(sim, tick, !!opts.stress);
     const effective = toPlayerInput(toRecordedInput(rawInput));
     recorder.recordTick(tick, effective, sim);
-    sim.step(FIXED_DT, effective);
+    const fightingBoss = sim.encounterStarted && sim.boss.phase === 'fighting';
+    const events = sim.step(FIXED_DT, effective);
+    const hits = events.filter(e => e.type === 'player_hit').length;
+    encounter.hits += hits;
+    if (fightingBoss) encounter.bossHits += hits;
+    if (sim.encounterStarted && encounter.startTick === null) encounter.startTick = tick + 1;
+    if (sim.encounterStarted && sim.boss.phase === 'fighting' && encounter.combatTick === null) encounter.combatTick = tick + 1;
+    for (const e of sim.drainBossEvents?.() ?? []) {
+      if (e.type === 'fire' && !encounter.fires.includes(e.kind)) encounter.fires.push(e.kind);
+      if (e.type === 'beam_fire') encounter.beam = true;
+      if (e.type === 'destroyed') { encounter.bonuses++; encounter.victoryTick = tick + 1; }
+    }
     if (sim.isGameOver) {
       recorder.markGameOver(sim);
       break;
     }
   }
-  return { replay: recorder.exportReplay(), score: sim.totalScore, gameOver: sim.isGameOver, ticks: recorder.ticks };
+  return { replay: recorder.exportReplay(), score: sim.totalScore, gameOver: sim.isGameOver, ticks: recorder.ticks, encounter };
 }
 
 function decide(sim, tick, stress) {
@@ -108,4 +121,22 @@ function decide(sim, tick, stress) {
     if (minD < 220 && (stress || tick % 2 === 0)) laser = true;
   }
   return { rotate: 0, move, shoot: stress ? true : tick % 4 === 0, boost, laser, steer: { mode: 'assist', heading: targetAngle } };
+}
+
+// Test-only pilot: uses ordinary recorded inputs, never changes simulation state.
+function fightBoss(sim, tick, delay) {
+  const b = sim.boss;
+  if (b.phase !== 'fighting') return { rotate: 0, move: 0, shoot: false };
+  const p = sim.player;
+  const dangerous = sim.ufoShots.some(s => Math.hypot(s.position.x - p.position.x, s.position.y - p.position.y) < 155);
+  if (dangerous || b.charge?.kind === 'beam') {
+    const heading = p.position.x < 640 ? 270 : 90;
+    return { rotate: 0, move: 1, shoot: b.fightTime >= delay, steer: { mode: 'assist', heading } };
+  }
+  if (b.fightTime < delay) return { rotate: 0, move: 0, shoot: false };
+  const target = b.left.hp > 0 ? b.left : b.right.hp > 0 ? b.right : b.core;
+  const lead = Math.hypot(target.position.x - p.position.x, target.position.y - p.position.y) / 500;
+  const futureX = 640 + Math.sin((b.movementTime + (b.charge || b.beam ? 0 : lead)) * 0.32) * 260 + (target.id === 'left' ? -112 : target.id === 'right' ? 112 : 0);
+  const heading = (Math.atan2(-(futureX - p.position.x), target.position.y - p.position.y) * 180 / Math.PI + 360) % 360;
+  return { rotate: 0, move: 0, shoot: true, laser: tick % 120 === 0, steer: { mode: 'assist', heading } };
 }

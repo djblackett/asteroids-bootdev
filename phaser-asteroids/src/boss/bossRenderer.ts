@@ -1,10 +1,10 @@
 import type Phaser from 'phaser';
 import { laserEndPosition } from '../core/laser';
-import { BOSS_ATTACK, BOSS_HULL, bossBeamSegment, type BossTrialSim } from './bossTrialSim';
+import { BOSS_ATTACK, BOSS_HULL, bossBeamSegment, type MothershipGameSim } from './bossSim';
 import { BOSS_CINEMATIC as C } from './bossCinematic';
 
 /** One batched procedural hull, no textures, shaders, physics bodies or per-light objects. */
-export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim, reducedMotion = false): void {
+export function drawMothership(g: Phaser.GameObjects.Graphics, sim: MothershipGameSim, reducedMotion = false): void {
   g.clear();
   const b = sim.boss;
   const { x, y } = b.position;
@@ -191,7 +191,7 @@ export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim
 }
 
 /** Fixed-size geometry, derived from the death clock: no particles, timers or retained objects. */
-function drawDestruction(g: Phaser.GameObjects.Graphics, sim: BossTrialSim, reducedMotion: boolean): void {
+function drawDestruction(g: Phaser.GameObjects.Graphics, sim: MothershipGameSim, reducedMotion: boolean): void {
   const b = sim.boss;
   if (sim.ordinaryPlay || (b.phase !== 'dying' && b.phase !== 'destroyed')) return;
   const { x, y } = b.position;

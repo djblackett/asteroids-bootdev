@@ -220,14 +220,14 @@ try {
   normal.on('pageerror', e => errors.push(String(e)));
   await normal.goto(`${base}/?debug`);
   await normal.waitForFunction(() => window.__game?.scene.isActive('StartScene'));
-  assert.equal(await normal.evaluate(() => window.__game.cache.audio.exists('boss_alarm')), false);
+  assert.equal(await normal.evaluate(() => window.__game.cache.audio.exists('boss_alarm')), true);
   await normal.goto(`${base}/?debug&bosstrial=1&verified=1`);
   await normal.waitForFunction(() => window.__game?.scene.isActive('StartScene'));
   await normal.keyboard.press('Shift');
   await normal.evaluate(() => window.__game.scene.getScene('StartScene').scene.start('GameScene'));
   await normal.waitForFunction(() => window.__game.scene.isActive('GameScene'));
-  assert.equal(await normal.evaluate(() => Boolean(window.__game.scene.getScene('GameScene').sim.boss)), false);
-  pass('ordinary boot skips alarm loading; recorded play excludes the boss even with the trial URL');
+  assert.equal(await normal.evaluate(() => window.__game.scene.getScene('GameScene').sim.encounterStarted), false);
+  pass('ordinary boot prepares alarm; recorded play ignores immediate trial controls');
   }
   assert.deepEqual(errors, []);
   pass('no browser runtime errors');
@@ -245,7 +245,7 @@ async function open(page, extra = '', observeArrival = false) {
   await page.evaluate(observeArrival => {
     const scene = window.__game.scene.getScene('GameScene');
     const freezeOnInstall = () => {
-      if (!scene.sim?.boss) return;
+      if (!scene.sim?.encounterStarted) return;
       scene.paused = true;
       scene.events.off('postupdate', freezeOnInstall);
       if (observeArrival) {

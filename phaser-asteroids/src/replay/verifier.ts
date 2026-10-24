@@ -1,4 +1,5 @@
-import { GameSim, type SimEvent } from '../core/game';
+import type { SimEvent } from '../core/game';
+import { MothershipGameSim as GameSim } from '../boss/bossSim';
 import { resolveGameConfig } from '../core/gameConfig';
 import { NO_INPUT, type PlayerInput } from '../core/player';
 import { seededRng } from '../core/rng';

@@ -27,7 +27,7 @@ At charge start, the turret snapshots the nearest eligible player's position.
 It fires from its current muzzle toward that fixed world position without
 retargeting when either co-op player moves. Projectiles travel at 170 pixels/second,
 down from 210, with the existing muzzle flash. Adjust `BOSS_ATTACK` in
-`src/dev/bossTrialSim.ts` to tune the opportunity, charge duration, and shot speed.
+`src/boss/bossSim.ts` to tune the opportunity, charge duration, and shot speed.
 Shots use the existing hostile projectile list and the normal player damage rules,
 including shields, invulnerability, elimination, and shared lives.
 
@@ -95,3 +95,8 @@ damage in this prototype.
 Additional attack patterns, beams, drones, missiles, phase changes, full cinematic
 destruction, dedicated music, normal-play scheduling, and ranked/release versioning
 are deferred. All changes are local; nothing was committed, pushed or deployed.
+
+## Phase 4 integration
+
+The shared mechanics now live in `src/boss/`; the development trial is an immediate-start adapter.
+Normal and ranked gameplay use the same scheduled simulation. See [integration and local playtesting](boss-integration.md).

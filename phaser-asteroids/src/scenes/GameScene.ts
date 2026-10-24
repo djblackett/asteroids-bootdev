@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
 import { getAudio, type AudioDirector } from '../audio/phaserAudio';
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from '../core/constants';
-import { GameSim, type SimEvent } from '../core/game';
+import type { SimEvent } from '../core/game';
+import { MothershipGameSim as GameSim } from '../boss/bossSim';
+import { installBossEncounter } from '../boss/bossPresentation';
 import { resolveGameConfig } from '../core/gameConfig';
 import { NO_INPUT, type PlayerInput } from '../core/player';
 import { seededRng } from '../core/rng';
@@ -291,7 +293,10 @@ export class GameScene extends Phaser.Scene {
       void import('../dev/bossTrial').then(({ installBossTrial }) => {
         if (this.scene.isActive() && this.sim === sim) installBossTrial(this, () => this.paused);
       });
-    } else if (import.meta.env.DEV && !this.isVerifiedMode && !this.rankedChallenge && new URLSearchParams(window.location.search).has('lightningtrial')) {
+    } else {
+      installBossEncounter(this, () => this.paused, () => this.runOver);
+    }
+    if (import.meta.env.DEV && !this.isVerifiedMode && !this.rankedChallenge && new URLSearchParams(window.location.search).has('lightningtrial')) {
       const sim = this.sim;
       void import('../dev/lightningTrial').then(({ installLightningTrial }) => {
         if (this.scene.isActive() && this.sim === sim) installLightningTrial(this, sim);

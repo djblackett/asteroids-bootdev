@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GameSim } from '../src/core/game';
+import { MothershipGameSim as GameSim } from '../src/boss/bossSim';
 import { seededRng } from '../src/core/rng';
 import { FIXED_DT, ReplayRecorder, verifyReplay, type ReplayRecord } from '../src/replay';
 import { generateBotReplay } from '../server/testing/bot.mjs';

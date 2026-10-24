@@ -34,7 +34,7 @@ export function botRun(seed: number, opts: Omit<BotOptions, 'seed'> = {}): BotRu
   return structuredClone(run);
 }
 
-/** Genuine reference game; experiments A+B+C under rules 1.2.0 produce 34735 points for this seed. */
+/** Genuine reference game; experiments A+B+C+D under rules 1.3.0 produce 5710 points for this seed. */
 export const REFERENCE_SEED = 54321;
 
 export interface Harness {
@@ -148,12 +148,12 @@ export async function insertScore(
     {
       sql: `INSERT INTO runs (id, token_hash, seed, rules_version, config_json, created_at, expires_at, status, finished_at, score_id)
             VALUES (?, 'x', 1, ?, '{}', ?, ?, 'accepted', ?, ?)`,
-      params: [runId, s.rules ?? '1.2.0', s.completedAt - 60_000, s.completedAt + 3_600_000, s.completedAt, id],
+      params: [runId, s.rules ?? '1.3.0', s.completedAt - 60_000, s.completedAt + 3_600_000, s.completedAt, id],
     },
     {
       sql: `INSERT INTO scores (id, run_id, score, nickname, completed_at, rules_version, ticks, duration_ms, visibility)
             VALUES (?, ?, ?, ?, ?, ?, 3600, 60000, ?)`,
-      params: [id, runId, s.score, s.nickname ?? 'Tester', s.completedAt, s.rules ?? '1.2.0', s.visibility ?? 'visible'],
+      params: [id, runId, s.score, s.nickname ?? 'Tester', s.completedAt, s.rules ?? '1.3.0', s.visibility ?? 'visible'],
     },
   ]);
   return id;
