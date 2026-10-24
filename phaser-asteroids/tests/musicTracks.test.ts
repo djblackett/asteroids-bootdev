@@ -126,7 +126,7 @@ describe('per-track gain', () => {
     expect(SFX_GAIN.shoot_low).toBe(0.28);
     expect(SFX_GAIN.explosion_large).toBe(0.8);
     expect(SFX_GAIN.laser).toBe(0.5);
-    expect(SFX_GAIN.player_death).toBe(0.7);
+    expect(SFX_GAIN.player_death).toBe(0.8);
   });
 });
 

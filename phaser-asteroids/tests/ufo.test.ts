@@ -544,19 +544,23 @@ describe('player shots vs UFOs', () => {
     expect(sim.powerups).toHaveLength(1);
   });
 
-  it('drops one of the four ordinary power-ups, uniformly, and never MEGA POWER or Revive', () => {
+  it('drops one of the ordinary power-ups, uniformly, and never MEGA POWER or Revive', () => {
     const sim = quietSim(77);
+    const sampleSize = 800;
+    const expectedCount = sampleSize / ORDINARY_POWERUPS.length;
     const counts: Record<string, number> = {};
-    for (let i = 0; i < 800; i++) {
+    for (let i = 0; i < sampleSize; i++) {
       parkedUfo(sim, i % 2 ? 'large' : 'small', 300, 300);
       sim.shots.push(shotAt(300, 300));
       const events = sim.step(FRAME);
-      for (const e of eventsOfType(events, 'powerup_dropped')) counts[e.powerType] = (counts[e.powerType] ?? 0) + 1;
+      const drops = eventsOfType(events, 'powerup_dropped');
+      expect(drops).toHaveLength(1);
+      for (const e of drops) counts[e.powerType] = (counts[e.powerType] ?? 0) + 1;
     }
     expect(Object.keys(counts).sort()).toEqual([...ORDINARY_POWERUPS].sort());
     for (const type of ORDINARY_POWERUPS) {
-      expect(counts[type]).toBeGreaterThan(150);
-      expect(counts[type]).toBeLessThan(250);
+      expect(counts[type]).toBeGreaterThan(expectedCount * 0.75);
+      expect(counts[type]).toBeLessThan(expectedCount * 1.25);
     }
   });
 
