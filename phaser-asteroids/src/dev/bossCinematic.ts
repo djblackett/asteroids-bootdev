@@ -2,10 +2,10 @@
 export const BOSS_CINEMATIC = {
   musicFade: 0.8,
   alarmStart: 0.8,
-  // ffprobe: 20.013500 s; decoded MP3 audio ~20.0135 s. Keep the complete recording.
-  alarmDuration: 20.0135,
+  alarmFade: 0.4,
   entranceStart: 1.1,
-  combatStart: 20.85,
+  // Shared with the descent's resting position; the recording does not control the handoff.
+  combatStart: 14,
   skipAfter: 5,
   barFill: 0.75,
   failure: 0.65,

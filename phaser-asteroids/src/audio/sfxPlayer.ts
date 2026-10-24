@@ -101,6 +101,7 @@ export class SfxPlayer {
   /** Playing sounds per effect, with the time each one started. */
   private readonly active = new Map<SfxKey, Map<PlayingSound, number>>();
   private volume: number;
+  private alarmGain = 1;
   private readonly onVolumeChanged: ((volume: number) => void) | undefined;
   private readonly clock: () => number;
   private lastLightningAt = -Infinity;
@@ -127,8 +128,22 @@ export class SfxPlayer {
     if (next === this.volume) return;
     this.volume = next;
     // The alarm is long enough for settings changes to matter while it is playing.
-    for (const voice of this.active.get('boss_alarm')?.keys() ?? []) voice.setVolume?.(SFX_GAIN.boss_alarm * next);
+    this.updateAlarmVolume();
     this.onVolumeChanged?.(next);
+  }
+
+  /** Simulation-driven entrance envelope, multiplied by the live SFX setting even while paused. */
+  setAlarmGain(gain: number): void {
+    const next = Number.isFinite(gain) ? Math.min(1, Math.max(0, gain)) : this.alarmGain;
+    if (next === this.alarmGain) return;
+    this.alarmGain = next;
+    this.updateAlarmVolume();
+  }
+
+  private updateAlarmVolume(): void {
+    for (const voice of this.active.get('boss_alarm')?.keys() ?? []) {
+      voice.setVolume?.(SFX_GAIN.boss_alarm * this.volume * this.alarmGain);
+    }
   }
 
   /**
@@ -183,11 +198,13 @@ export class SfxPlayer {
   stopAll(): void {
     for (const voices of [...this.active.values()]) for (const sound of [...voices.keys()]) sound.stop();
     this.active.clear();
+    this.alarmGain = 1;
   }
 
   stopCue(key: SfxKey): void {
     for (const voice of [...(this.active.get(key)?.keys() ?? [])]) voice.stop();
     this.active.delete(key);
+    if (key === 'boss_alarm') this.alarmGain = 1;
   }
 
   pauseCue(key: SfxKey, paused: boolean): void {
@@ -214,7 +231,7 @@ export class SfxPlayer {
     }
 
     const overlapping = attenuateOverlap ? Math.min(this.overlapping(group, now), OVERLAP_FALLOFF_MAX_STEPS) : 0;
-    const volume = cue.volume * this.volume * OVERLAP_FALLOFF[group] ** overlapping;
+    const volume = cue.volume * this.volume * OVERLAP_FALLOFF[group] ** overlapping * (cue.key === 'boss_alarm' ? this.alarmGain : 1);
     let handle: PlayingSound | null = null;
     let finished = false;
     handle = this.backend.play(cue.key, volume, () => {

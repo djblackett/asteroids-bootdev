@@ -18,8 +18,10 @@ the existing SFX system. Measurements with ffprobe/ffmpeg:
 
 The regular soundtrack fades over 0.8 seconds. The alarm starts at 0.8 seconds,
 once per entrance. The ship begins descending at 1.1 seconds; engines activate at
-2 seconds, turrets at 8 seconds, reactor at 13 seconds. Combat starts at **20.85
-seconds**, after the full recording. The health bar fills over 0.75 seconds.
+2 seconds, turrets at 8 seconds, reactor at 13 seconds. The alarm fades over the
+final **0.4 seconds** of descent. At **14 seconds**, the ship reaches its resting
+position and combat, Gatekeeper and the health-bar reveal start together. The
+health bar fills over 0.75 seconds. Playback is trimmed at runtime; the MP3 is unchanged.
 After five seconds, click/tap **ENGAGE NOW** or press **Enter** to end the entrance
 early. This deliberate shortcut stops the alarm and settles the ship before combat.
 The reactor shortcut skips the entrance entirely.
@@ -32,7 +34,8 @@ The previous track for this run is restored when the victory announcement appear
 Restored tracks resume as a new loop from the beginning; playback position is not
 saved. An unavailable track falls back without blocking combat.
 
-The alarm follows SFX volume, including live changes while it plays. Pausing or
+The alarm fade multiplies SFX volume, including live changes while it plays or is
+paused. Its envelope follows the simulation clock and freezes on pause. Pausing or
 losing visibility pauses it; returning to the tab requires the normal explicit
 game resume. Reset/scene exit stops it. If SFX is zero or the asset is unavailable
 when its cue is issued, it is silent for that entrance; the fixed timeline proceeds.
@@ -75,14 +78,14 @@ resets, visibility, failed Gatekeeper loading, and mobile reduced-motion present
 It uses actual weapon collisions to finish the boss quickly after testing combat entry.
 The original boss tests retain the approved HP, attacks, cadence and refresh-rate checks.
 
-Validation: 188 focused unit tests, 14 focused Chromium checks, TypeScript checking,
+Original Phase 3 validation: 188 focused unit tests, 14 focused Chromium checks, TypeScript checking,
 and both production builds pass. Desktop arrival/combat/destruction/victory and
 mobile reduced-motion screenshots were inspected. The production JavaScript has
 no trial implementation; the recording's runtime copy matches the source SHA-256.
 
 For manual listening, start with Music/SFX at 80%, play the whole entrance once,
 try pausing during the alarm, and compare Gatekeeper's entry against the alarm's
-final pulse. Then try the reactor shortcut and watch through the return to normal play.
+fade as the ship settles. Then try the reactor shortcut and watch through the return to normal play.
 Use RESET BOSS TRIAL to repeat; it starts a new run, so Random may choose a new track.
 The recording has a wide loudness range and a strong final pulse: its perceived
 balance and the layered destruction sounds still need human listening on speakers

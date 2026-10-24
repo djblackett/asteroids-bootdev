@@ -26,6 +26,7 @@ export class BossEncounterAudio {
         this.alarmStarted = true;
         this.audio.sfx.playCue({ key: 'boss_alarm', volume: SFX_GAIN.boss_alarm });
       }
+      this.audio.sfx.setAlarmGain(Math.min(1, Math.max(0, (C.combatStart - b.age) / C.alarmFade)));
       this.audio.sfx.pauseCue('boss_alarm', paused);
     } else if (!this.fighting) {
       this.fighting = true;

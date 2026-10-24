@@ -31,9 +31,10 @@ try {
   page.on('pageerror', e => { errors.push(String(e)); console.log('BROWSER ERROR', String(e)); });
   page.on('console', m => { if (m.type() === 'warning' || m.type() === 'error') console.log('BROWSER', m.text()); });
   await page.addInitScript(() => localStorage.setItem('asteroids.musicTrack', 'random'));
-  await open(page);
+  await open(page, '', true);
   const regular = (await snapshot(page)).track;
   await page.waitForFunction(() => window.__game.sound.sounds.some(s => s.key === 'boss_alarm' && s.isPlaying));
+  await page.waitForFunction(() => window.__game.cache.audio.exists('music-gatekeeper'));
   let s = await snapshot(page);
   assert.equal(s.alarms.length, 1);
   assert.equal(s.gain, 0);
@@ -49,14 +50,13 @@ try {
   pass('pause freezes entrance and the real alarm voice');
   await page.evaluate(() => window.__game.registry.get('audio').sfx.setVolume(0.2));
   assert(Math.abs((await snapshot(page)).alarms[0].configured - 0.11) < 0.001);
+  // Keep the entrance paused during settings checks so slow browser commands cannot consume the shorter intro.
+  await page.evaluate(() => window.__game.registry.get('audio').sfx.setVolume(0));
+  assert.equal((await snapshot(page)).alarms[0].configured, 0);
+  await page.evaluate(() => window.__game.registry.get('audio').sfx.setVolume(0.8));
   // Chromium can defer AudioParam.value while every source is paused; resumption must apply the requested gain.
   await page.keyboard.press('p');
-  await page.waitForFunction(() => Math.abs(window.__game.sound.sounds.find(s => s.key === 'boss_alarm').volume - 0.11) < 0.001);
-  assert(Math.abs((await snapshot(page)).alarms[0].volume - 0.11) < 0.001);
-  await page.evaluate(() => window.__game.registry.get('audio').sfx.setVolume(0));
-  await page.waitForFunction(() => window.__game.sound.sounds.find(s => s.key === 'boss_alarm').volume === 0);
-  assert.equal((await snapshot(page)).alarms[0].volume, 0);
-  await page.evaluate(() => window.__game.registry.get('audio').sfx.setVolume(0.8));
+  await page.waitForFunction(() => Math.abs(window.__game.sound.sounds.find(s => s.key === 'boss_alarm').volume - 0.44) < 0.001);
   pass('live alarm volume and mute changes reach the existing sound');
   await page.waitForFunction(() => window.__game.scene.getScene('GameScene').sim.boss.age >= 8);
   await page.screenshot({ path: path.join(out, 'boss-arrival.png') });
@@ -68,8 +68,24 @@ try {
   assert.equal(s.musicCount, 1);
   assert.equal(s.stored, 'random');
   assert.equal(s.choice, 'random');
-  assert(s.age >= 20.85);
-  pass('full entrance reaches Gatekeeper at 20.85s, with one music instance and unchanged preferences');
+  const samples = await page.evaluate(() => window.__arrivalSamples);
+  const fading = samples.filter(s => s.phase === 'entering');
+  assert(fading.some(s => s.volume > 0.4), JSON.stringify(samples));
+  assert(fading.some(s => s.volume > 0.15 && s.volume < 0.3));
+  assert(fading.some(s => s.volume > 0 && s.volume < 0.1));
+  for (const sample of fading) {
+    const expected = 0.44 * Math.min(1, Math.max(0, (14 - sample.age) / 0.4));
+    // AudioParam readback trails scheduled gain by an audio render quantum.
+    assert(Math.abs(sample.configured - expected) < 0.001, JSON.stringify({ sample, expected }));
+    assert.equal(sample.bar, false);
+  }
+  const settled = samples.at(-1);
+  assert(settled.age >= 14 && settled.age < 14.1);
+  assert.equal(settled.y, 235);
+  assert.equal(settled.volume, 0);
+  assert.equal(settled.track, 'gatekeeper');
+  assert.equal(settled.bar, true);
+  pass('0.4s alarm fade ends at rest at 14s with Gatekeeper, health bar, one music instance and unchanged preferences');
   await sleep(850);
   await page.screenshot({ path: path.join(out, 'boss-combat.png') });
   await defeat(page);
@@ -219,21 +235,35 @@ try {
 }
 console.log(`${checks} focused browser checks passed; screenshots: ${out}`);
 
-async function open(page, extra = '') {
+async function open(page, extra = '', observeArrival = false) {
   await page.goto(`${base}/?debug&bosstrial=1${extra}`);
   await page.waitForFunction(() => window.__game?.scene.isActive('StartScene'));
   // A genuine gesture unlocks Web Audio; scene entry is direct to keep this test scoped to the boss.
   await page.keyboard.press('Shift');
-  await page.evaluate(() => {
+  await page.evaluate(observeArrival => {
     const scene = window.__game.scene.getScene('GameScene');
     const freezeOnInstall = () => {
       if (!scene.sim?.boss) return;
       scene.paused = true;
       scene.events.off('postupdate', freezeOnInstall);
+      if (observeArrival) {
+        window.__arrivalSamples = [];
+        const sample = () => {
+          const b = scene.sim.boss;
+          if (b.age < 13.5) return;
+          const alarm = window.__game.sound.sounds.find(s => s.key === 'boss_alarm' && !s.pendingRemove);
+          window.__arrivalSamples.push({ age: b.age, y: b.position.y, phase: b.phase, volume: alarm?.volume ?? 0,
+            configured: alarm?.currentConfig.volume ?? 0,
+            track: window.__game.registry.get('audio').currentTrack,
+            bar: scene.children.list.some(c => c.visible && c.text === 'MOTHERSHIP — THE DREADNAUGHT') });
+          if (b.phase === 'fighting') scene.events.off('postupdate', sample);
+        };
+        scene.events.on('postupdate', sample);
+      }
     };
     scene.events.on('postupdate', freezeOnInstall);
     window.__game.scene.getScene('StartScene').scene.start('GameScene');
-  });
+  }, observeArrival);
   await page.waitForFunction(() => window.__game?.scene.getScene('GameScene').sim?.boss);
   await page.waitForFunction(() => window.__game.scene.getScene('GameScene').paused);
   await page.keyboard.press('p');
@@ -244,7 +274,7 @@ async function snapshot(page) {
     const game = window.__game;
     const scene = game.scene.getScene('GameScene');
     const a = game.registry.get('audio');
-    const sounds = game.sound.sounds;
+    const sounds = game.sound.sounds.filter(s => !s.pendingRemove);
     return { age: scene.sim.boss.age, phase: scene.sim.boss.phase, paused: scene.paused, score: scene.sim.totalScore,
       spawnTimer: scene.sim.spawner.spawnTimer, choice: a.music.choice, track: a.currentTrack, gain: a.music.gain,
       stored: localStorage.getItem('asteroids.musicTrack'), musicCount: sounds.filter(s => s.key.startsWith('music')).length,

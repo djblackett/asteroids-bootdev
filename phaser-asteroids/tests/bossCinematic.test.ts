@@ -25,7 +25,7 @@ function setup(volume = 0.8) {
 }
 
 describe('cinematic audio lifecycle', () => {
-  it('plays the full alarm once, freezes on pause, transitions to Gatekeeper and restores the same Random pick', () => {
+  it('plays the alarm once, freezes on pause, transitions to Gatekeeper and restores the same Random pick', () => {
     const { track, backend, music, sfx, encounter, sim } = setup();
     runFor(sim, C.alarmStart + FRAME);
     encounter.update(sim.boss, false);
@@ -50,6 +50,91 @@ describe('cinematic audio lifecycle', () => {
     expect(music.currentTrack).toBe('megapop');
     expect(track.sources).toEqual(['megapop', 'gatekeeper', 'megapop']);
     expect(music.gain).toBeGreaterThan(0);
+  });
+
+  it.each([30, 60, 120])('fades over the final 0.4s and hands off only when the ship rests, at %sHz', (fps) => {
+    const track = new FakeTrack();
+    const music = new MusicController(track, { choice: 'megapop' });
+    music.start();
+    let level = 0;
+    let plays = 0;
+    let paused = false;
+    const sfx = new SfxPlayer({ play: (_key, volume, finished) => {
+      plays++;
+      level = volume;
+      return { setVolume: gain => { level = gain; }, pause: () => { paused = true; },
+        resume: () => { paused = false; }, stop: finished };
+    } }, seededRng(1), { volume: 0.8 });
+    const encounter = new BossEncounterAudio({ music, sfx });
+    const sim = new BossTrialSim();
+    runFor(sim, 13.6, undefined, fps);
+    encounter.update(sim.boss, false);
+    expect(level).toBeCloseTo(SFX_GAIN.boss_alarm * 0.8);
+    runFor(sim, 0.2, undefined, fps);
+    encounter.update(sim.boss, false);
+    expect(level).toBeCloseTo(SFX_GAIN.boss_alarm * 0.8 / 2);
+    const age = sim.boss.age;
+    for (let i = 0; i < fps; i++) encounter.update(sim.boss, true);
+    expect(paused).toBe(true);
+    expect(sim.boss.age).toBe(age);
+    sfx.setVolume(0);
+    expect(level).toBe(0);
+    sfx.setVolume(0.4);
+    expect(level).toBeCloseTo(SFX_GAIN.boss_alarm * 0.4 / 2);
+    encounter.update(sim.boss, false);
+    expect(paused).toBe(false);
+    let previous = level;
+    while (sim.boss.phase === 'entering') {
+      expect(music.currentTrack).toBe('megapop');
+      expect(sim.boss.position.y).toBeLessThan(235);
+      sim.step(1 / fps);
+      encounter.update(sim.boss, false);
+      expect(level).toBeLessThanOrEqual(previous);
+      if (sim.boss.phase === 'entering') {
+        expect(level).toBeCloseTo(SFX_GAIN.boss_alarm * 0.4 * (14 - sim.boss.age) / 0.4, 8);
+      }
+      previous = level;
+    }
+    expect(sim.boss.age).toBeGreaterThanOrEqual(14);
+    expect(sim.boss.age).toBeLessThan(14 + 1 / fps + FRAME);
+    expect(sim.boss.position.y).toBe(235);
+    expect(sfx.playingCount('boss_alarm')).toBe(0);
+    expect(plays).toBe(1);
+    expect(track.sources).toEqual(['megapop', 'gatekeeper']);
+    encounter.dispose();
+  });
+
+  it.each(['skip', 'reset'] as const)('cleans up a paused mid-fade alarm on %s and starts the next entrance at full gain', (action) => {
+    const levels: number[] = [];
+    const s = setup();
+    const sfx = new SfxPlayer({ play: (_key, volume, finished) => {
+      levels.push(volume);
+      return { setVolume: gain => { levels.push(gain); }, stop: finished };
+    } }, seededRng(1));
+    const encounter = new BossEncounterAudio({ music: s.music, sfx });
+    runFor(s.sim, 13.8);
+    encounter.update(s.sim.boss, false);
+    encounter.update(s.sim.boss, true);
+    expect(levels.at(-1)).toBeCloseTo(SFX_GAIN.boss_alarm * 0.8 / 2);
+    if (action === 'skip') {
+      s.sim.skipEntrance();
+      s.sim.step(FRAME);
+      encounter.update(s.sim.boss, false);
+      expect(s.music.currentTrack).toBe('gatekeeper');
+    }
+    encounter.dispose();
+    expect(sfx.playingCount()).toBe(0);
+    expect(s.music.currentTrack).toBe('megapop');
+    const next = new BossEncounterAudio({ music: s.music, sfx });
+    const sim = new BossTrialSim();
+    runFor(sim, 1);
+    next.update(sim.boss, false);
+    expect(levels.at(-1)).toBeCloseTo(SFX_GAIN.boss_alarm * 0.8);
+    expect(sfx.playingCount('boss_alarm')).toBe(1);
+    encounter.update(s.sim.boss, false);
+    expect(sfx.playingCount('boss_alarm')).toBe(1);
+    next.dispose();
+    expect(sfx.playingCount()).toBe(0);
   });
 
   it.each([0, 0.8])('continues on the fixed clock with SFX volume %s, including interrupted entrances', (volume) => {
