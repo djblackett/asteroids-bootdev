@@ -2,11 +2,11 @@
 import { MAX_FRAME_DT, SCREEN_WIDTH } from '../core/constants';
 import { GameSim, type SimEvent } from '../core/game';
 import type { GameConfig } from '../core/gameConfig';
-import { distanceToBeam, laserHits } from '../core/laser';
+import { distanceToBeam, laserEndPosition, laserHits } from '../core/laser';
 import { circlesOverlap, type Vec2 } from '../core/math';
 import { NO_INPUT, respawnPlayer } from '../core/player';
 import { seededRng } from '../core/rng';
-import { createUfoShot } from '../core/ufo';
+import { createUfoShot, type UfoShot } from '../core/ufo';
 
 export const BOSS_BONUS = 2000;
 export const BOSS_TOTAL_HP = 76;
@@ -15,6 +15,19 @@ export const BOSS_ATTACK = {
   opportunitySeconds: 4,
   chargeSeconds: 1,
   projectileSpeed: 170,
+  projectileLifetime: 3.5, // clears the longest volley before another warning can begin
+  specialEvery: 3,
+  spreadRadians: Math.PI / 10, // 18 degrees either side
+  beamChargeSeconds: 1.5,
+  beamSeconds: 1.25,
+  beamArcRadians: Math.PI / 6,
+  beamWidth: 12,
+  exposurePauseSeconds: 2.4,
+  pulseIntervalSeconds: 6.5,
+  pulseChargeSeconds: 1,
+  pulseCount: 6,
+  pulseSpeed: 145,
+  exposedMovementScale: 1.2,
 } as const;
 export const BOSS_HULL: readonly Vec2[] = [
   { x: 0, y: -65 }, { x: 48, y: -42 }, { x: 115, y: -48 }, { x: 170, y: -14 },
@@ -34,7 +47,31 @@ export interface BossSection {
   destroyedAt: number | null;
 }
 export interface BossFlash { position: Vec2; age: number; radius: number; color: number }
-export type BossEvent = { type: 'fire' | 'hit' | 'turret_destroyed' | 'core_destroyed' | 'explosion' | 'destroyed'; section?: SectionId; player?: number };
+export type AttackKind = 'single' | 'spread' | 'beam' | 'pulse';
+export interface BossCharge {
+  turret: SectionId;
+  kind: AttackKind;
+  target: Vec2;
+  origin: Vec2;
+  angle: number; // radians, locked at warning start
+  sweep: 1 | -1;
+  elapsed: number;
+  duration: number;
+}
+export interface BossBeam {
+  origin: Vec2;
+  startAngle: number;
+  angle: number;
+  sweep: 1 | -1;
+  elapsed: number;
+  hitPlayers: Set<number>;
+}
+export interface BossProjectile { kind: Exclude<AttackKind, 'beam'>; section: SectionId; remaining: number }
+export type BossEvent = { type: 'fire' | 'beam_charge' | 'beam_fire' | 'core_exposed' | 'pulse_charge' | 'hit' | 'turret_destroyed' | 'core_destroyed' | 'explosion' | 'destroyed'; kind?: AttackKind; section?: SectionId; player?: number };
+
+export function bossBeamSegment(beam: BossBeam): { start: Vec2; end: Vec2 } {
+  return { start: beam.origin, end: laserEndPosition(beam.origin, beam.angle * 180 / Math.PI - 90) };
+}
 
 function section(id: SectionId, hp: number, radius: number): BossSection {
   return { id, hp, maxHp: hp, radius, position: { x: 0, y: 0 }, hitFlash: 0, muzzleFlash: 0, destroyedAt: null };
@@ -45,11 +82,14 @@ export class Mothership {
   phase: 'warning' | 'entering' | 'fighting' | 'dying' | 'destroyed' = 'warning';
   age = 0;
   fightTime = 0;
+  movementTime = 0;
   deathTime = 0;
   exposedAt: number | null = null;
   hitFlash = 0;
   attackCooldown: number = BOSS_ATTACK.opportunitySeconds;
-  charge: { turret: 'left' | 'right'; target: Vec2; elapsed: number } | null = null;
+  charge: BossCharge | null = null;
+  beam: BossBeam | null = null;
+  attackCounts = { left: 0, right: 0 };
   nextTurret = 0;
   explosionCount = 0;
   creditedPlayer = 1;
@@ -75,9 +115,11 @@ export class BossTrialSim extends GameSim {
   readonly boss = new Mothership();
   bossFlashes: BossFlash[] = [];
   bossEvents: BossEvent[] = [];
+  readonly bossProjectiles = new Map<UfoShot, BossProjectile>();
   private accumulator = 0;
+  private attackInterrupted = false;
 
-  constructor(config: Partial<GameConfig> = {}) {
+  constructor(config: Partial<GameConfig> = {}, options: { exposedCore?: boolean } = {}) {
     super({ config, rng: seededRng(0xd4ead), ufos: false, startCooldown: 0 });
     this.spawner.spawnTimer = -1e9;
     this.players.forEach((p, index) => {
@@ -86,6 +128,15 @@ export class BossTrialSim extends GameSim {
       p.respawnTimer = 0;
       p.rotation = 180;
     });
+    if (options.exposedCore) {
+      const b = this.boss;
+      b.phase = 'fighting';
+      b.age = 3.3;
+      b.position.y = 235;
+      for (const s of [b.left, b.right]) { s.hp = 0; s.destroyedAt = b.age; }
+      b.syncSections();
+      this.exposeCore();
+    }
   }
 
   /** Fixed 60 Hz independent of display rate. Ordinary play never instantiates this class. */
@@ -94,8 +145,11 @@ export class BossTrialSim extends GameSim {
     this.accumulator += Math.min(Math.max(dt, 0), MAX_FRAME_DT);
     while (this.accumulator + 1e-10 >= 1 / 60) {
       this.accumulator = Math.max(0, this.accumulator - 1 / 60);
-      events.push(...super.step(1 / 60, input, input2));
+      this.expireProjectiles(1 / 60);
+      const tickEvents = super.step(1 / 60, input, input2);
       if (!this.isGameOver) this.tickBoss(1 / 60);
+      // hurt() appends to this same array during the boss tick, including co-op/game-over events.
+      events.push(...tickEvents);
     }
     return events;
   }
@@ -147,46 +201,129 @@ export class BossTrialSim extends GameSim {
       if (t >= 1) b.phase = 'fighting';
     } else {
       b.fightTime += dt;
-      b.position.x = SCREEN_WIDTH / 2 + Math.sin(b.fightTime * 0.32) * 260;
+      // Hold position while telegraphing/firing so the warning describes the actual world-space path.
+      if (!b.charge && !b.beam) b.movementTime += dt * (b.exposed ? BOSS_ATTACK.exposedMovementScale : 1);
+      b.position.x = SCREEN_WIDTH / 2 + Math.sin(b.movementTime * 0.32) * 260;
     }
     b.syncSections();
-    if (b.phase === 'fighting') this.fireTurret(dt);
+    this.attackInterrupted = false;
     this.collideBossWeapons();
+    // Player weapons resolve first: a section destroyed this tick cannot fire or deal beam damage.
+    if (b.phase === 'fighting' && !this.attackInterrupted) this.updateAttack(dt);
   }
 
-  private fireTurret(dt: number): void {
+  private expireProjectiles(dt: number): void {
+    for (const [shot, state] of this.bossProjectiles) {
+      state.remaining -= dt;
+      if (!shot.alive || state.remaining <= 1e-9 || this.boss[state.section].hp <= 0) {
+        shot.alive = false;
+        this.bossProjectiles.delete(shot);
+      }
+    }
+    this.ufoShots = this.ufoShots.filter((s) => s.alive);
+  }
+
+  private exposeCore(): void {
     const b = this.boss;
+    this.attackInterrupted = true;
+    b.exposedAt = b.age;
+    b.charge = null;
+    b.beam = null;
+    b.attackCooldown = Math.max(BOSS_ATTACK.exposurePauseSeconds, BOSS_ATTACK.pulseIntervalSeconds - BOSS_ATTACK.pulseChargeSeconds);
+    this.ufoShots = [];
+    this.bossProjectiles.clear();
+    this.flash(b.core.position, 58, 0xff6cbd);
+    this.bossEvents.push({ type: 'core_exposed', section: 'core' });
+  }
+
+  private updateAttack(dt: number): void {
+    const b = this.boss;
+    if (b.beam) {
+      const beam = b.beam;
+      if (b.right.hp <= 0) { b.beam = null; b.attackCooldown = BOSS_ATTACK.opportunitySeconds; return; }
+      beam.elapsed += dt;
+      if (beam.elapsed + 1e-9 >= BOSS_ATTACK.beamSeconds) {
+        b.beam = null;
+        b.attackCooldown = BOSS_ATTACK.opportunitySeconds;
+        return;
+      }
+      beam.angle = beam.startAngle + beam.sweep * BOSS_ATTACK.beamArcRadians * beam.elapsed / BOSS_ATTACK.beamSeconds;
+      this.collideEnergyBeam(beam);
+      return;
+    }
     if (!b.charge) {
       b.attackCooldown -= dt;
       if (b.attackCooldown > 1e-9) return;
-      b.attackCooldown = BOSS_ATTACK.opportunitySeconds;
-      const turrets = b.nextTurret === 0 ? [b.left, b.right] : [b.right, b.left];
-      const turret = turrets.find((s) => s.hp > 0);
-      if (!turret) return;
+      if (b.exposed) {
+        b.charge = { turret: 'core', kind: 'pulse', target: { ...b.core.position }, origin: { ...b.core.position }, angle: 0,
+          sweep: 1, elapsed: 0, duration: BOSS_ATTACK.pulseChargeSeconds };
+        this.bossEvents.push({ type: 'pulse_charge', section: 'core' });
+        return;
+      }
+      const turret = b.nextTurret === 0 ? b.left : b.right;
+      b.nextTurret = 1 - b.nextTurret;
+      // Preserve the absent turret's entire slot. A survivor never inherits its partner's frequency.
+      b.attackCooldown = BOSS_ATTACK.opportunitySeconds + BOSS_ATTACK.chargeSeconds;
+      if (turret.hp <= 0) return;
       const target = this.targetFor(turret.position);
       if (!target) return;
-      // Copy the world position once: neither player movement nor a closer co-op partner retargets the shot.
-      b.charge = { turret: turret === b.left ? 'left' : 'right', target: { ...target.position }, elapsed: 0 };
-      b.nextTurret = turret === b.left ? 1 : 0;
+      const id = turret.id as 'left' | 'right';
+      const count = ++b.attackCounts[id];
+      const kind = count % BOSS_ATTACK.specialEvery === 0 ? (id === 'left' ? 'spread' : 'beam') : 'single';
+      const origin = { x: turret.position.x, y: turret.position.y + 22 };
+      const sweep = Math.floor(count / BOSS_ATTACK.specialEvery) % 2 === 1 ? 1 : -1;
+      b.charge = { turret: id, kind, target: { ...target.position }, origin,
+        angle: Math.atan2(target.position.y - origin.y, target.position.x - origin.x), sweep,
+        elapsed: 0, duration: kind === 'beam' ? BOSS_ATTACK.beamChargeSeconds : BOSS_ATTACK.chargeSeconds };
+      if (kind === 'beam') this.bossEvents.push({ type: 'beam_charge', section: id });
       return;
     }
     const charge = b.charge;
     charge.elapsed += dt;
-    if (charge.elapsed + 1e-9 < BOSS_ATTACK.chargeSeconds) return;
+    if (charge.elapsed + 1e-9 < charge.duration) return;
     const turret = b[charge.turret];
     b.charge = null;
     b.attackCooldown = BOSS_ATTACK.opportunitySeconds;
     if (turret.hp <= 0) return;
-    const origin = { x: turret.position.x, y: turret.position.y + 22 };
-    const dx = charge.target.x - origin.x;
-    const dy = charge.target.y - origin.y;
-    const shot = createUfoShot(origin, Math.atan2(dy, dx) * 180 / Math.PI - 90);
-    const length = Math.hypot(dx, dy) || 1;
-    shot.velocity = { x: dx / length * BOSS_ATTACK.projectileSpeed, y: dy / length * BOSS_ATTACK.projectileSpeed };
-    shot.radius = 8;
-    this.ufoShots.push(shot); // base sim owns movement, shields, lives, invulnerability and co-op targeting
+    if (charge.kind === 'beam') {
+      b.beam = { origin: charge.origin, startAngle: charge.angle, angle: charge.angle, sweep: charge.sweep, elapsed: 0, hitPlayers: new Set() };
+      this.bossEvents.push({ type: 'beam_fire', section: turret.id });
+      this.collideEnergyBeam(b.beam);
+      return;
+    }
+    if (charge.kind === 'pulse') {
+      for (let i = 0; i < BOSS_ATTACK.pulseCount; i++) this.emitProjectile(charge, i * Math.PI * 2 / BOSS_ATTACK.pulseCount);
+      b.attackCooldown = BOSS_ATTACK.pulseIntervalSeconds - BOSS_ATTACK.pulseChargeSeconds;
+    } else {
+      const offsets = charge.kind === 'spread' ? [-BOSS_ATTACK.spreadRadians, 0, BOSS_ATTACK.spreadRadians] : [0];
+      for (const offset of offsets) this.emitProjectile(charge, charge.angle + offset);
+    }
     turret.muzzleFlash = 0.2;
-    this.bossEvents.push({ type: 'fire', section: turret.id });
+    this.bossEvents.push({ type: 'fire', kind: charge.kind, section: turret.id });
+  }
+
+  private emitProjectile(charge: BossCharge, angle: number): void {
+    if (charge.kind === 'beam') return;
+    const speed = charge.kind === 'pulse' ? BOSS_ATTACK.pulseSpeed : BOSS_ATTACK.projectileSpeed;
+    const shot = createUfoShot(charge.origin, angle * 180 / Math.PI - 90);
+    shot.velocity = { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
+    shot.radius = 8;
+    this.ufoShots.push(shot); // base sim owns movement and all ordinary hostile projectile damage rules
+    this.bossProjectiles.set(shot, { kind: charge.kind, section: charge.turret, remaining: BOSS_ATTACK.projectileLifetime });
+  }
+
+  private collideEnergyBeam(beam: BossBeam): void {
+    const segment = bossBeamSegment(beam);
+    for (const p of this.players) {
+      if (p.lives <= 0 || beam.hitPlayers.has(p.playerNumber)) continue;
+      if (distanceToBeam(segment, p.position) > p.radius + BOSS_ATTACK.beamWidth / 2) continue;
+      // Even a shield or respawn-protected contact consumes this beam's one hit on that ship.
+      beam.hitPlayers.add(p.playerNumber);
+      if (this.hurt(p, 'ufo_shot') === 'game_over') {
+        this.boss.beam = null;
+        return;
+      }
+    }
   }
 
   private hitSection(s: BossSection, owner: number): void {
@@ -202,21 +339,26 @@ export class BossTrialSim extends GameSim {
     this.bossEvents.push({ type: 'hit', section: s.id, player: owner });
     if (s.hp > 0) return;
     s.destroyedAt = b.age;
-    if (b.charge?.turret === s.id || s.id === 'core') {
+    if (b.charge?.turret === s.id || (b.beam && s.id === 'right') || s.id === 'core') {
       // Destroying a charging turret cancels its shot and gives a fresh attack opportunity.
       b.charge = null;
+      b.beam = null;
       b.attackCooldown = BOSS_ATTACK.opportunitySeconds;
+      this.attackInterrupted = true;
     }
+    for (const [shot, state] of this.bossProjectiles) if (state.section === s.id) shot.alive = false;
+    this.expireProjectiles(0);
     this.flash(s.position, s.id === 'core' ? 70 : 48, 0xff8050);
     if (s.id === 'core') {
       b.phase = 'dying';
       b.creditedPlayer = owner;
       this.ufoShots = []; // victory stops the attack immediately, including shots still in flight
+      this.bossProjectiles.clear();
       this.bossEvents.push({ type: 'core_destroyed', player: owner });
     } else {
       this.screenShake = 5;
       this.bossEvents.push({ type: 'turret_destroyed', section: s.id, player: owner });
-      if (b.exposed) b.exposedAt = b.age;
+      if (b.exposed) this.exposeCore();
     }
   }
 

@@ -538,7 +538,7 @@ export class GameSim {
   }
 
   /** One hit on a ship from `source`. @returns what happened to it, or 'game_over' if that ended the run. */
-  private hurt(player: PlayerState, source: HitSource): DamageResult | 'game_over' {
+  protected hurt(player: PlayerState, source: HitSource): DamageResult | 'game_over' {
     const result = takeDamage(player);
     if (result !== 'life_lost') return result;
     return this.afterLifeLost(player, source) ? 'life_lost' : 'game_over';

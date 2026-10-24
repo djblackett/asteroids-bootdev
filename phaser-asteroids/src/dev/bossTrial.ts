@@ -5,11 +5,13 @@ import type { GameScene } from '../scenes/GameScene';
 import { CachedText } from '../ui/hud';
 import { addText } from '../ui/text';
 import { drawMothership } from './bossTrialRenderer';
+import { bossAttackCue } from './bossTrialAudio';
 import { BOSS_BONUS, BOSS_TOTAL_HP, BossTrialSim } from './bossTrialSim';
 
 /** Invoked only by the DEV && casual && !recorded branch. No production bundle imports these files. */
 export function installBossTrial(scene: GameScene, isPaused: () => boolean): void {
-  const sim = new BossTrialSim(scene.sim.config);
+  const exposedCore = new URLSearchParams(window.location.search).get('bosscore') === '1';
+  const sim = new BossTrialSim(scene.sim.config, { exposedCore });
   scene.sim = sim;
   const audio = getAudio(scene);
   const mobile = getTouchControls(scene).isActive;
@@ -44,7 +46,7 @@ export function installBossTrial(scene: GameScene, isPaused: () => boolean): voi
     message.setVisible((warning || exposed || won) && !sim.isGameOver);
     if (warning) message.set('WARNING — MOTHERSHIP APPROACHING');
     else if (won) message.set(`MOTHERSHIP DESTROYED!\n+${BOSS_BONUS} POINTS`);
-    else if (exposed) message.set('CORE EXPOSED');
+    else if (exposed) message.set('CORE EXPOSED!');
     // The normal pause overlay covers trial HUD. Reset remains reachable at game over.
     const paused = isPaused();
     if (paused) {
@@ -55,7 +57,8 @@ export function installBossTrial(scene: GameScene, isPaused: () => boolean): voi
     }
     reset.setVisible(!paused);
     for (const event of sim.drainBossEvents()) {
-      if (event.type === 'fire') audio.sfx.playCue({ key: 'shoot_low', volume: SFX_GAIN.shoot_low, rate: 0.65 });
+      const cue = bossAttackCue(event);
+      if (cue) audio.sfx.playCue(cue);
       else if (event.type === 'hit' && b.age - lastHitSound > 0.085) {
         lastHitSound = b.age;
         audio.sfx.playCue({ key: 'shoot_high', volume: SFX_GAIN.shoot_high * 0.45, rate: 1.6 });

@@ -1,5 +1,6 @@
 import type Phaser from 'phaser';
-import { BOSS_ATTACK, BOSS_HULL, type BossTrialSim } from './bossTrialSim';
+import { laserEndPosition } from '../core/laser';
+import { BOSS_ATTACK, BOSS_HULL, bossBeamSegment, type BossTrialSim } from './bossTrialSim';
 
 /** One batched procedural hull, no textures, shaders, physics bodies or per-light objects. */
 export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim): void {
@@ -30,7 +31,7 @@ export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim
     g.closePath();
     g.lineStyle(9, 0x6e42c9, 0.13).strokePath();
     g.fillStyle(0x111727, 1).fillPath();
-    g.lineStyle(2.5, flicker ? 0x62cfe4 : 0x462945, 1).strokePath();
+    g.lineStyle(2.5, flicker ? (b.exposed ? 0xff536f : 0x62cfe4) : 0x462945, 1).strokePath();
     // Mirrored armored wing plates and red forward-facing vents make a capital-ship silhouette.
     for (const side of [-1, 1]) {
       polygon([side * 36, -34, side * 111, -37, side * 152, -9, side * 140, 28, side * 85, 39, side * 53, 20], 0x20273c, 0x8054b9);
@@ -38,7 +39,7 @@ export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim
       g.lineStyle(3, 0xf44375, flicker ? 0.85 : 0.1);
       g.lineBetween(x + side * 145, y + 12, x + side * 135, y + 29);
       for (let i = 0; i < 4; i++) {
-        g.fillStyle(i === Math.floor(b.age * 3) % 4 ? 0xaefaff : 0x376781, flicker ? 1 : 0.1);
+        g.fillStyle(b.exposed ? (i === Math.floor(b.age * 3) % 4 ? 0xffbd90 : 0xa73856) : (i === Math.floor(b.age * 3) % 4 ? 0xaefaff : 0x376781), flicker ? 1 : 0.1);
         g.fillRect(x + side * (62 + i * 17) - 2, y - 13, 4, 3);
       }
     }
@@ -51,19 +52,21 @@ export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim
       const sy = s.position.y;
       if (s.hp > 0) {
         if (b.phase === 'fighting' && !sim.isGameOver && b.charge?.turret === s.id) {
-          const progress = Math.min(1, b.charge.elapsed / BOSS_ATTACK.chargeSeconds);
+          const progress = Math.min(1, b.charge.elapsed / b.charge.duration);
           const chargePulse = (Math.sin(progress * Math.PI * 6) + 1) / 2;
-          // Amber halo and bright muzzle identify the sole charging turret for the full warning second.
-          g.fillStyle(0xffbe55, 0.2 + progress * 0.15 + chargePulse * 0.15).fillCircle(sx, sy, s.radius + 9 + chargePulse * 5);
-          g.lineStyle(3, 0xffdc83, 0.65 + chargePulse * 0.35).strokeCircle(sx, sy, s.radius + 6);
-          g.fillStyle(0xffdf8c, 0.65 + chargePulse * 0.35).fillCircle(sx, sy + 24, 10 + progress * 4);
+          const color = b.charge.kind === 'beam' ? 0xee64ff : 0xffbe55;
+          g.fillStyle(color, 0.2 + progress * 0.15 + chargePulse * 0.15).fillCircle(sx, sy, s.radius + 9 + chargePulse * 5);
+          g.lineStyle(3, color, 0.65 + chargePulse * 0.35).strokeCircle(sx, sy, s.radius + 6);
+          g.fillStyle(color, 0.65 + chargePulse * 0.35).fillCircle(sx, sy + 24, 10 + progress * 4);
         }
         // Visible circle = damage circle. The barrel is decoration outside the hit area.
+        const weaponColor = s.id === 'left' ? 0xffa269 : 0xdb82ef;
         g.fillStyle(0x080e1b, 1).fillCircle(sx, sy, s.radius);
-        g.lineStyle(3, s.hitFlash > 0 ? 0xffffff : 0xc277eb, 1).strokeCircle(sx, sy, s.radius);
+        g.lineStyle(3, s.hitFlash > 0 ? 0xffffff : weaponColor, 1).strokeCircle(sx, sy, s.radius);
         g.fillStyle(s.hitFlash > 0 ? 0xffe9ff : 0x623951, 1).fillRect(sx - 9, sy - 11, 18, 29);
-        g.lineStyle(2, 0xff587a, 1).strokeRect(sx - 9, sy - 11, 18, 29);
+        g.lineStyle(2, weaponColor, 1).strokeRect(sx - 9, sy - 11, 18, 29);
         g.fillStyle(0x202b40, 1).fillRect(sx - 6, sy + 18, 12, 10);
+        if (s.id === 'right') g.lineStyle(2, weaponColor, 0.9).strokeCircle(sx, sy + 23, 7);
         if (s.muzzleFlash > 0) {
           g.fillStyle(0xff6a40, s.muzzleFlash / 0.2).fillCircle(sx, sy + 24, 18);
           g.fillStyle(0xffef9a, 1).fillCircle(sx, sy + 24, 7);
@@ -98,6 +101,53 @@ export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim
       g.lineBetween(c.x + 20, c.y - 17, c.x - 20, c.y + 17);
     }
   }
+  if (b.phase === 'fighting' && !sim.isGameOver) {
+    const charge = b.charge;
+    if (charge && b[charge.turret].hp > 0) {
+      const p = charge.origin;
+      const ray = (angle: number, color: number, alpha: number): void => {
+        const end = laserEndPosition(p, angle * 180 / Math.PI - 90);
+        g.lineStyle(1.5, color, alpha).lineBetween(p.x, p.y, end.x, end.y);
+      };
+      if (charge.kind === 'pulse') {
+        const progress = charge.elapsed / charge.duration;
+        g.fillStyle(0xffa8df, 0.12 + progress * 0.16).fillCircle(p.x, p.y, 38 + progress * 18);
+        g.lineStyle(3, 0xffb4eb, 0.9).strokeCircle(p.x, p.y, 58 - progress * 25);
+        // Six short spokes show the fixed pattern; gaps stay unlit and safe.
+        for (let i = 0; i < BOSS_ATTACK.pulseCount; i++) {
+          const angle = i * Math.PI * 2 / BOSS_ATTACK.pulseCount;
+          g.lineStyle(2, 0xffb4eb, 0.6).lineBetween(p.x + Math.cos(angle) * 30, p.y + Math.sin(angle) * 30,
+            p.x + Math.cos(angle) * 95, p.y + Math.sin(angle) * 95);
+        }
+      } else if (charge.kind === 'beam') {
+        ray(charge.angle, 0xff80ee, 0.85);
+        ray(charge.angle + charge.sweep * BOSS_ATTACK.beamArcRadians, 0xdd66ff, 0.3);
+        // A persistent curved arrow shows the full sweep direction throughout charging.
+        const radius = 145;
+        const endAngle = charge.angle + charge.sweep * BOSS_ATTACK.beamArcRadians;
+        g.lineStyle(3, 0xff80ee, 0.9);
+        for (let i = 0; i < 16; i++) {
+          const a = charge.angle + charge.sweep * BOSS_ATTACK.beamArcRadians * i / 16;
+          const c = charge.angle + charge.sweep * BOSS_ATTACK.beamArcRadians * (i + 1) / 16;
+          g.lineBetween(p.x + Math.cos(a) * radius, p.y + Math.sin(a) * radius, p.x + Math.cos(c) * radius, p.y + Math.sin(c) * radius);
+        }
+        const tip = { x: p.x + Math.cos(endAngle) * radius, y: p.y + Math.sin(endAngle) * radius };
+        const tangent = endAngle + charge.sweep * Math.PI / 2;
+        for (const side of [-1, 1]) g.lineBetween(tip.x, tip.y, tip.x - Math.cos(tangent) * 13 + Math.cos(endAngle) * side * 8,
+          tip.y - Math.sin(tangent) * 13 + Math.sin(endAngle) * side * 8);
+      } else {
+        ray(charge.angle, 0xffbf72, 0.4);
+        if (charge.kind === 'spread') for (const side of [-1, 1]) ray(charge.angle + side * BOSS_ATTACK.spreadRadians, 0xff8752, 0.4);
+      }
+    }
+    if (b.beam && b.right.hp > 0) {
+      const { start, end } = bossBeamSegment(b.beam);
+      for (const [width, color, alpha] of [[30, 0xbd33ff, 0.12], [18, 0xe65eff, 0.3], [BOSS_ATTACK.beamWidth, 0xff58d8, 0.95], [3, 0xffedff, 1]]) {
+        g.lineStyle(width!, color!, alpha!).lineBetween(start.x, start.y, end.x, end.y);
+      }
+      g.fillStyle(0xffc4fa, 0.9).fillCircle(start.x, start.y, 13);
+    }
+  }
   for (const flash of sim.bossFlashes) {
     const life = 1 - flash.age / 0.65;
     const radius = flash.radius * (0.2 + flash.age * 2);
@@ -114,7 +164,13 @@ export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim
   }
   // Larger bright enemy shots retain the existing world's inner projectile and damage logic.
   for (const shot of sim.ufoShots) {
-    g.fillStyle(0xff523c, 0.17).fillCircle(shot.position.x, shot.position.y, 15);
-    g.lineStyle(2, 0xffd17c, 0.9).strokeCircle(shot.position.x, shot.position.y, shot.radius);
+    const kind = sim.bossProjectiles.get(shot)?.kind;
+    const color = kind === 'pulse' ? 0xffa4eb : kind === 'spread' ? 0xff8c42 : 0xff523c;
+    const state = sim.bossProjectiles.get(shot);
+    const alpha = state ? Math.min(1, state.remaining / 0.3) : 1;
+    g.fillStyle(color, 0.2 * alpha).fillCircle(shot.position.x, shot.position.y, 15);
+    g.fillStyle(color, alpha).fillCircle(shot.position.x, shot.position.y, shot.radius);
+    g.fillStyle(0xfff1de, alpha).fillCircle(shot.position.x, shot.position.y, 3);
+    g.lineStyle(2, kind === 'pulse' ? 0xffd5fc : 0xffd17c, 0.9 * alpha).strokeCircle(shot.position.x, shot.position.y, shot.radius);
   }
 }

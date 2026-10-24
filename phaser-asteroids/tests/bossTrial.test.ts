@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { GameSim } from '../src/core/game';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createLaser } from '../src/core/laser';
 import { seededRng } from '../src/core/rng';
-import { BOSS_ATTACK, BOSS_BONUS, BOSS_TOTAL_HP, BossTrialSim, hullTouches, type BossSection } from '../src/dev/bossTrialSim';
+import { BOSS_ATTACK, BOSS_BONUS, BOSS_TOTAL_HP, BossTrialSim, bossBeamSegment, hullTouches, type BossSection } from '../src/dev/bossTrialSim';
+import { bossAttackCue } from '../src/dev/bossTrialAudio';
+import { NO_INPUT } from '../src/core/player';
 import { SfxPlayer } from '../src/audio/sfxPlayer';
 import { FakeBackend } from './audioFakes';
 import { FRAME, runFor, shotAt, ufoShotAt } from './helpers';
@@ -26,6 +30,14 @@ function stripTurrets(sim: BossTrialSim): void {
 function startCharge(sim: BossTrialSim): void {
   for (let i = 0; i < 600 && !sim.boss.charge; i++) sim.step(FRAME);
   expect(sim.boss.charge).not.toBeNull();
+}
+
+function beamCharge(sim: BossTrialSim): void {
+  sim.boss.nextTurret = 1;
+  sim.boss.attackCounts.right = 2;
+  sim.boss.attackCooldown = FRAME;
+  sim.step(FRAME);
+  expect(sim.boss.charge?.kind).toBe('beam');
 }
 
 describe('development mothership trial', () => {
@@ -211,9 +223,8 @@ describe('development mothership trial', () => {
       }
       sim.ufoShots = [];
     }
-    expect(times).toHaveLength(3);
-    expect(times[1]! - times[0]!).toBeCloseTo(5);
-    expect(times[2]! - times[1]!).toBeCloseTo(5);
+    expect(times).toHaveLength(2);
+    expect(times[1]! - times[0]!).toBeCloseTo(10);
   });
 
   it.each([1, 2] as const)('locks a copied target position at charge start with %i player(s)', (playerCount) => {
@@ -357,6 +368,320 @@ describe('development mothership trial', () => {
     const sim = new GameSim({ rng: seededRng(4) });
     expect('boss' in sim).toBe(false);
     expect('bossEvents' in sim).toBe(false);
+  });
+
+  it('alternates two singles then a special per turret, with four clear recovery seconds and no overlapping hazards', () => {
+    const sim = arrived();
+    sim.player.lives = 100;
+    const attacks: string[] = [];
+    let lastEnd = -Infinity;
+    let wasActive = false;
+    let chargeKind = '';
+    for (let i = 0; i < 60 * 70; i++) {
+      const b = sim.boss;
+      // Keep a live target through multiple complete cycles, outside a firing beam's path.
+      sim.player.position = b.beam ? { x: 40, y: 40 } : { x: 640, y: 620 };
+      sim.player.shieldActive = true;
+      sim.step(FRAME);
+      expect(Boolean(b.charge && b.beam)).toBe(false);
+      const active = Boolean(b.charge || b.beam);
+      if (active && !wasActive) {
+        expect(sim.time - lastEnd).toBeGreaterThanOrEqual(4 - FRAME - 1e-8);
+        expect(sim.ufoShots).toHaveLength(0);
+        chargeKind = b.charge!.kind;
+        attacks.push(`${b.charge!.turret}:${chargeKind}`);
+      }
+      if (!active && wasActive) lastEnd = sim.time;
+      if (b.beam) expect(sim.ufoShots).toHaveLength(0);
+      if (!active && wasActive && chargeKind === 'spread') expect(sim.ufoShots).toHaveLength(3);
+      wasActive = active;
+    }
+    expect(attacks.slice(0, 12)).toEqual([
+      'left:single', 'right:single', 'left:single', 'right:single', 'left:spread', 'right:beam',
+      'left:single', 'right:single', 'left:single', 'right:single', 'left:spread', 'right:beam',
+    ]);
+  });
+
+  it('fires exactly three slow shots at the warned centre and +/-18 degrees, without retargeting', () => {
+    const sim = arrived();
+    sim.boss.attackCounts.left = 2;
+    sim.boss.attackCooldown = FRAME;
+    sim.step(FRAME);
+    const charge = structuredClone(sim.boss.charge!);
+    expect(charge.kind).toBe('spread');
+    const bossX = sim.boss.position.x;
+    sim.player.position = { x: 60, y: 600 };
+    runFor(sim, charge.duration);
+    expect(sim.boss.position.x).toBe(bossX);
+    expect(sim.ufoShots).toHaveLength(3);
+    sim.ufoShots.forEach((shot, i) => {
+      const angle = charge.angle + (i - 1) * BOSS_ATTACK.spreadRadians;
+      expect(shot.position).toEqual(charge.origin);
+      expect(shot.velocity.x).toBeCloseTo(Math.cos(angle) * 170);
+      expect(shot.velocity.y).toBeCloseTo(Math.sin(angle) * 170);
+    });
+    expect(sim.drainBossEvents().filter((e) => e.type === 'fire')).toEqual([{ type: 'fire', section: 'left', kind: 'spread' }]);
+    // Even shots fired across the long axis expire before the next warning.
+    for (const shot of sim.ufoShots) { shot.velocity = { x: 0, y: 0 }; }
+    runFor(sim, BOSS_ATTACK.projectileLifetime);
+    expect(sim.ufoShots).toHaveLength(0);
+    expect(sim.bossProjectiles.size).toBe(0);
+    expect(sim.boss.charge).toBeNull();
+  });
+
+  it('locks the beam warning, charges for 1.5s, sweeps 30 degrees over 1.25s, then recovers for 4s', () => {
+    const sim = arrived({ playerCount: 2 });
+    beamCharge(sim);
+    const charge = structuredClone(sim.boss.charge!);
+    sim.player.position = { x: 40, y: 40 };
+    sim.player2!.position = { x: 1200, y: 40 };
+    runFor(sim, BOSS_ATTACK.beamChargeSeconds - FRAME);
+    expect(sim.boss.beam).toBeNull();
+    expect(sim.boss.charge?.angle).toBe(charge.angle);
+    sim.step(FRAME);
+    expect(sim.boss.charge).toBeNull();
+    expect(sim.boss.beam?.angle).toBe(charge.angle);
+    expect(sim.boss.beam?.origin).toEqual(charge.origin);
+    expect(sim.ufoShots).toHaveLength(0);
+    runFor(sim, 0.5);
+    expect(sim.boss.beam?.angle).toBeCloseTo(charge.angle + charge.sweep * Math.PI / 6 * 0.5 / 1.25);
+    const segment = bossBeamSegment(sim.boss.beam!);
+    expect(segment.start).toEqual(charge.origin);
+    runFor(sim, 0.75 - FRAME);
+    expect(sim.boss.beam).not.toBeNull();
+    sim.step(FRAME);
+    expect(sim.boss.beam).toBeNull();
+    expect(sim.boss.attackCooldown).toBe(4);
+    runFor(sim, 4 - FRAME);
+    expect(sim.boss.charge).toBeNull();
+    sim.step(FRAME);
+    expect(sim.boss.charge?.turret).toBe('left');
+    const cues = sim.drainBossEvents().map((e) => e.type);
+    expect(cues.filter((e) => e === 'beam_charge')).toHaveLength(1);
+    expect(cues.filter((e) => e === 'beam_fire')).toHaveLength(1);
+  });
+
+  it.each(['none', 'shield', 'respawn', 'boost'] as const)('uses ordinary damage with %s protection, at most once per ship per beam', (protection) => {
+    const sim = arrived();
+    beamCharge(sim);
+    const charge = sim.boss.charge!;
+    if (protection === 'shield') sim.player.shieldActive = true;
+    if (protection === 'respawn') { sim.player.isRespawning = true; sim.player.respawnTimer = 10; }
+    if (protection === 'boost') { sim.player.boost.active = true; sim.player.boost.timer = 10; }
+    // Put the ship directly on the warned initial beam, away from the turret hitbox.
+    sim.player.position = { x: charge.origin.x + Math.cos(charge.angle) * 180, y: charge.origin.y + Math.sin(charge.angle) * 180 };
+    const events = [];
+    for (let i = 0; i < 90; i++) events.push(...sim.step(FRAME));
+    const damage = protection === 'none' || protection === 'boost';
+    expect(sim.player.lives).toBe(damage ? 2 : 3);
+    expect(events.filter((e) => e.type === 'player_hit')).toHaveLength(damage ? 1 : 0);
+    expect(sim.boss.beam?.hitPlayers.has(1)).toBe(true);
+    if (protection === 'shield') expect(sim.player.shieldActive).toBe(false);
+    sim.player.isRespawning = false; // removing protection cannot give the same beam another hit
+    for (let i = 0; i < 70; i++) {
+      const beam = sim.boss.beam!;
+      sim.player.position = { x: beam.origin.x + Math.cos(beam.angle) * 180, y: beam.origin.y + Math.sin(beam.angle) * 180 };
+      sim.step(FRAME);
+    }
+    expect(sim.player.lives).toBe(damage ? 2 : 3);
+  });
+
+  it.each(['shared', 'independent'] as const)('applies beam damage to the correct co-op ship with %s lives', (livesMode) => {
+    const sim = arrived({ playerCount: 2, livesMode });
+    beamCharge(sim);
+    const charge = sim.boss.charge!;
+    sim.player.position = { x: 40, y: 40 };
+    const p2 = sim.player2!;
+    p2.position = { x: charge.origin.x + Math.cos(charge.angle) * 180, y: charge.origin.y + Math.sin(charge.angle) * 180 };
+    const before = p2.lives;
+    const events = [];
+    for (let i = 0; i < 90; i++) events.push(...sim.step(FRAME));
+    expect(p2.lives).toBe(before - 1);
+    expect(sim.player.lives).toBe(livesMode === 'shared' ? before - 1 : 3);
+    expect(events).toContainEqual({ type: 'player_hit', player: 2, livesLeft: before - 1, source: 'ufo_shot' });
+  });
+
+  it('allows keyboard rotation and thrust to evade the complete beam path after its warning', () => {
+    const sim = arrived();
+    beamCharge(sim);
+    // Start where the boss aimed, turn 90 degrees during the warning, then thrust laterally.
+    runFor(sim, 0.3, { ...NO_INPUT, rotate: 1 });
+    expect(sim.player.rotation).toBeCloseTo(270);
+    runFor(sim, 1.2 + BOSS_ATTACK.beamSeconds, { ...NO_INPUT, move: 1 });
+    expect(sim.player.lives).toBe(3);
+    expect(sim.boss.beam).toBeNull();
+  });
+
+  it('damages a ship reached later in the sweep while leaving ships outside the arc safe', () => {
+    const sim = arrived({ playerCount: 2 });
+    beamCharge(sim);
+    const charge = sim.boss.charge!;
+    const inArc = charge.angle + charge.sweep * BOSS_ATTACK.beamArcRadians * 0.8;
+    const outOfArc = charge.angle - charge.sweep * Math.PI / 3;
+    sim.player.position = { x: charge.origin.x + Math.cos(inArc) * 220, y: charge.origin.y + Math.sin(inArc) * 220 };
+    sim.player2!.position = { x: charge.origin.x + Math.cos(outOfArc) * 220, y: charge.origin.y + Math.sin(outOfArc) * 220 };
+    runFor(sim, 1.5);
+    expect(sim.player.lives).toBe(3); // neither ship is on the initial firing line
+    runFor(sim, 1);
+    expect(sim.player.lives).toBe(2);
+    expect(sim.player2!.lives).toBe(3);
+    runFor(sim, 0.25);
+    expect(sim.boss.beam).toBeNull();
+    expect(sim.player2!.lives).toBe(3);
+  });
+
+  it('telegraphs the opposite sweep direction on the next beam special', () => {
+    const sim = arrived();
+    beamCharge(sim);
+    const firstSweep = sim.boss.charge!.sweep;
+    sim.player.position = { x: 40, y: 40 };
+    runFor(sim, 2.75);
+    sim.boss.nextTurret = 1;
+    sim.boss.attackCounts.right = 5;
+    sim.boss.attackCooldown = FRAME;
+    sim.step(FRAME);
+    expect(sim.boss.charge?.kind).toBe('beam');
+    expect(sim.boss.charge?.sweep).toBe(-firstSweep);
+  });
+
+  it('returns beam game-over events and stops damage when the last live ship is lost', () => {
+    const sim = arrived({ playerCount: 2 });
+    sim.player2!.lives = 0;
+    sim.player.lives = 1;
+    beamCharge(sim);
+    const charge = sim.boss.charge!;
+    sim.player.position = { x: charge.origin.x + Math.cos(charge.angle) * 180, y: charge.origin.y + Math.sin(charge.angle) * 180 };
+    const events = [];
+    for (let i = 0; i < 90; i++) events.push(...sim.step(FRAME));
+    expect(sim.isGameOver).toBe(true);
+    expect(sim.boss.beam).toBeNull();
+    expect(events.filter((e) => e.type === 'player_hit')).toHaveLength(1);
+    expect(events.some((e) => e.type === 'game_over')).toBe(true);
+    runFor(sim, 5);
+    expect(sim.player.lives).toBe(0);
+  });
+
+  it.each(['charging', 'firing'] as const)('cancels a %s beam permanently when the right turret dies', (state) => {
+    const sim = arrived();
+    beamCharge(sim);
+    if (state === 'firing') runFor(sim, BOSS_ATTACK.beamChargeSeconds);
+    sim.boss.right.hp = 1;
+    hit(sim, sim.boss.right);
+    expect(sim.boss.charge).toBeNull();
+    expect(sim.boss.beam).toBeNull();
+    sim.player.lives = 100;
+    sim.drainBossEvents();
+    runFor(sim, 40);
+    const events = sim.drainBossEvents();
+    expect(events.some((e) => e.type === 'beam_charge' || e.type === 'beam_fire' || (e.type === 'fire' && e.section === 'right'))).toBe(false);
+    expect(events.some((e) => e.type === 'fire' && e.section === 'left' && e.kind === 'spread')).toBe(true);
+  });
+
+  it('removes cannon shots on left turret destruction without increasing the right turret cadence', () => {
+    const sim = arrived();
+    startCharge(sim);
+    runFor(sim, 1);
+    expect(sim.ufoShots).toHaveLength(1);
+    sim.boss.left.hp = 1;
+    hit(sim, sim.boss.left);
+    expect(sim.ufoShots).toHaveLength(0);
+    expect(sim.bossProjectiles.size).toBe(0);
+    sim.player.lives = 100;
+    sim.drainBossEvents();
+    runFor(sim, 32);
+    const events = sim.drainBossEvents();
+    expect(events.some((e) => e.type === 'fire' && e.section === 'left')).toBe(false);
+    expect(events.filter((e) => e.type === 'fire' && e.section === 'right')).toHaveLength(2);
+    expect(events.filter((e) => e.type === 'beam_fire')).toHaveLength(1);
+  });
+
+  it('transitions once, clears hazards, pauses, then pulses six fixed directions every 6.5s with safe gaps', () => {
+    const sim = arrived();
+    stripTurrets(sim);
+    const b = sim.boss;
+    expect(sim.drainBossEvents().filter((e) => e.type === 'core_exposed')).toHaveLength(1);
+    expect(b.attackCooldown).toBeCloseTo(5.5);
+    expect(b.charge).toBeNull();
+    expect(b.beam).toBeNull();
+    expect(sim.ufoShots).toHaveLength(0);
+    runFor(sim, BOSS_ATTACK.exposurePauseSeconds);
+    expect(b.charge).toBeNull();
+    expect(sim.ufoShots).toHaveLength(0);
+    startCharge(sim);
+    expect(b.charge?.kind).toBe('pulse');
+    const origin = { ...b.charge!.origin };
+    sim.player.position = { x: origin.x, y: origin.y + 250 }; // down is midway between two spokes
+    runFor(sim, 1 - FRAME);
+    expect(sim.ufoShots).toHaveLength(0);
+    sim.step(FRAME);
+    expect(sim.ufoShots).toHaveLength(6);
+    const firstPulseTime = sim.time;
+    sim.ufoShots.forEach((shot, i) => {
+      expect(shot.position).toEqual(origin);
+      const angle = i * Math.PI / 3;
+      expect(shot.velocity.x).toBeCloseTo(Math.cos(angle) * 145);
+      expect(shot.velocity.y).toBeCloseTo(Math.sin(angle) * 145);
+    });
+    runFor(sim, 3.5);
+    expect(sim.player.lives).toBe(3);
+    expect(sim.ufoShots).toHaveLength(0);
+    sim.drainBossEvents();
+    runFor(sim, 3);
+    expect(sim.time - firstPulseTime).toBeCloseTo(6.5);
+    expect(sim.drainBossEvents().filter((e) => e.type === 'fire')).toEqual([{ type: 'fire', kind: 'pulse', section: 'core' }]);
+    expect(b.core.hp).toBe(40);
+  });
+
+  it('starts and resets the exposed-core shortcut with deterministic fresh state', () => {
+    const fresh = () => new BossTrialSim({}, { exposedCore: true });
+    const sim = fresh();
+    expect(sim.boss.exposed).toBe(true);
+    expect(sim.boss.phase).toBe('fighting');
+    expect(sim.boss.core.hp).toBe(40);
+    runFor(sim, 7);
+    expect(sim.ufoShots).toHaveLength(6);
+    const reset = fresh();
+    expect(reset.boss).toEqual(fresh().boss);
+    expect(reset.time).toBe(0);
+    expect(reset.bossProjectiles.size).toBe(0);
+    expect(reset.ufoShots).toHaveLength(0);
+    expect(reset.player.lives).toBe(3);
+  });
+
+  it.each([false, true])('repeats special attacks and core pulses at 30, 60 and 120Hz (core shortcut: %s)', (exposedCore) => {
+    const sims = [30, 60, 120].map((fps) => {
+      const sim = new BossTrialSim({}, { exposedCore });
+      sim.player.lives = 100;
+      const events = [];
+      for (let i = 0; i < fps * 75; i++) events.push(...sim.step(1 / fps), ...sim.drainBossEvents());
+      return { boss: sim.boss, shots: sim.ufoShots, player: sim.player, events };
+    });
+    expect(sims[1]).toEqual(sims[0]);
+    expect(sims[2]).toEqual(sims[0]);
+    expect(sims[0]!.events.some((e) => e.type === (exposedCore ? 'pulse_charge' : 'beam_fire'))).toBe(true);
+  });
+
+  it('keeps the trial and core shortcut behind the existing development/casual/unrecorded gate', () => {
+    const source = new TextDecoder().decode(readFileSync(resolve(import.meta.dirname, '../src/scenes/GameScene.ts')));
+    expect(source).toContain("import.meta.env.DEV && !this.isVerifiedMode && !this.rankedChallenge && new URLSearchParams(window.location.search).get('bosstrial') === '1'");
+    const installer = new TextDecoder().decode(readFileSync(resolve(import.meta.dirname, '../src/dev/bossTrial.ts')));
+    expect(installer).toContain("get('bosscore') === '1'");
+    expect(installer).toContain("reset.on('pointerdown', () => scene.scene.restart())");
+  });
+
+  it('gives all five new effects distinct restrained cues through the normal mute control', () => {
+    const cues = [
+      bossAttackCue({ type: 'fire', kind: 'spread' }), bossAttackCue({ type: 'beam_charge' }),
+      bossAttackCue({ type: 'beam_fire' }), bossAttackCue({ type: 'core_exposed' }), bossAttackCue({ type: 'fire', kind: 'pulse' }),
+    ];
+    expect(new Set(cues.map((cue) => `${cue?.key}:${cue?.rate}`)).size).toBe(5);
+    const backend = new FakeBackend();
+    const sfx = new SfxPlayer(backend, seededRng(1), { volume: 0 });
+    for (const cue of cues) sfx.playCue(cue!);
+    expect(sfx.played).toBe(0);
+    sfx.setVolume(0.5);
+    for (const cue of cues) { expect(cue!.volume).toBeLessThanOrEqual(0.4); sfx.playCue(cue!); }
+    expect(sfx.played).toBe(5);
   });
 
   it('plays trial cues through existing SFX volume, mute and concurrency controls', () => {
