@@ -141,6 +141,11 @@ export class SfxPlayer {
     }
   }
 
+  /** Presentation cues without a regular gameplay event; uses the same volume and voice limits. */
+  playCue(cue: SoundCue): void {
+    this.play(cue);
+  }
+
   playingCount(key?: SfxKey): number {
     if (key) return this.active.get(key)?.size ?? 0;
     let n = 0;

@@ -286,7 +286,12 @@ export class GameScene extends Phaser.Scene {
     this.setupInput();
     this.setupLifecycle();
     // Tree-shaken from production, and never injected into any recorded or ranked simulation.
-    if (import.meta.env.DEV && !this.isVerifiedMode && !this.rankedChallenge && new URLSearchParams(window.location.search).has('lightningtrial')) {
+    if (import.meta.env.DEV && !this.isVerifiedMode && !this.rankedChallenge && new URLSearchParams(window.location.search).get('bosstrial') === '1') {
+      const sim = this.sim;
+      void import('../dev/bossTrial').then(({ installBossTrial }) => {
+        if (this.scene.isActive() && this.sim === sim) installBossTrial(this, () => this.paused);
+      });
+    } else if (import.meta.env.DEV && !this.isVerifiedMode && !this.rankedChallenge && new URLSearchParams(window.location.search).has('lightningtrial')) {
       const sim = this.sim;
       void import('../dev/lightningTrial').then(({ installLightningTrial }) => {
         if (this.scene.isActive() && this.sim === sim) installLightningTrial(this, sim);
