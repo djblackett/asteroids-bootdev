@@ -1,5 +1,5 @@
 // This entire simulation is reached only through GameScene's DEV-only, unrecorded trial import.
-import { MAX_FRAME_DT, SCREEN_WIDTH } from '../core/constants';
+import { MAX_FRAME_DT, SCREEN_WIDTH, UFO_CONTINUOUS_SPAWN_TIME } from '../core/constants';
 import { GameSim, type SimEvent } from '../core/game';
 import type { GameConfig } from '../core/gameConfig';
 import { distanceToBeam, laserEndPosition, laserHits } from '../core/laser';
@@ -7,6 +7,7 @@ import { circlesOverlap, type Vec2 } from '../core/math';
 import { NO_INPUT, respawnPlayer } from '../core/player';
 import { seededRng } from '../core/rng';
 import { createUfoShot, type UfoShot } from '../core/ufo';
+import { BOSS_CINEMATIC as C } from './bossCinematic';
 
 export const BOSS_BONUS = 2000;
 export const BOSS_TOTAL_HP = 76;
@@ -67,7 +68,7 @@ export interface BossBeam {
   hitPlayers: Set<number>;
 }
 export interface BossProjectile { kind: Exclude<AttackKind, 'beam'>; section: SectionId; remaining: number }
-export type BossEvent = { type: 'fire' | 'beam_charge' | 'beam_fire' | 'core_exposed' | 'pulse_charge' | 'hit' | 'turret_destroyed' | 'core_destroyed' | 'explosion' | 'destroyed'; kind?: AttackKind; section?: SectionId; player?: number };
+export type BossEvent = { type: 'fire' | 'beam_charge' | 'beam_fire' | 'core_exposed' | 'pulse_charge' | 'hit' | 'turret_destroyed' | 'core_destroyed' | 'explosion' | 'detonation' | 'destroyed'; kind?: AttackKind; section?: SectionId; player?: number };
 
 export function bossBeamSegment(beam: BossBeam): { start: Vec2; end: Vec2 } {
   return { start: beam.origin, end: laserEndPosition(beam.origin, beam.angle * 180 / Math.PI - 90) };
@@ -84,6 +85,7 @@ export class Mothership {
   fightTime = 0;
   movementTime = 0;
   deathTime = 0;
+  detonated = false;
   exposedAt: number | null = null;
   hitFlash = 0;
   attackCooldown: number = BOSS_ATTACK.opportunitySeconds;
@@ -118,6 +120,7 @@ export class BossTrialSim extends GameSim {
   readonly bossProjectiles = new Map<UfoShot, BossProjectile>();
   private accumulator = 0;
   private attackInterrupted = false;
+  ordinaryPlay = false;
 
   constructor(config: Partial<GameConfig> = {}, options: { exposedCore?: boolean } = {}) {
     super({ config, rng: seededRng(0xd4ead), ufos: false, startCooldown: 0 });
@@ -131,7 +134,7 @@ export class BossTrialSim extends GameSim {
     if (options.exposedCore) {
       const b = this.boss;
       b.phase = 'fighting';
-      b.age = 3.3;
+      b.age = C.combatStart;
       b.position.y = 235;
       for (const s of [b.left, b.right]) { s.hp = 0; s.destroyedAt = b.age; }
       b.syncSections();
@@ -145,6 +148,16 @@ export class BossTrialSim extends GameSim {
     this.accumulator += Math.min(Math.max(dt, 0), MAX_FRAME_DT);
     while (this.accumulator + 1e-10 >= 1 / 60) {
       this.accumulator = Math.max(0, this.accumulator - 1 / 60);
+      const b = this.boss;
+      // Cinematics freeze normal rules, including power-up timers and friendly-fire damage.
+      // The visible player remains at the prepared approach position throughout the entrance.
+      if (!this.isGameOver && (b.phase === 'warning' || b.phase === 'entering' || b.phase === 'dying' || (b.phase === 'destroyed' && !this.ordinaryPlay))) {
+        this.asteroids = [];
+        this.ufos = [];
+        this.ufoShots = [];
+        this.tickBoss(1 / 60);
+        continue;
+      }
       this.expireProjectiles(1 / 60);
       const tickEvents = super.step(1 / 60, input, input2);
       if (!this.isGameOver) this.tickBoss(1 / 60);
@@ -152,6 +165,12 @@ export class BossTrialSim extends GameSim {
       events.push(...tickEvents);
     }
     return events;
+  }
+
+  /** Optional repeat-play shortcut, available only after the alarm has established itself. */
+  skipEntrance(): void {
+    const b = this.boss;
+    if ((b.phase === 'warning' || b.phase === 'entering') && b.age >= C.skipAfter) b.age = C.combatStart;
   }
 
   /** Presentation drains this queue once; pausing cannot replay a cue. */
@@ -176,27 +195,43 @@ export class BossTrialSim extends GameSim {
     }
     for (const f of this.bossFlashes) f.age += dt;
     this.bossFlashes = this.bossFlashes.filter((f) => f.age < 0.65);
-    if (b.phase === 'destroyed') return;
+    if (b.phase === 'destroyed') {
+      b.deathTime += dt;
+      if (!this.ordinaryPlay && b.deathTime >= C.aftermath) {
+        this.ordinaryPlay = true;
+        this.bossFlashes = [];
+        this.bossProjectiles.clear();
+        this.ufoShots = [];
+        this.screenShake = 0;
+        this.spawner.spawnTimer = 0;
+        this.ufoSpawner.enabled = true;
+        this.ufoSpawner.nextSpawnTime = this.spawner.gameplayTimer + UFO_CONTINUOUS_SPAWN_TIME;
+      }
+      return;
+    }
     if (b.phase === 'dying') {
       b.deathTime += dt;
-      while (b.explosionCount < 8 && b.deathTime >= b.explosionCount * 0.18) {
+      while (b.explosionCount < 10 && b.deathTime >= C.failure + b.explosionCount * 0.18) {
         const n = b.explosionCount++;
         this.flash({ x: b.position.x + Math.sin(n * 2.4) * 138, y: b.position.y + Math.cos(n * 3.1) * 36 }, 32, 0xff7040);
         this.bossEvents.push({ type: 'explosion' });
       }
-      if (b.deathTime >= 1.8) {
-        b.phase = 'destroyed';
+      if (!b.detonated && b.deathTime >= C.detonation) {
+        b.detonated = true;
         this.flash(b.position, 200, 0xffb4ef);
-        this.screenShake = 12;
+        this.bossEvents.push({ type: 'detonation' });
+      }
+      if (b.deathTime >= C.victory) {
+        b.phase = 'destroyed';
         this.playerByNumber(b.creditedPlayer).score += BOSS_BONUS;
         this.bossEvents.push({ type: 'destroyed', player: b.creditedPlayer });
       }
       return;
     }
-    if (b.age < 1.1) return;
+    if (b.age < C.entranceStart) return;
     if (b.phase === 'warning') b.phase = 'entering';
     if (b.phase === 'entering') {
-      const t = Math.min(1, (b.age - 1.1) / 2.2);
+      const t = Math.min(1, (b.age - C.entranceStart) / (C.combatStart - C.entranceStart));
       b.position.y = -120 + 355 * (1 - (1 - t) ** 3);
       if (t >= 1) b.phase = 'fighting';
     } else {
@@ -207,7 +242,7 @@ export class BossTrialSim extends GameSim {
     }
     b.syncSections();
     this.attackInterrupted = false;
-    this.collideBossWeapons();
+    if (b.phase === 'fighting') this.collideBossWeapons();
     // Player weapons resolve first: a section destroyed this tick cannot fire or deal beam damage.
     if (b.phase === 'fighting' && !this.attackInterrupted) this.updateAttack(dt);
   }
@@ -351,6 +386,7 @@ export class BossTrialSim extends GameSim {
     this.flash(s.position, s.id === 'core' ? 70 : 48, 0xff8050);
     if (s.id === 'core') {
       b.phase = 'dying';
+      this.screenShake = 0;
       b.creditedPlayer = owner;
       this.ufoShots = []; // victory stops the attack immediately, including shots still in flight
       this.bossProjectiles.clear();

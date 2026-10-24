@@ -43,6 +43,9 @@ class PhaserSfxBackend implements SfxBackend {
         return null;
       }
       return {
+        pause: () => { sound.pause(); },
+        resume: () => { if (sound.isPaused) sound.resume(); },
+        setVolume: (gain) => { (sound as AdjustableSound).setVolume(gain); },
         stop: () => {
           sound.stop();
           finish();
@@ -66,6 +69,7 @@ type AdjustableSound = Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound
  * destroyed, so no orphan stays behind. Only `MAX_DECODED_MUSIC_TRACKS` decoded tracks are kept in memory.
  */
 export class PhaserMusicTrack implements MusicTrack {
+  private disposed = false;
   private source: MusicTrackId = DEFAULT_MUSIC_TRACK;
   private sound: Phaser.Sound.BaseSound | null = null;
   private intent: 'idle' | 'playing' | 'paused' = 'idle';
@@ -125,6 +129,15 @@ export class PhaserMusicTrack implements MusicTrack {
     (this.sound as AdjustableSound | null)?.setRate(rate);
   }
 
+  prepare(id: MusicTrackId): void {
+    if (this.disposed) return;
+    if (this.manager.game.cache.audio.exists(trackDef(id).key) || this.pending.has(id) || this.failed.has(id)) return;
+    void this.load(id).then((result) => {
+      if (result === 'ok') { this.touch(id); this.begin(); }
+      else if (result === 'failed') this.fail(id);
+    });
+  }
+
   setVolume(gain: number): void {
     this.gain = gain;
     (this.sound as AdjustableSound | null)?.setVolume(gain);
@@ -147,6 +160,7 @@ export class PhaserMusicTrack implements MusicTrack {
 
   /** Creates the sound if the music is wanted and the source is ready; otherwise starts the download that will get us back here. */
   private begin(): void {
+    if (this.disposed) return;
     if (this.sound || this.intent !== 'playing' || this.failed.has(this.source)) return;
     const id = this.source;
     const def = trackDef(id);
@@ -235,7 +249,7 @@ export class PhaserMusicTrack implements MusicTrack {
       if (!response.ok) throw new Error(`HTTP ${response.status} for ${def.file}`);
       const data = await response.arrayBuffer();
       const buffer = await manager.context.decodeAudioData(data);
-      if (controller.signal.aborted) return 'aborted';
+      if (controller.signal.aborted || this.disposed) return 'aborted';
       manager.game.cache.audio.add(def.key, buffer);
       return 'ok';
     } catch (error) {
@@ -245,6 +259,16 @@ export class PhaserMusicTrack implements MusicTrack {
     } finally {
       if (this.pending.get(id) === controller) this.pending.delete(id);
     }
+  }
+
+  destroy(): void {
+    this.disposed = true;
+    for (const controller of this.pending.values()) controller.abort();
+    this.pending.clear();
+    this.sound?.destroy();
+    this.sound = null;
+    for (const sound of this.fading) sound.destroy();
+    this.fading.clear();
   }
 }
 
@@ -362,7 +386,7 @@ export class AudioDirector {
   destroy(): void {
     this.detach();
     this.sfx.stopAll();
-    this.track.stop();
+    this.track.destroy();
   }
 }
 

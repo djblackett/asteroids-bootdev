@@ -1,15 +1,20 @@
 import type Phaser from 'phaser';
 import { laserEndPosition } from '../core/laser';
 import { BOSS_ATTACK, BOSS_HULL, bossBeamSegment, type BossTrialSim } from './bossTrialSim';
+import { BOSS_CINEMATIC as C } from './bossCinematic';
 
 /** One batched procedural hull, no textures, shaders, physics bodies or per-light objects. */
-export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim): void {
+export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim, reducedMotion = false): void {
   g.clear();
   const b = sim.boss;
   const { x, y } = b.position;
-  const pulse = (Math.sin(b.age * 5) + 1) / 2;
+  const pulse = reducedMotion ? 0.5 : (Math.sin(b.age * 5) + 1) / 2;
   const dying = b.phase === 'dying';
-  const flicker = !dying || Math.floor(b.deathTime * 19) % 3 !== 0;
+  const flicker = !dying || (reducedMotion ? false : Math.floor(b.deathTime * 9) % 3 !== 0);
+  const entering = b.phase === 'entering';
+  const enginesOn = !entering || b.age >= 2;
+  const turretsOn = !entering || b.age >= 8;
+  const reactorOn = !entering || b.age >= 13;
   const polygon = (coords: readonly number[], fill: number, outline: number, width = 2): void => {
     const points = [];
     for (let i = 0; i < coords.length; i += 2) points.push({ x: x + coords[i]!, y: y + coords[i + 1]! });
@@ -19,9 +24,10 @@ export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim
     g.closePath().fillPath();
     g.lineStyle(width, outline, 1).strokePath();
   };
-  if (b.phase !== 'warning' && b.phase !== 'destroyed') {
+  if (b.phase !== 'warning' && b.phase !== 'destroyed' && !b.detonated) {
     // Small aft engines above the massive shoulders. Layered triangles suggest exhaust without particles.
     for (const side of [-1, 1]) {
+      if (!enginesOn) continue;
       g.fillStyle(0x6133c9, 0.22).fillTriangle(x + side * 75 - 16, y - 38, x + side * 75 + 16, y - 38, x + side * 75, y - 76 - pulse * 12);
       g.fillStyle(0x61e5ff, flicker ? 0.7 : 0.08).fillRect(x + side * 75 - 9, y - 44, 18, 6);
     }
@@ -60,7 +66,7 @@ export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim
           g.fillStyle(color, 0.65 + chargePulse * 0.35).fillCircle(sx, sy + 24, 10 + progress * 4);
         }
         // Visible circle = damage circle. The barrel is decoration outside the hit area.
-        const weaponColor = s.id === 'left' ? 0xffa269 : 0xdb82ef;
+        const weaponColor = turretsOn ? (s.id === 'left' ? 0xffa269 : 0xdb82ef) : 0x354052;
         g.fillStyle(0x080e1b, 1).fillCircle(sx, sy, s.radius);
         g.lineStyle(3, s.hitFlash > 0 ? 0xffffff : weaponColor, 1).strokeCircle(sx, sy, s.radius);
         g.fillStyle(s.hitFlash > 0 ? 0xffe9ff : 0x623951, 1).fillRect(sx - 9, sy - 11, 18, 29);
@@ -89,7 +95,7 @@ export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim
       }
     }
     const c = b.core.position;
-    const coreColor = b.core.hitFlash > 0 ? 0xffffff : b.exposed ? 0xff4a98 : 0x5c9ed5;
+    const coreColor = !reactorOn ? 0x293449 : b.core.hitFlash > 0 ? 0xffffff : b.exposed ? 0xff4a98 : 0x5c9ed5;
     g.fillStyle(coreColor, (b.exposed ? 0.17 + pulse * 0.12 : 0.07) * (flicker ? 1 : 0.1)).fillCircle(c.x, c.y, b.exposed ? 42 : 31);
     g.fillStyle(0x0a1123, 1).fillCircle(c.x, c.y, 26);
     g.lineStyle(b.exposed ? 3 : 2, coreColor, flicker ? 1 : 0.2).strokeCircle(c.x, c.y, 26);
@@ -100,7 +106,16 @@ export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim
       g.lineBetween(c.x - 20, c.y - 17, c.x + 20, c.y + 17);
       g.lineBetween(c.x + 20, c.y - 17, c.x - 20, c.y + 17);
     }
+    if (dying) {
+      // Bright faults crawl along hull seams before the silhouette ruptures.
+      g.lineStyle(2, 0xffae76, reducedMotion ? 0.4 : flicker ? 0.85 : 0.2);
+      for (let i = 0; i < Math.min(7, Math.floor(b.deathTime * 4)); i++) {
+        const p = BOSS_HULL[(i * 2 + 1) % BOSS_HULL.length]!;
+        g.lineBetween(x, y + 20, x + p.x, y + p.y);
+      }
+    }
   }
+  drawDestruction(g, sim, reducedMotion);
   if (b.phase === 'fighting' && !sim.isGameOver) {
     const charge = b.charge;
     if (charge && b[charge.turret].hp > 0) {
@@ -149,6 +164,7 @@ export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim
     }
   }
   for (const flash of sim.bossFlashes) {
+    if (reducedMotion || flash.radius === 200) continue;
     const life = 1 - flash.age / 0.65;
     const radius = flash.radius * (0.2 + flash.age * 2);
     const p = flash.position;
@@ -163,14 +179,65 @@ export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim
     }
   }
   // Larger bright enemy shots retain the existing world's inner projectile and damage logic.
-  for (const shot of sim.ufoShots) {
-    const kind = sim.bossProjectiles.get(shot)?.kind;
+  for (const [shot, state] of sim.bossProjectiles) {
+    const kind = state.kind;
     const color = kind === 'pulse' ? 0xffa4eb : kind === 'spread' ? 0xff8c42 : 0xff523c;
-    const state = sim.bossProjectiles.get(shot);
-    const alpha = state ? Math.min(1, state.remaining / 0.3) : 1;
+    const alpha = Math.min(1, state.remaining / 0.3);
     g.fillStyle(color, 0.2 * alpha).fillCircle(shot.position.x, shot.position.y, 15);
     g.fillStyle(color, alpha).fillCircle(shot.position.x, shot.position.y, shot.radius);
     g.fillStyle(0xfff1de, alpha).fillCircle(shot.position.x, shot.position.y, 3);
     g.lineStyle(2, kind === 'pulse' ? 0xffd5fc : 0xffd17c, 0.9 * alpha).strokeCircle(shot.position.x, shot.position.y, shot.radius);
+  }
+}
+
+/** Fixed-size geometry, derived from the death clock: no particles, timers or retained objects. */
+function drawDestruction(g: Phaser.GameObjects.Graphics, sim: BossTrialSim, reducedMotion: boolean): void {
+  const b = sim.boss;
+  if (sim.ordinaryPlay || (b.phase !== 'dying' && b.phase !== 'destroyed')) return;
+  const { x, y } = b.position;
+  const t = b.deathTime - C.detonation;
+  if (t >= 0) {
+    const life = Math.max(0, 1 - t / 2.8);
+    if (reducedMotion) {
+      g.lineStyle(2, 0xc07883, life * 0.5).strokeEllipse(x, y, 300, 110);
+      return;
+    }
+    // Two shock fronts, a short white-hot centre, then a slower amber fireball.
+    for (const delay of [0, 0.18]) {
+      const age = t - delay;
+      if (age < 0 || age > 1.7) continue;
+      g.lineStyle(5 * (1 - age / 1.7), delay ? 0xff669d : 0xffd7b4, (1 - age / 1.7) * 0.75)
+        .strokeCircle(x, y, 25 + age * 270);
+    }
+    const fire = Math.max(0, 1 - t / 1.2);
+    g.fillStyle(0xff5176, fire * 0.12).fillCircle(x, y, 110 + t * 80);
+    g.fillStyle(0xffb866, fire * 0.45).fillCircle(x, y, 55 + t * 45);
+    g.fillStyle(0xfff3db, Math.max(0, 1 - t / 0.35) * 0.9).fillCircle(x, y, 45 + t * 130);
+    // Hull-colored shards retain the mothership's wing shapes as they separate.
+    for (let i = 0; i < 56; i++) {
+      const angle = i * 2.39996;
+      const hull = BOSS_HULL[i % BOSS_HULL.length]!;
+      const speed = 48 + i % 9 * 17;
+      const px = x + hull.x * 0.65 + Math.cos(angle) * t * speed;
+      const py = y + hull.y * 0.65 + Math.sin(angle) * t * speed + t * t * 24;
+      const size = i < 14 ? 12 + i % 4 * 4 : 3 + i % 5;
+      g.fillStyle(i < 14 ? 0x343047 : i % 2 ? 0xffa475 : 0xc3afd8, life)
+        .fillTriangle(px, py, px + Math.cos(angle + t) * size, py + Math.sin(angle + t) * size, px - size * 0.4, py + size * 0.65);
+      if (i < 14) g.lineStyle(1, 0xf16c95, life * 0.7).lineBetween(px, py, px - size * 0.4, py + size * 0.65);
+    }
+  } else if (!reducedMotion && b.deathTime >= C.failure) {
+    // Local panel fragments and sparks accompany each of the ten staggered internal explosions.
+    for (let n = 0; n < b.explosionCount; n++) {
+      const age = b.deathTime - C.failure - n * 0.18;
+      if (age > 0.8) continue;
+      const ox = x + Math.sin(n * 2.4) * 138;
+      const oy = y + Math.cos(n * 3.1) * 36;
+      for (let i = 0; i < 6; i++) {
+        const a = i * Math.PI / 3 + n;
+        const px = ox + Math.cos(a) * age * 100;
+        const py = oy + Math.sin(a) * age * 100 + age * age * 40;
+        g.fillStyle(i % 2 ? 0xffb267 : 0x9b7895, 1 - age / 0.8).fillRect(px, py, 3 + i % 3 * 2, 3);
+      }
+    }
   }
 }

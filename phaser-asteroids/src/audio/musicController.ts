@@ -26,6 +26,8 @@ export interface MusicTrack {
   setRate(rate: number): void;
   /** The real gain of the track (Music setting x master gain x the track's own level); applies at once to a playing, paused or not yet created track. */
   setVolume(gain: number): void;
+  /** Warm the existing player's cache without changing the selected source. */
+  prepare?(track: MusicTrackId): void;
 }
 
 export type MusicState = 'stopped' | 'playing' | 'paused';
@@ -79,6 +81,9 @@ export class MusicController {
   private readonly rng: Rng;
   private soundtrack: MusicChoice;
   private current: MusicTrackId;
+  private regular: MusicTrackId;
+  private override: MusicTrackId | null = null;
+  private presentationGain = 1;
   /** Random mode: `current` was picked for a run that has not started yet, so `beginRun` keeps it (the title screen already plays it). */
   private freshPick: boolean;
 
@@ -97,6 +102,7 @@ export class MusicController {
     this.volume = clampVolume(options.volume ?? DEFAULT_MUSIC_VOLUME, DEFAULT_MUSIC_VOLUME);
     this.soundtrack = isMusicChoice(options.choice) ? options.choice : DEFAULT_MUSIC_TRACK;
     this.current = options.track ?? (this.soundtrack === 'random' ? pickRandomTrack(this.rng) : this.soundtrack);
+    this.regular = this.current;
     this.freshPick = this.soundtrack === 'random';
     this.track.setSource(this.current);
     this.track.setVolume(this.gain);
@@ -128,7 +134,29 @@ export class MusicController {
   }
   /** The real gain of the current track, as pushed to the player. */
   get gain(): number {
-    return trackMusicGain(this.volume, this.current);
+    return trackMusicGain(this.volume, this.current) * this.presentationGain;
+  }
+
+  /** Transient encounter state: never writes preferences or consumes Random's RNG. */
+  setTemporaryTrack(track: MusicTrackId | null): void {
+    if (track === this.override) return;
+    this.override = track;
+    this.switchTo(track ?? this.regular);
+  }
+
+  prepare(track: MusicTrackId): void { this.track.prepare?.(track); }
+
+  /** Driven by the scene's fixed cinematic clock, so pause freezes the fade too. */
+  setPresentationGain(gain: number): void {
+    const next = clampVolume(gain, 1);
+    if (next === this.presentationGain) return;
+    this.presentationGain = next;
+    this.track.setVolume(this.gain);
+  }
+
+  private selectRegular(track: MusicTrackId): void {
+    this.regular = track;
+    if (!this.override) this.switchTo(track);
   }
 
   /** Call once audio is allowed to play (after the browser's autoplay lock has lifted). Idempotent. */
@@ -166,7 +194,7 @@ export class MusicController {
     this.soundtrack = choice;
     this.onChoiceChanged?.(choice);
     if (choice === 'random') this.freshPick = false;
-    else this.switchTo(choice);
+    else this.selectRegular(choice);
   }
 
   /** Steps through Original, MegaPop, Gatekeeper, Random (wrapping). Returns the new setting. */
@@ -180,13 +208,15 @@ export class MusicController {
    * The pick made at start-up (before anything played) is kept, so the title screen's music carries on into the first game.
    */
   beginRun(): void {
+    this.setTemporaryTrack(null);
+    this.setPresentationGain(1);
     if (this.soundtrack !== 'random') {
       // Already the chosen track, except after a fall-back to the original: try the chosen one again.
-      this.switchTo(this.soundtrack);
+      this.selectRegular(this.soundtrack);
     } else if (this.freshPick) {
       this.freshPick = false;
     } else {
-      this.switchTo(pickRandomTrack(this.rng, this.current));
+      this.selectRegular(pickRandomTrack(this.rng, this.regular));
     }
   }
 
@@ -200,8 +230,10 @@ export class MusicController {
       this.warn('the original music could not be loaded; the game continues without music');
       return;
     }
-    this.warn(`music track "${choiceLabel(track)}" could not be loaded; playing "${choiceLabel(DEFAULT_MUSIC_TRACK)}" instead`);
-    this.switchTo(DEFAULT_MUSIC_TRACK);
+    const fallback = this.override && this.regular !== track ? this.regular : DEFAULT_MUSIC_TRACK;
+    this.warn(`music track "${choiceLabel(track)}" could not be loaded; playing "${choiceLabel(fallback)}" instead`);
+    if (this.override) this.switchTo(fallback);
+    else this.selectRegular(DEFAULT_MUSIC_TRACK);
   }
 
   setGamePaused(paused: boolean): void {

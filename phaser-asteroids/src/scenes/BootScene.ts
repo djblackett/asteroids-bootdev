@@ -38,7 +38,12 @@ export class BootScene extends Phaser.Scene {
     });
     this.startup = resolveStartupMusic(browserStorage(), defaultRng);
     const music = trackDef(this.startup.track);
-    for (const [key, file] of [[music.key, music.file] as const, ...SFX_ASSETS]) this.load.audio(key, file);
+    const bossTrial = import.meta.env.DEV && new URLSearchParams(window.location.search).get('bosstrial') === '1';
+    for (const [key, file] of [[music.key, music.file] as const, ...SFX_ASSETS]) {
+      // The experimental recording should not add download/decode work to ordinary or production boots.
+      if (key === 'boss_alarm' && !bossTrial) continue;
+      this.load.audio(key, file);
+    }
   }
 
   create(): void {

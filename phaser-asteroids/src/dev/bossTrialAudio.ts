@@ -1,6 +1,49 @@
 import { SFX_GAIN } from '../audio/audioConfig';
 import type { SoundCue } from '../audio/sfxPlayer';
 import type { BossEvent } from './bossTrialSim';
+import type { Mothership } from './bossTrialSim';
+import type { MusicController } from '../audio/musicController';
+import type { SfxPlayer } from '../audio/sfxPlayer';
+import { BOSS_CINEMATIC as C } from './bossCinematic';
+
+/** A lifecycle adapter to the shared audio system; owns no independent sound player or timers. */
+export class BossEncounterAudio {
+  private alarmStarted = false;
+  private fighting = false;
+  private finished = false;
+
+  constructor(private readonly audio: { music: MusicController; sfx: SfxPlayer }) {
+    audio.sfx.stopCue('boss_alarm');
+    audio.music.prepare('gatekeeper');
+  }
+
+  update(b: Mothership, paused: boolean): void {
+    if (this.finished) return;
+    const entering = b.phase === 'warning' || b.phase === 'entering';
+    if (entering) {
+      this.audio.music.setPresentationGain(Math.max(0, 1 - b.age / C.musicFade));
+      if (!paused && !this.alarmStarted && b.age >= C.alarmStart) {
+        this.alarmStarted = true;
+        this.audio.sfx.playCue({ key: 'boss_alarm', volume: SFX_GAIN.boss_alarm });
+      }
+      this.audio.sfx.pauseCue('boss_alarm', paused);
+    } else if (!this.fighting) {
+      this.fighting = true;
+      this.audio.sfx.stopCue('boss_alarm');
+      this.audio.music.setTemporaryTrack('gatekeeper');
+      this.audio.music.setPresentationGain(1);
+    }
+    if (b.phase === 'destroyed') this.dispose();
+  }
+
+  dispose(): void {
+    if (this.finished) return;
+    this.finished = true;
+    this.audio.sfx.stopCue('boss_alarm');
+    this.audio.music.setTemporaryTrack(null);
+    this.audio.music.setPresentationGain(1);
+  }
+}
 
 /** One restrained, pitched sample per cue, through the existing volume/overlap limiter. No gameplay RNG. */
 export function bossAttackCue(event: BossEvent): SoundCue | null {

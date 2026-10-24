@@ -6,6 +6,7 @@ import { createLaser } from '../src/core/laser';
 import { seededRng } from '../src/core/rng';
 import { BOSS_ATTACK, BOSS_BONUS, BOSS_TOTAL_HP, BossTrialSim, bossBeamSegment, hullTouches, type BossSection } from '../src/dev/bossTrialSim';
 import { bossAttackCue } from '../src/dev/bossTrialAudio';
+import { BOSS_CINEMATIC as C } from '../src/dev/bossCinematic';
 import { NO_INPUT } from '../src/core/player';
 import { SfxPlayer } from '../src/audio/sfxPlayer';
 import { FakeBackend } from './audioFakes';
@@ -13,7 +14,7 @@ import { FRAME, runFor, shotAt, ufoShotAt } from './helpers';
 
 function arrived(config: ConstructorParameters<typeof BossTrialSim>[0] = {}): BossTrialSim {
   const sim = new BossTrialSim(config);
-  runFor(sim, 3.4);
+  runFor(sim, C.combatStart + 0.1);
   sim.drainBossEvents();
   return sim;
 }
@@ -309,14 +310,15 @@ describe('development mothership trial', () => {
     expect(sim.boss.core.hp).toBe(0);
     expect(sim.ufoShots).toHaveLength(0);
     expect(sim.totalScore).toBe(0);
-    runFor(sim, 2);
+    runFor(sim, C.victory + FRAME);
     expect(sim.boss.phase).toBe('destroyed');
-    expect(sim.boss.explosionCount).toBe(8);
+    expect(sim.boss.explosionCount).toBe(10);
     expect(sim.player2!.score).toBe(BOSS_BONUS);
     expect(sim.player.score).toBe(0);
     expect(sim.bossEvents.filter((e) => e.type === 'destroyed')).toHaveLength(1);
     expect(sim.bossEvents.filter((e) => e.type === 'core_destroyed')).toHaveLength(1);
-    expect(sim.bossFlashes.some((f) => f.radius === 200)).toBe(true);
+    expect(sim.boss.detonated).toBe(true);
+    expect(sim.bossEvents.filter((e) => e.type === 'detonation')).toHaveLength(1);
     runFor(sim, 3);
     expect(sim.totalScore).toBe(BOSS_BONUS);
     expect(sim.ufoShots).toHaveLength(0);

@@ -71,6 +71,9 @@ export function cueForEvent(event: SimEvent, rng: Rng): SoundCue | null {
 /** One playing sound. */
 export interface PlayingSound {
   stop(): void;
+  pause?(): void;
+  resume?(): void;
+  setVolume?(gain: number): void;
 }
 
 /** What the player needs from the audio engine. Returns null when the sound could not be started. */
@@ -123,6 +126,8 @@ export class SfxPlayer {
     const next = clampVolume(volume, this.volume);
     if (next === this.volume) return;
     this.volume = next;
+    // The alarm is long enough for settings changes to matter while it is playing.
+    for (const voice of this.active.get('boss_alarm')?.keys() ?? []) voice.setVolume?.(SFX_GAIN.boss_alarm * next);
     this.onVolumeChanged?.(next);
   }
 
@@ -180,8 +185,21 @@ export class SfxPlayer {
     this.active.clear();
   }
 
+  stopCue(key: SfxKey): void {
+    for (const voice of [...(this.active.get(key)?.keys() ?? [])]) voice.stop();
+    this.active.delete(key);
+  }
+
+  pauseCue(key: SfxKey, paused: boolean): void {
+    for (const voice of this.active.get(key)?.keys() ?? []) {
+      if (paused) voice.pause?.();
+      else voice.resume?.();
+    }
+  }
+
   private play(cue: SoundCue, attenuateOverlap = true): void {
     if (this.volume <= 0) return;
+    if (cue.key === 'boss_alarm' && this.playingCount(cue.key) > 0) return;
     const group = SFX_GROUP[cue.key];
     const now = this.clock();
     // Multi-Shot and dense chains share one short zap; no burst of overlapping electrical sounds.

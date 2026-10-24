@@ -45,6 +45,7 @@ const DURATION: Record<SfxKey, number> = {
   laser: 2.04,
   lightning: 0.11,
   boost: 0.77,
+  boss_alarm: 20.0135,
   player_death: 3.35,
 };
 

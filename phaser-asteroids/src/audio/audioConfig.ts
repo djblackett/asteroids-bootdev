@@ -17,6 +17,7 @@ export type SfxKey =
   | 'laser'
   | 'lightning'
   | 'boost'
+  | 'boss_alarm'
   | 'player_death';
 
 /** Phaser audio-cache key of the original track (kept as it always was; the other tracks are `music-<id>`). */
@@ -75,6 +76,7 @@ export const SFX_ASSETS: ReadonlyArray<SfxAsset> = [
   ['laser', 'audio/sfx/laser.ogg'],
   ['lightning', 'audio/sfx/lightning.wav'],
   ['boost', 'audio/sfx/boost-woosh.ogg'],
+  ['boss_alarm', 'audio/sfx/robotic-alarm.mp3'],
   ['player_death', 'audio/sfx/player-death.ogg'],
 ];
 
@@ -102,7 +104,7 @@ export const DEFAULT_SFX_VOLUME = 0.8;
 /** The pause-screen controls move a setting in steps of this size. */
 export const VOLUME_STEP = 0.1;
 
-export type SfxGroup = 'shoot' | 'explosion' | 'laser' | 'lightning' | 'boost' | 'death';
+export type SfxGroup = 'shoot' | 'explosion' | 'laser' | 'lightning' | 'boost' | 'death' | 'alarm';
 
 export const SFX_GROUP: Readonly<Record<SfxKey, SfxGroup>> = {
   shoot_low: 'shoot',
@@ -114,6 +116,7 @@ export const SFX_GROUP: Readonly<Record<SfxKey, SfxGroup>> = {
   laser: 'laser',
   lightning: 'lightning',
   boost: 'boost',
+  boss_alarm: 'alarm',
   player_death: 'death',
 };
 
@@ -148,6 +151,8 @@ export const SFX_GAIN: Readonly<Record<SfxKey, number>> = {
   laser: 0.5,
   lightning: 0.4,
   boost: 0.6,
+  // Measured -16.5 dB RMS, 0 dBFS peak. Default effective gain .44 leaves 7 dB peak headroom.
+  boss_alarm: 0.55,
   player_death: 0.8,
 };
 
@@ -170,6 +175,7 @@ export const OVERLAP_FALLOFF: Readonly<Record<SfxGroup, number>> = {
   laser: 0.7,
   lightning: 0.65,
   boost: 1,
+  alarm: 1,
   death: 1,
 };
 export const OVERLAP_FALLOFF_MAX_STEPS = 3;
