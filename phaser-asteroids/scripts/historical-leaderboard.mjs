@@ -40,8 +40,8 @@ try {
   const now = Date.now();
   const rows = [
     ['Old Champ_99!', 20000, '1.0.0', now, 'visible'], // historical rules, inside the current week
-    ['Current Pilot', 1000, '1.1.0', now, 'visible'],
-    ['Past Week', 30000, '1.1.0', now - 9 * 86400000, 'visible'],
+    ['Current Pilot', 1000, '1.2.0', now, 'visible'],
+    ['Past Week', 30000, '1.2.0', now - 9 * 86400000, 'visible'],
     ['Hidden Pilot', 99999, '1.0.0', now, 'hidden'],
     ['Unknown Pilot', 99998, '9.0.0', now, 'visible'],
     ['Zero Pilot', 0, '1.0.0', now, 'visible'],
@@ -55,7 +55,7 @@ try {
   }).join('\n')));
   const board = await api('/leaderboard/all-time');
   assert.equal(board.total, 3);
-  assert.deepEqual(board.entries.map((e) => [e.id, e.rank, e.rulesVersion]), [[id(2), 1, '1.1.0'], [id(0), 2, '1.0.0'], [id(1), 3, '1.1.0']]);
+  assert.deepEqual(board.entries.map((e) => [e.id, e.rank, e.rulesVersion]), [[id(2), 1, '1.2.0'], [id(0), 2, '1.0.0'], [id(1), 3, '1.2.0']]);
   const weekly = await api('/leaderboard/weekly');
   assert.equal(weekly.total, 1);
   assert.equal(weekly.entries[0].id, id(1));
@@ -73,10 +73,10 @@ try {
   const bestLine = 'YOUR BEST VERIFIED SCORE: 20,000  V1  (Old Champ_99!)';
   await waitText(page, 'StartScene', bestLine);
   let texts = await sceneTexts(page, 'StartScene');
-  assert.ok(!texts.includes('Old Champ_99!') && texts.includes('V2'));
+  assert.ok(!texts.includes('Old Champ_99!') && texts.includes('V3'));
   await allTime(page);
   texts = await sceneTexts(page, 'StartScene');
-  assert.ok(texts.includes(caption) && texts.includes('V1') && texts.includes('V2') && texts.includes('YOU'));
+  assert.ok(texts.includes(caption) && texts.includes('V1') && texts.includes('V3') && texts.includes('YOU'));
   const cached = await page.evaluate(() => JSON.parse(localStorage.getItem('asteroids.rankedScores')));
   assert.equal(cached[0].rulesVersion, '1.0.0');
   fs.mkdirSync('scripts/.smoke-output', { recursive: true });
@@ -100,13 +100,13 @@ try {
   await clickItem(page, 'submit', 'result');
   await waitText(page, 'GameScene', 'SCORE VERIFIED!');
   texts = await sceneTexts(page, 'GameScene');
-  assert.ok(texts.includes('V2') && texts.includes('YOUR BEST: 20,000  V1') && !texts.includes('NEW PERSONAL BEST!'));
+  assert.ok(texts.includes('V3') && texts.includes('YOUR BEST: 20,000  V1') && !texts.includes('NEW PERSONAL BEST!'));
   const accepted = (await rankedState(page)).outcome;
-  assert.equal(accepted.score.rulesVersion, '1.1.0');
+  assert.equal(accepted.score.rulesVersion, '1.2.0');
   assert.deepEqual((await api(`/scores/${accepted.score.id}`)).ranks, accepted.ranks);
   assert.equal((await page.evaluate(() => JSON.parse(localStorage.getItem('asteroids.rankedScores'))))[0].id, id(0));
   assert.deepEqual(page.problems, []);
-  console.log('PASS verified V2 submission: result labels, historical personal best and consistent server ranks');
+  console.log('PASS verified V3 submission: result labels, historical personal best and consistent server ranks');
   await context.close();
 } finally {
   await game?.close();

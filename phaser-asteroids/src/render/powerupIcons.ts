@@ -11,6 +11,7 @@ export const POWERUP_COLOR: Record<PowerUpType, number> = {
   shield: 0x00ffff,
   multi_shot: 0xffa500,
   slow_motion: 0xff00ff,
+  chain_lightning: 0x39cfff,
   mega_power: 0xff64ff,
   revive: 0x00ff64,
 };
@@ -37,6 +38,21 @@ export function drawPowerUpIcon(
   const radius = Math.trunc(baseRadius * (0.8 + 0.4 * pulse));
 
   switch (type) {
+    case 'chain_lightning': {
+      g.lineStyle(1.5, POWERUP_COLOR.chain_lightning, 0.7);
+      g.strokeCircle(cx, cy, radius);
+      g.fillStyle(POWERUP_COLOR.chain_lightning, 1);
+      g.beginPath();
+      g.moveTo(cx + radius * 0.45, cy - radius * 0.95);
+      g.lineTo(cx - radius * 0.6, cy + radius * 0.12);
+      g.lineTo(cx - radius * 0.05, cy + radius * 0.12);
+      g.lineTo(cx - radius * 0.4, cy + radius * 0.95);
+      g.lineTo(cx + radius * 0.65, cy - radius * 0.2);
+      g.lineTo(cx + radius * 0.1, cy - radius * 0.2);
+      g.closePath();
+      g.fillPath();
+      break;
+    }
     case 'rapid_fire': {
       const color = POWERUP_COLOR.rapid_fire;
       g.lineStyle(3, color, 1);

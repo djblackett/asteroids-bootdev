@@ -12,13 +12,13 @@ import {
 import { getForwardVector, type Vec2 } from './math';
 import { pick, uniform, type Rng } from './rng';
 
-export type PowerUpType = 'rapid_fire' | 'shield' | 'multi_shot' | 'slow_motion' | 'mega_power' | 'revive';
+export type PowerUpType = 'rapid_fire' | 'shield' | 'multi_shot' | 'slow_motion' | 'chain_lightning' | 'mega_power' | 'revive';
 
 /**
- * The four ordinary drops. MEGA POWER has its own, rarer roll. REVIVE never dropped in the Python game (its spawn chance
+ * The five ordinary drops. MEGA POWER has its own, rarer roll. REVIVE never dropped in the Python game (its spawn chance
  * constant is unused); here it replaces an ordinary drop only while a player is out of lives (see `chooseOrdinaryDrop`).
  */
-export const ORDINARY_POWERUPS: readonly PowerUpType[] = ['rapid_fire', 'shield', 'multi_shot', 'slow_motion'];
+export const ORDINARY_POWERUPS: readonly PowerUpType[] = ['rapid_fire', 'shield', 'multi_shot', 'slow_motion', 'chain_lightning'];
 
 export interface PowerUp {
   position: Vec2;
@@ -44,7 +44,7 @@ export function createPowerUp(x: number, y: number, type: PowerUpType, rng: Rng,
 
 /**
  * Drop roll for a destroyed asteroid (Python `maybe_spawn_powerup`): first a 1.5 % chance of MEGA POWER,
- * otherwise a 12 % chance of one of the four ordinary power-ups, chosen uniformly (~13.3 % overall).
+ * otherwise a 12 % chance of one of the five ordinary power-ups, chosen uniformly (~13.3 % overall).
  */
 export function maybeSpawnPowerUp(x: number, y: number, rng: Rng, reviveEligible = false): PowerUp | null {
   if (rng() < MEGA_POWER_SPAWN_CHANCE) return createPowerUp(x, y, 'mega_power', rng);
@@ -53,7 +53,7 @@ export function maybeSpawnPowerUp(x: number, y: number, rng: Rng, reviveEligible
 }
 
 /**
- * The type of an ordinary drop (an asteroid's ordinary roll, or the guaranteed UFO drop): one of the four ordinary
+ * The type of an ordinary drop (an asteroid's ordinary roll, or the guaranteed UFO drop): one of the five ordinary
  * power-ups, or, while a Revive is useful (`reviveEligible`), a Revive in `REVIVE_SPAWN_CHANCE` of the cases. Nothing
  * extra is drawn from `rng` when it is not eligible, so single-player games and two-player games with nobody down play
  * out exactly as before.

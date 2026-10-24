@@ -1,5 +1,6 @@
 import {
   ASSIST_TRAVEL_TURN_SPEED,
+  CHAIN_LIGHTNING_DURATION,
   BOOST_COOLDOWN,
   BOOST_DURATION,
   BOOST_SPEED_MULTIPLIER,
@@ -95,6 +96,7 @@ export interface PlayerState {
 
   rapidFire: TimedEffect;
   multiShot: TimedEffect;
+  chainLightning: TimedEffect;
   /** While active, Rapid Fire and Multi-Shot are held on by it and their own timers are paused. */
   megaPower: TimedEffect;
   /** Absorbs exactly one hit; has no duration. */
@@ -148,6 +150,7 @@ export function createPlayer(x: number, y: number, playerNumber = 1, speedMultip
     travelHeading: null,
     rapidFire: { active: false, timer: 0 },
     multiShot: { active: false, timer: 0 },
+    chainLightning: { active: false, timer: 0 },
     megaPower: { active: false, timer: 0 },
     shieldActive: false,
     boost: { active: false, timer: 0, cooldown: 0, keyHeld: false },
@@ -220,7 +223,7 @@ function tryShoot(p: PlayerState): Shot[] {
   if (p.boost.active) return []; // no shooting while boosting
   // Python spawns shots at the ship's centre, not its nose.
   const shots = shotAngleOffsets(p.multiShot.active).map((offset) =>
-    createShot(p.position, p.rotation + offset, p.playerNumber),
+    createShot(p.position, p.rotation + offset, p.playerNumber, p.chainLightning.active),
   );
   p.shootTimer = p.rapidFire.active ? RAPID_FIRE_COOLDOWN : p.shootCooldown;
   return shots;
@@ -236,6 +239,10 @@ export function activateMultiShot(p: PlayerState): void {
 
 export function activateShield(p: PlayerState): void {
   p.shieldActive = true;
+}
+
+export function activateChainLightning(p: PlayerState): void {
+  p.chainLightning = { active: true, timer: CHAIN_LIGHTNING_DURATION };
 }
 
 /** MEGA POWER: Rapid Fire + Multi-Shot + Shield, all for the mega duration. (The caller adds Slow Motion.) */
@@ -317,6 +324,10 @@ export function updatePlayer(p: PlayerState, input: PlayerInput, dt: number): Pl
   if (p.multiShot.active && !p.megaPower.active) {
     p.multiShot.timer -= dt;
     if (p.multiShot.timer <= 0) p.multiShot.active = false;
+  }
+  if (p.chainLightning.active) {
+    p.chainLightning.timer = Math.max(0, p.chainLightning.timer - dt);
+    if (p.chainLightning.timer <= 0) p.chainLightning.active = false;
   }
 
   p.isMoving = false;
@@ -408,6 +419,7 @@ export function respawnPlayer(p: PlayerState, x: number, y: number): void {
 
   p.rapidFire = { active: false, timer: 0 };
   p.multiShot = { active: false, timer: 0 };
+  p.chainLightning = { active: false, timer: 0 };
   p.megaPower = { active: false, timer: 0 };
   p.shieldActive = false;
   // Boost stops but its cooldown keeps running; laser charges are not refilled.
@@ -429,6 +441,7 @@ export function eliminatePlayer(p: PlayerState): void {
   p.isMoving = false;
   p.rapidFire = { active: false, timer: 0 };
   p.multiShot = { active: false, timer: 0 };
+  p.chainLightning = { active: false, timer: 0 };
   p.megaPower = { active: false, timer: 0 };
   p.shieldActive = false;
   p.boost.active = false;

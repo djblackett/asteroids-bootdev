@@ -211,7 +211,7 @@ export class AbilityHud {
     const right = index === 1;
     const x = right ? SCREEN_WIDTH - 10 : 10;
     const size = Math.round(20 * scale);
-    this.lines = Array.from({ length: 6 }, () => {
+    this.lines = Array.from({ length: 7 }, () => {
       const text = addText(scene, x, 80 * scale, '', { size, originX: right ? 1 : 0 }).setDepth(10);
       return new CachedText(text, COLORS.white, size);
     });
@@ -244,6 +244,8 @@ export class AbilityHud {
         if (p.shieldActive) row('SHIELD: ACTIVE', HUD_SHIELD);
         if (single && sim.slowMotion.active) row(`SLOW MOTION: ${secondsLeft(sim.slowMotion.timer)}s`, HUD_SLOW);
       }
+      // Independent of Mega Power: it neither grants nor hides Lightning.
+      if (p.chainLightning.active) row(`LIGHTNING: ${Math.ceil(p.chainLightning.timer)}s`, '#39cfff');
     }
 
     const k = this.scale;

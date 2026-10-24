@@ -1,10 +1,11 @@
 /** Scoring eras are deliberate gameplay decisions, independent of ordinary software releases.
- * Add compatible technical versions to an existing era explicitly; introduce V3 only for meaningful scoring changes.
+ * Add compatible technical versions to an existing era explicitly; introduce a new era only for meaningful scoring changes.
  * This map controls public boards/labels only. It never grants replay compatibility.
  */
 export const SCORING_ERAS = Object.freeze({
   '1.0.0': 'V1',
   '1.1.0': 'V2',
+  '1.2.0': 'V3',
 } as const);
 
 export type ScoringEra = (typeof SCORING_ERAS)[keyof typeof SCORING_ERAS];

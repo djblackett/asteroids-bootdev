@@ -15,6 +15,7 @@ export type SfxKey =
   | 'explosion_medium'
   | 'explosion_large'
   | 'laser'
+  | 'lightning'
   | 'boost'
   | 'player_death';
 
@@ -72,6 +73,7 @@ export const SFX_ASSETS: ReadonlyArray<SfxAsset> = [
   ['explosion_medium', 'audio/sfx/explosion_medium.ogg'],
   ['explosion_large', 'audio/sfx/explosion_large.ogg'],
   ['laser', 'audio/sfx/laser.ogg'],
+  ['lightning', 'audio/sfx/lightning.wav'],
   ['boost', 'audio/sfx/boost-woosh.ogg'],
   ['player_death', 'audio/sfx/player-death.ogg'],
 ];
@@ -100,7 +102,7 @@ export const DEFAULT_SFX_VOLUME = 0.8;
 /** The pause-screen controls move a setting in steps of this size. */
 export const VOLUME_STEP = 0.1;
 
-export type SfxGroup = 'shoot' | 'explosion' | 'laser' | 'boost' | 'death';
+export type SfxGroup = 'shoot' | 'explosion' | 'laser' | 'lightning' | 'boost' | 'death';
 
 export const SFX_GROUP: Readonly<Record<SfxKey, SfxGroup>> = {
   shoot_low: 'shoot',
@@ -110,6 +112,7 @@ export const SFX_GROUP: Readonly<Record<SfxKey, SfxGroup>> = {
   explosion_medium: 'explosion',
   explosion_large: 'explosion',
   laser: 'laser',
+  lightning: 'lightning',
   boost: 'boost',
   player_death: 'death',
 };
@@ -143,6 +146,7 @@ export const SFX_GAIN: Readonly<Record<SfxKey, number>> = {
   explosion_medium: explosionGain('medium'),
   explosion_large: explosionGain('large'),
   laser: 0.5,
+  lightning: 0.4,
   boost: 0.6,
   player_death: 0.8,
 };
@@ -164,6 +168,7 @@ export const OVERLAP_FALLOFF: Readonly<Record<SfxGroup, number>> = {
   shoot: 0.65,
   explosion: 0.65,
   laser: 0.7,
+  lightning: 0.65,
   boost: 1,
   death: 1,
 };

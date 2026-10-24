@@ -285,6 +285,13 @@ export class GameScene extends Phaser.Scene {
 
     this.setupInput();
     this.setupLifecycle();
+    // Tree-shaken from production, and never injected into any recorded or ranked simulation.
+    if (import.meta.env.DEV && !this.isVerifiedMode && !this.rankedChallenge && new URLSearchParams(window.location.search).has('lightningtrial')) {
+      const sim = this.sim;
+      void import('../dev/lightningTrial').then(({ installLightningTrial }) => {
+        if (this.scene.isActive() && this.sim === sim) installLightningTrial(this, sim);
+      });
+    }
   }
 
   override update(time: number): void {

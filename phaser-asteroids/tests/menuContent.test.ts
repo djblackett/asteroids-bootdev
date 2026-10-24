@@ -19,8 +19,8 @@ import { legendFor, POWERUP_INFO, SHORT_MAX } from '../src/ui/menu/powerupInfo';
 describe('power-up text', () => {
   const info = (type: PowerUpType) => POWERUP_INFO.find((p) => p.type === type)!;
 
-  it('covers the five one-player power-ups and Revive, each once', () => {
-    expect(POWERUP_INFO.map((p) => p.type)).toEqual(['rapid_fire', 'multi_shot', 'shield', 'slow_motion', 'mega_power', 'revive']);
+  it('covers the six one-player power-ups and Revive, each once', () => {
+    expect(POWERUP_INFO.map((p) => p.type)).toEqual(['rapid_fire', 'multi_shot', 'shield', 'slow_motion', 'chain_lightning', 'mega_power', 'revive']);
     expect(POWERUP_INFO.filter((p) => p.coopOnly).map((p) => p.type)).toEqual(['revive']);
   });
 
@@ -58,15 +58,15 @@ describe('power-up text', () => {
       const cell = (1200 - 40) / list.length;
       for (const p of list) {
         expect(p.short.length).toBeLessThanOrEqual(SHORT_MAX);
-        expect(p.short.length * 13.2).toBeLessThan(cell - 4);
-        expect(p.name.length * 14.4).toBeLessThan(cell - 4);
+        expect(p.short.length * (list.length > 6 ? 10.8 : 13.2)).toBeLessThan(cell - 4);
+        expect(p.name.length * (list.length > 6 ? 12 : 14.4)).toBeLessThan(cell - 4);
       }
     }
   });
 
   it('shows Revive in the legend only for two players', () => {
     expect(legendFor(1).map((p) => p.type)).not.toContain('revive');
-    expect(legendFor(1)).toHaveLength(5);
+    expect(legendFor(1)).toHaveLength(6);
     expect(legendFor(2).map((p) => p.type)).toContain('revive');
   });
 });
