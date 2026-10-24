@@ -14,7 +14,7 @@ export function drawMothership(g: Phaser.GameObjects.Graphics, sim: BossTrialSim
   const entering = b.phase === 'entering';
   const enginesOn = !entering || b.age >= 2;
   const turretsOn = !entering || b.age >= 8;
-  const reactorOn = !entering || b.age >= 13;
+  const reactorOn = b.age >= 13;
   const polygon = (coords: readonly number[], fill: number, outline: number, width = 2): void => {
     const points = [];
     for (let i = 0; i < coords.length; i += 2) points.push({ x: x + coords[i]!, y: y + coords[i + 1]! });

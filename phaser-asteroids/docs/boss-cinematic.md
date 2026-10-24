@@ -19,8 +19,9 @@ the existing SFX system. Measurements with ffprobe/ffmpeg:
 The regular soundtrack fades over 0.8 seconds. The alarm starts at 0.8 seconds,
 once per entrance. The ship begins descending at 1.1 seconds; engines activate at
 2 seconds, turrets at 8 seconds, reactor at 13 seconds. The alarm fades over the
-final **0.4 seconds** of descent. At **14 seconds**, the ship reaches its resting
-position and combat, Gatekeeper and the health-bar reveal start together. The
+**0.4 seconds** before the **11-second** handoff, when combat, Gatekeeper and the
+health-bar reveal start together. The original descent curve continues unchanged
+to its resting position at 14 seconds; no repositioning or acceleration occurs. The
 health bar fills over 0.75 seconds. Playback is trimmed at runtime; the MP3 is unchanged.
 After five seconds, click/tap **ENGAGE NOW** or press **Enter** to end the entrance
 early. This deliberate shortcut stops the alarm and settles the ship before combat.

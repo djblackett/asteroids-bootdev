@@ -4,8 +4,9 @@ export const BOSS_CINEMATIC = {
   alarmStart: 0.8,
   alarmFade: 0.4,
   entranceStart: 1.1,
-  // Shared with the descent's resting position; the recording does not control the handoff.
-  combatStart: 14,
+  // Keep the original descent independent of the earlier combat/audio handoff.
+  descentEnd: 14,
+  combatStart: 11,
   skipAfter: 5,
   barFill: 0.75,
   failure: 0.65,

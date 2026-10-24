@@ -52,7 +52,7 @@ describe('cinematic audio lifecycle', () => {
     expect(music.gain).toBeGreaterThan(0);
   });
 
-  it.each([30, 60, 120])('fades over the final 0.4s and hands off only when the ship rests, at %sHz', (fps) => {
+  it.each([30, 60, 120])('fades over the final 0.4s and hands off at 11s without changing the descent, at %sHz', (fps) => {
     const track = new FakeTrack();
     const music = new MusicController(track, { choice: 'megapop' });
     music.start();
@@ -67,7 +67,7 @@ describe('cinematic audio lifecycle', () => {
     } }, seededRng(1), { volume: 0.8 });
     const encounter = new BossEncounterAudio({ music, sfx });
     const sim = new BossTrialSim();
-    runFor(sim, 13.6, undefined, fps);
+    runFor(sim, 10.6, undefined, fps);
     encounter.update(sim.boss, false);
     expect(level).toBeCloseTo(SFX_GAIN.boss_alarm * 0.8);
     runFor(sim, 0.2, undefined, fps);
@@ -91,13 +91,13 @@ describe('cinematic audio lifecycle', () => {
       encounter.update(sim.boss, false);
       expect(level).toBeLessThanOrEqual(previous);
       if (sim.boss.phase === 'entering') {
-        expect(level).toBeCloseTo(SFX_GAIN.boss_alarm * 0.4 * (14 - sim.boss.age) / 0.4, 8);
+        expect(level).toBeCloseTo(SFX_GAIN.boss_alarm * 0.4 * (11 - sim.boss.age) / 0.4, 8);
       }
       previous = level;
     }
-    expect(sim.boss.age).toBeGreaterThanOrEqual(14);
-    expect(sim.boss.age).toBeLessThan(14 + 1 / fps + FRAME);
-    expect(sim.boss.position.y).toBe(235);
+    expect(sim.boss.age).toBeGreaterThanOrEqual(11 - 1e-9);
+    expect(sim.boss.age).toBeLessThan(11 + 1 / fps + FRAME);
+    expect(sim.boss.position.y).toBeCloseTo(-120 + 355 * (1 - (1 - (sim.boss.age - 1.1) / 12.9) ** 3), 8);
     expect(sfx.playingCount('boss_alarm')).toBe(0);
     expect(plays).toBe(1);
     expect(track.sources).toEqual(['megapop', 'gatekeeper']);
@@ -112,7 +112,7 @@ describe('cinematic audio lifecycle', () => {
       return { setVolume: gain => { levels.push(gain); }, stop: finished };
     } }, seededRng(1));
     const encounter = new BossEncounterAudio({ music: s.music, sfx });
-    runFor(s.sim, 13.8);
+    runFor(s.sim, 10.8);
     encounter.update(s.sim.boss, false);
     encounter.update(s.sim.boss, true);
     expect(levels.at(-1)).toBeCloseTo(SFX_GAIN.boss_alarm * 0.8 / 2);
@@ -258,6 +258,26 @@ describe('temporary music override', () => {
 });
 
 describe('cinematic simulation boundaries', () => {
+  it('preserves the original descent before and after the 11s handoff and settles on skip', () => {
+    const sim = new BossTrialSim();
+    sim.player.isRespawning = true;
+    sim.player.respawnTimer = 1000;
+    for (let frame = 1; frame <= 14 * 60; frame++) {
+      sim.step(FRAME);
+      if (frame < 66) continue;
+      const t = Math.min(1, (sim.boss.age - 1.1) / 12.9);
+      expect(sim.boss.position.y).toBeCloseTo(-120 + 355 * (1 - (1 - t) ** 3), 8);
+      expect(sim.boss.phase).toBe(frame < 11 * 60 ? 'entering' : 'fighting');
+    }
+    expect(sim.boss.position.y).toBeCloseTo(235, 8);
+    const skipped = new BossTrialSim();
+    runFor(skipped, 5.1);
+    skipped.skipEntrance();
+    skipped.step(FRAME);
+    expect(skipped.boss.phase).toBe('fighting');
+    expect(skipped.boss.position.y).toBe(235);
+  });
+
   it('leaves ordinary UFO projectile rendering to the normal renderer after returning to gameplay', () => {
     const sim = new BossTrialSim();
     sim.boss.phase = 'destroyed';

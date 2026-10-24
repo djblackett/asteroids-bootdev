@@ -134,7 +134,7 @@ export class BossTrialSim extends GameSim {
     if (options.exposedCore) {
       const b = this.boss;
       b.phase = 'fighting';
-      b.age = C.combatStart;
+      b.age = C.descentEnd;
       b.position.y = 235;
       for (const s of [b.left, b.right]) { s.hp = 0; s.destroyedAt = b.age; }
       b.syncSections();
@@ -170,7 +170,7 @@ export class BossTrialSim extends GameSim {
   /** Optional repeat-play shortcut, available only after the alarm has established itself. */
   skipEntrance(): void {
     const b = this.boss;
-    if ((b.phase === 'warning' || b.phase === 'entering') && b.age >= C.skipAfter) b.age = C.combatStart;
+    if ((b.phase === 'warning' || b.phase === 'entering') && b.age >= C.skipAfter) b.age = C.descentEnd;
   }
 
   /** Presentation drains this queue once; pausing cannot replay a cue. */
@@ -230,10 +230,11 @@ export class BossTrialSim extends GameSim {
     }
     if (b.age < C.entranceStart) return;
     if (b.phase === 'warning') b.phase = 'entering';
+    // Preserve the original descent curve through the earlier combat handoff.
+    const t = Math.min(1, (b.age - C.entranceStart) / (C.descentEnd - C.entranceStart));
+    b.position.y = -120 + 355 * (1 - (1 - t) ** 3);
     if (b.phase === 'entering') {
-      const t = Math.min(1, (b.age - C.entranceStart) / (C.combatStart - C.entranceStart));
-      b.position.y = -120 + 355 * (1 - (1 - t) ** 3);
-      if (t >= 1) b.phase = 'fighting';
+      if (b.age + 1e-9 >= C.combatStart) b.phase = 'fighting';
     } else {
       b.fightTime += dt;
       // Hold position while telegraphing/firing so the warning describes the actual world-space path.

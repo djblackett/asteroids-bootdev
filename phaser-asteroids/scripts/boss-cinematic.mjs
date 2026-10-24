@@ -1,5 +1,5 @@
 // Focused DEV-only integration checks with real Web Audio. No full browser suite.
-// node scripts/boss-cinematic.mjs
+// node scripts/boss-cinematic.mjs [--timing-only]
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -74,18 +74,19 @@ try {
   assert(fading.some(s => s.volume > 0.15 && s.volume < 0.3));
   assert(fading.some(s => s.volume > 0 && s.volume < 0.1));
   for (const sample of fading) {
-    const expected = 0.44 * Math.min(1, Math.max(0, (14 - sample.age) / 0.4));
+    const expected = 0.44 * Math.min(1, Math.max(0, (11 - sample.age) / 0.4));
     // AudioParam readback trails scheduled gain by an audio render quantum.
     assert(Math.abs(sample.configured - expected) < 0.001, JSON.stringify({ sample, expected }));
     assert.equal(sample.bar, false);
   }
   const settled = samples.at(-1);
-  assert(settled.age >= 14 && settled.age < 14.1);
-  assert.equal(settled.y, 235);
+  assert(settled.age >= 11 - 1e-9 && settled.age < 11.1);
+  assert(Math.abs(settled.y - (-120 + 355 * (1 - (1 - (settled.age - 1.1) / 12.9) ** 3))) < 1e-8);
   assert.equal(settled.volume, 0);
   assert.equal(settled.track, 'gatekeeper');
   assert.equal(settled.bar, true);
-  pass('0.4s alarm fade ends at rest at 14s with Gatekeeper, health bar, one music instance and unchanged preferences');
+  pass('0.4s alarm fade ends at 11s on the unchanged descent with Gatekeeper, health bar, one music instance and unchanged preferences');
+  if (!process.argv.includes('--timing-only')) {
   await sleep(850);
   await page.screenshot({ path: path.join(out, 'boss-combat.png') });
   await defeat(page);
@@ -227,6 +228,7 @@ try {
   await normal.waitForFunction(() => window.__game.scene.isActive('GameScene'));
   assert.equal(await normal.evaluate(() => Boolean(window.__game.scene.getScene('GameScene').sim.boss)), false);
   pass('ordinary boot skips alarm loading; recorded play excludes the boss even with the trial URL');
+  }
   assert.deepEqual(errors, []);
   pass('no browser runtime errors');
 } finally {
@@ -250,7 +252,7 @@ async function open(page, extra = '', observeArrival = false) {
         window.__arrivalSamples = [];
         const sample = () => {
           const b = scene.sim.boss;
-          if (b.age < 13.5) return;
+          if (b.age < 10.5) return;
           const alarm = window.__game.sound.sounds.find(s => s.key === 'boss_alarm' && !s.pendingRemove);
           window.__arrivalSamples.push({ age: b.age, y: b.position.y, phase: b.phase, volume: alarm?.volume ?? 0,
             configured: alarm?.currentConfig.volume ?? 0,
