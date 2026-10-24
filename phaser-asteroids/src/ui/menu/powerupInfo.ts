@@ -1,4 +1,7 @@
 import {
+  CHAIN_LIGHTNING_DURATION,
+  CHAIN_LIGHTNING_MAX_TARGETS,
+  CHAIN_LIGHTNING_RANGE,
   MEGA_POWER_DURATION,
   MULTI_SHOT_DURATION,
   PLAYER_SHOOT_COOLDOWN,
@@ -36,7 +39,7 @@ const seconds = (s: number): string => `${s} second${s === 1 ? '' : 's'}`;
 
 const color = (type: PowerUpType): string => toCss(POWERUP_COLOR[type]);
 
-/** The five one-player power-ups, then Revive. */
+/** The six one-player power-ups, then Revive. */
 export const POWERUP_INFO: readonly PowerUpInfo[] = [
   {
     type: 'rapid_fire',
@@ -71,9 +74,17 @@ export const POWERUP_INFO: readonly PowerUpInfo[] = [
     color: color('slow_motion'),
   },
   {
+    type: 'chain_lightning',
+    name: 'LIGHTNING',
+    short: 'Chain hits',
+    detail: `Charged bullets jump to ${CHAIN_LIGHTNING_MAX_TARGETS} more asteroids within ${CHAIN_LIGHTNING_RANGE} px per jump, for ${seconds(CHAIN_LIGHTNING_DURATION)}.`,
+    coopOnly: false,
+    color: color('chain_lightning'),
+  },
+  {
     type: 'mega_power',
     name: 'MEGA POWER',
-    short: 'All powers!',
+    short: '4 powers!',
     detail: `Rapid Fire + Multi-Shot + Shield + Slow Motion at once, for ${seconds(MEGA_POWER_DURATION)}. The shield stays until hit.`,
     coopOnly: false,
     color: color('mega_power'),
@@ -88,7 +99,7 @@ export const POWERUP_INFO: readonly PowerUpInfo[] = [
   },
 ];
 
-/** What the compact legend on the title screen lists: the one-player five, plus Revive when two players are on. */
+/** What the compact legend on the title screen lists: the one-player six, plus Revive when two players are on. */
 export function legendFor(playerCount: 1 | 2): readonly PowerUpInfo[] {
   return playerCount === 2 ? POWERUP_INFO : POWERUP_INFO.filter((p) => !p.coopOnly);
 }

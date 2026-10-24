@@ -17,6 +17,11 @@ export const ASTEROID_SPAWN_RATE = 0.5; // seconds between spawn attempts
 
 export type AsteroidArchetype = 'standard' | 'armored' | 'volatile';
 
+// Experiment C: ordinary bullets carry this effect at firing time; Mega Power does not grant it.
+export const CHAIN_LIGHTNING_DURATION = 7;
+export const CHAIN_LIGHTNING_MAX_TARGETS = 2; // additional asteroids after the bullet's own hit
+export const CHAIN_LIGHTNING_RANGE = 160; // centre-to-centre world pixels, no edge wrapping
+
 export interface ArchetypeConfig {
   hitPoints: number;
   pointsMultiplier: number;

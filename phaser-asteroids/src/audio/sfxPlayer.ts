@@ -51,6 +51,8 @@ export function cueForEvent(event: SimEvent, rng: Rng): SoundCue | null {
     case 'volatile_exploded':
       // A deeper boom even for small volatile rocks; rising pitch separates successive links in a chain.
       return { key: 'explosion_large', volume: SFX_GAIN.explosion_large, rate: 0.8 + Math.min(event.depth, 4) * 0.06 };
+    case 'lightning_discharged':
+      return { key: 'lightning', volume: SFX_GAIN.lightning };
     case 'ufo_destroyed': {
       const key = explosionKey(event.radius);
       return { key, volume: SFX_GAIN[key] * UFO_EXPLOSION_GAIN_SCALE };
@@ -98,6 +100,7 @@ export class SfxPlayer {
   private volume: number;
   private readonly onVolumeChanged: ((volume: number) => void) | undefined;
   private readonly clock: () => number;
+  private lastLightningAt = -Infinity;
   /** Total cues actually started (useful for tests and diagnostics). */
   played = 0;
 
@@ -176,6 +179,8 @@ export class SfxPlayer {
     if (this.volume <= 0) return;
     const group = SFX_GROUP[cue.key];
     const now = this.clock();
+    // Multi-Shot and dense chains share one short zap; no burst of overlapping electrical sounds.
+    if (cue.key === 'lightning' && (now - this.lastLightningAt < 0.09 || this.playingCount('lightning') > 0)) return;
     const voices = this.active.get(cue.key) ?? new Map<PlayingSound, number>();
     this.active.set(cue.key, voices);
     if (
@@ -194,6 +199,7 @@ export class SfxPlayer {
       if (handle) voices.delete(handle);
     }, cue.rate);
     if (!handle) return;
+    if (cue.key === 'lightning') this.lastLightningAt = now;
     this.played++;
     if (!finished) voices.set(handle, now);
   }

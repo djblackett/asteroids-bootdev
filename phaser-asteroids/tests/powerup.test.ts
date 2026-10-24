@@ -27,14 +27,14 @@ describe('power-up drops', () => {
     expect(maybeSpawnPowerUp(100, 100, rng)?.type).toBe('mega_power');
   });
 
-  it('otherwise a roll under 12% drops one of the four ordinary types, picked uniformly', () => {
+  it('otherwise a roll under 12% drops one of the five ordinary types, picked uniformly', () => {
     const types = [];
-    for (const pick of [0.0, 0.26, 0.51, 0.76]) {
+    for (const pick of [0.0, 0.2, 0.4, 0.6, 0.8]) {
       const rng = queueRng();
       rng.queue(0.5 /* not mega */, 0.1199 /* drops */, pick /* which one */);
       types.push(maybeSpawnPowerUp(0, 0, rng)?.type);
     }
-    expect(types).toEqual(['rapid_fire', 'shield', 'multi_shot', 'slow_motion']);
+    expect(types).toEqual(['rapid_fire', 'shield', 'multi_shot', 'slow_motion', 'chain_lightning']);
   });
 
   it('does not drop on a roll of 12% or more', () => {
@@ -55,8 +55,8 @@ describe('power-up drops', () => {
     expect(total / n).toBeCloseTo(0.015 + 0.985 * 0.12, 2);
     expect((counts['mega_power'] ?? 0) / n).toBeCloseTo(0.015, 2);
     expect(counts['revive']).toBeUndefined();
-    for (const t of ['rapid_fire', 'shield', 'multi_shot', 'slow_motion']) {
-      expect((counts[t] ?? 0) / n).toBeCloseTo((0.985 * 0.12) / 4, 2);
+    for (const t of ['rapid_fire', 'shield', 'multi_shot', 'slow_motion', 'chain_lightning']) {
+      expect((counts[t] ?? 0) / n).toBeCloseTo((0.985 * 0.12) / 5, 2);
     }
   });
 });

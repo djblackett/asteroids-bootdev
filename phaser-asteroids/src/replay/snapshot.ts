@@ -18,6 +18,7 @@ export interface PlayerSnapshot {
   travelHeading: number | null;
   rapidFire: { active: boolean; timer: number };
   multiShot: { active: boolean; timer: number };
+  chainLightning: { active: boolean; timer: number };
   megaPower: { active: boolean; timer: number };
   shieldActive: boolean;
   boost: { active: boolean; timer: number; cooldown: number; keyHeld: boolean };
@@ -52,6 +53,7 @@ export interface ProjectileSnapshot {
   vx: number;
   vy: number;
   owner?: number;
+  charged?: boolean;
 }
 
 export interface PowerUpSnapshot {
@@ -109,6 +111,7 @@ function capturePlayerSnapshot(p: GameSim['player']): PlayerSnapshot {
     travelHeading: p.travelHeading === null ? null : round(p.travelHeading, 3),
     rapidFire: { active: p.rapidFire.active, timer: round(p.rapidFire.timer, 3) },
     multiShot: { active: p.multiShot.active, timer: round(p.multiShot.timer, 3) },
+    chainLightning: { active: p.chainLightning.active, timer: round(p.chainLightning.timer, 3) },
     megaPower: { active: p.megaPower.active, timer: round(p.megaPower.timer, 3) },
     shieldActive: p.shieldActive,
     boost: {
@@ -166,6 +169,7 @@ export function captureSimSnapshot(sim: GameSim, tick = 0): SimSnapshot {
       vx: round(s.velocity.x),
       vy: round(s.velocity.y),
       owner: s.owner,
+      charged: !!s.charged,
     })),
     ufoShots: sim.ufoShots.map((s) => ({
       x: round(s.position.x),
@@ -211,6 +215,8 @@ export function compareSnapshots(a: SimSnapshot, b: SimSnapshot): SnapshotDiff {
   check('player.velocity', a.player.velocity, b.player.velocity);
   check('player.travelHeading', a.player.travelHeading, b.player.travelHeading);
   check('player.shieldActive', a.player.shieldActive, b.player.shieldActive);
+  check('player.chainLightning', a.player.chainLightning, b.player.chainLightning);
+  check('player2', a.player2, b.player2);
   check('player.boost', a.player.boost, b.player.boost);
   check('player.laser', a.player.laser, b.player.laser);
   check('combo', a.combo, b.combo);

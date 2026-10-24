@@ -18,7 +18,7 @@ describe('leaderboard ordering', () => {
     const res = await h.call('GET', '/api/v1/leaderboard/all-time');
     expect(res.body.entries.map((e: Entry) => [e.id, e.rank])).toEqual([['d', 1], ['c', 2], ['a', 3], ['b', 4], ['e', 5]]);
     expect(res.body.total).toBe(5);
-    expect(res.body.entries.map((e: { rulesVersion: string }) => e.rulesVersion)).toEqual(['1.1.0', '1.0.0', '1.1.0', '1.0.0', '1.1.0']);
+    expect(res.body.entries.map((e: { rulesVersion: string }) => e.rulesVersion)).toEqual(['1.2.0', '1.0.0', '1.2.0', '1.0.0', '1.2.0']);
     const detail = await h.call('GET', '/api/v1/scores/b');
     expect(detail.body).toMatchObject({ score: { rank: 4, rulesVersion: '1.0.0' }, ranks: { allTime: 4, weekly: null } });
   });
@@ -59,7 +59,7 @@ describe('leaderboard ordering', () => {
 describe('pagination is bounded', () => {
   it('defaults to 10, honours limit/offset and reports total', async () => {
     const h = makeHarness();
-    for (let i = 1; i <= 25; i++) await insertScore(h.db, { score: i * 10, completedAt: T0, rules: i % 2 ? '1.0.0' : '1.1.0' });
+    for (let i = 1; i <= 25; i++) await insertScore(h.db, { score: i * 10, completedAt: T0, rules: i % 2 ? '1.0.0' : '1.2.0' });
     const first = await h.call('GET', '/api/v1/leaderboard/all-time');
     expect(first.body.entries).toHaveLength(10);
     expect(first.body.entries[0].score).toBe(250);
@@ -81,6 +81,16 @@ describe('pagination is bounded', () => {
 });
 
 describe('weekly leaderboard', () => {
+  it('keeps V1 and V2 on ALL TIME and in personal history while THIS WEEK uses V3', async () => {
+    const h = makeHarness();
+    await insertScore(h.db, { id: 'v1-history', score: 900, completedAt: T0, rules: '1.0.0' });
+    await insertScore(h.db, { id: 'v2-history', score: 800, completedAt: T0, rules: '1.1.0' });
+    await insertScore(h.db, { id: 'v3-current', score: 700, completedAt: T0, rules: '1.2.0' });
+    const all = await h.call('GET', '/api/v1/leaderboard/all-time');
+    expect(all.body.entries.map((e: { rulesVersion: string }) => e.rulesVersion)).toEqual(['1.0.0', '1.1.0', '1.2.0']);
+    expect((await h.call('GET', '/api/v1/leaderboard/weekly')).body.entries.map((e: Entry) => e.id)).toEqual(['v3-current']);
+    expect((await h.call('GET', '/api/v1/scores/v2-history')).body).toMatchObject({ score: { score: 800, rulesVersion: '1.1.0' }, ranks: { allTime: 2, weekly: null } });
+  });
   it('only counts scores completed inside the current Halifax week, using the server timestamp', async () => {
     const clock = makeClock(Date.UTC(2026, 9, 22, 15, 0, 0)); // Thursday
     const h = makeHarness({ clock });
@@ -110,16 +120,16 @@ describe('weekly leaderboard', () => {
 
   it('a verified run lands on both boards with consistent ranks', async () => {
     const h = makeHarness();
-    await insertScore(h.db, { score: 20000, completedAt: T0 - HOUR, nickname: 'Old Champ', rules: '1.0.0' }); // all-time only, despite being this week
+    await insertScore(h.db, { score: 50000, completedAt: T0 - HOUR, nickname: 'Old Champ', rules: '1.0.0' }); // all-time only, despite being this week
     await insertScore(h.db, { score: 100, completedAt: T0 - HOUR });
     const run = await h.start({ seed: REFERENCE_SEED });
     const res = await h.playAndSubmit(run, botRun(REFERENCE_SEED).replay);
     expect(res.body.ranks).toEqual({ allTime: 2, weekly: 1 });
     const detail = await h.call('GET', `/api/v1/scores/${res.body.score.id}`);
     expect(detail.body.ranks).toEqual({ allTime: 2, weekly: 1 });
-    expect(detail.body.score.score).toBe(13959);
-    expect(res.body.score.rulesVersion).toBe('1.1.0');
-    expect(detail.body.score.rulesVersion).toBe('1.1.0');
+    expect(detail.body.score.score).toBe(34735);
+    expect(res.body.score.rulesVersion).toBe('1.2.0');
+    expect(detail.body.score.rulesVersion).toBe('1.2.0');
   });
 
   it('selects the weekly era from the active rules and excludes unmapped future rules safely', async () => {
@@ -219,7 +229,7 @@ describe('routing hygiene', () => {
   it('health reports the supported rules version', async () => {
     const h = makeHarness();
     const res = await h.call('GET', '/api/v1/health');
-    expect(res.body).toMatchObject({ ok: true, rulesVersion: '1.1.0', schemaVersion: 1 });
+    expect(res.body).toMatchObject({ ok: true, rulesVersion: '1.2.0', schemaVersion: 1 });
   });
   it('wrong methods and unknown paths get JSON errors', async () => {
     const h = makeHarness();

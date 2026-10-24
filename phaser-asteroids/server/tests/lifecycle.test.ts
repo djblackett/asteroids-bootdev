@@ -16,7 +16,7 @@ describe('starting a ranked run', () => {
     expect(run.runId).toMatch(/^[0-9a-f-]{36}$/);
     expect(run.token.length).toBeGreaterThanOrEqual(40);
     expect(Number.isInteger(run.seed) && run.seed >= 0 && run.seed <= 0xffffffff).toBe(true);
-    expect(run.rulesVersion).toBe('1.1.0');
+    expect(run.rulesVersion).toBe('1.2.0');
     expect(run.tickRate).toBe(60);
     expect(run.config).toEqual({ playerCount: 1, livesMode: 'independent', friendlyFire: false, speed: [1, 1] });
     expect(Date.parse(run.expiresAt) - Date.parse(run.issuedAt)).toBe(h.settings.runTtlMs);
@@ -40,7 +40,7 @@ describe('starting a ranked run', () => {
     expect(res.status).toBe(201);
     expect(res.body.seed).not.toBe(1);
     expect(res.body.config.playerCount).toBe(1);
-    expect(res.body.rulesVersion).toBe('1.1.0');
+    expect(res.body.rulesVersion).toBe('1.2.0');
   });
 
   it('issues unique ids, tokens and (practically) unique seeds', async () => {
@@ -63,17 +63,17 @@ describe('submitting a legitimate run', () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('accepted');
     expect(res.body.replayed).toBe(false);
-    expect(res.body.score.score).toBe(13959);
+    expect(res.body.score.score).toBe(34735);
     expect(res.body.score.nickname).toBe('Dave J');
     expect(res.body.ranks).toEqual({ allTime: 1, weekly: 1 });
 
     const row = await h.db.first<Record<string, unknown>>('SELECT * FROM scores');
-    expect(row).toMatchObject({ score: 13959, ticks: bot.ticks, reported_controls: 'keyboard', visibility: 'visible', rules_version: '1.1.0' });
+    expect(row).toMatchObject({ score: 34735, ticks: bot.ticks, reported_controls: 'keyboard', visibility: 'visible', rules_version: '1.2.0' });
     expect(await count(h.db, 'runs', "status = 'accepted'")).toBe(1);
     expect(await count(h.db, 'scores')).toBe(1);
 
     const board = await h.call('GET', '/api/v1/leaderboard/all-time');
-    expect(board.body.entries.map((e: { score: number }) => e.score)).toEqual([13959]);
+    expect(board.body.entries.map((e: { score: number }) => e.score)).toEqual([34735]);
   });
 
   it('ignores the score the client claims when it is not consistent, and never takes it as the score', async () => {
@@ -84,7 +84,7 @@ describe('submitting a legitimate run', () => {
     delete (bot.replay as { claimedResult?: unknown }).claimedResult;
     const res = await h.playAndSubmit(run, bot.replay);
     expect(res.status).toBe(200);
-    expect(res.body.score.score).toBe(13959);
+    expect(res.body.score.score).toBe(34735);
   });
 });
 
@@ -250,7 +250,7 @@ describe('credentials, ownership and expiry', () => {
 describe('one-use runs', () => {
   it('re-sending the identical body after success is idempotent: same score, no second row', async () => {
     const h = makeHarness();
-    await insertScore(h.db, { score: 20000, completedAt: T0, rules: '1.0.0' });
+    await insertScore(h.db, { score: 50000, completedAt: T0, rules: '1.0.0' });
     const run = await h.start({ seed: REFERENCE_SEED });
     const bot = reference();
     const first = await h.playAndSubmit(run, bot.replay, { nickname: 'Dave J' });
@@ -258,7 +258,7 @@ describe('one-use runs', () => {
     expect(again.status).toBe(200);
     expect(again.body.replayed).toBe(true);
     expect(again.body.score.id).toBe(first.body.score.id);
-    expect(again.body.score.rulesVersion).toBe('1.1.0');
+    expect(again.body.score.rulesVersion).toBe('1.2.0');
     expect(again.body.ranks).toEqual({ allTime: 2, weekly: 1 });
     expect(first.body.ranks).toEqual(again.body.ranks);
     expect((await h.call('GET', `/api/v1/scores/${again.body.score.id}`)).body.ranks).toEqual(again.body.ranks);
@@ -341,7 +341,7 @@ describe('one-use runs', () => {
     const run = await h.start({ seed: REFERENCE_SEED });
     await h.playAndSubmit(run, reference().replay);
     await expect(
-      h.db.run(`INSERT INTO scores (id, run_id, score, nickname, completed_at, rules_version, ticks, duration_ms) VALUES ('dup', ?, 1, 'Dup Dup', 1, '1.1.0', 1, 1)`, [run.runId]),
+      h.db.run(`INSERT INTO scores (id, run_id, score, nickname, completed_at, rules_version, ticks, duration_ms) VALUES ('dup', ?, 1, 'Dup Dup', 1, '1.2.0', 1, 1)`, [run.runId]),
     ).rejects.toThrow();
   });
 });
@@ -388,7 +388,7 @@ describe('request size and encoding limits', () => {
     const run = await h.start({ seed: REFERENCE_SEED });
     const res = await h.playAndSubmit(run, reference().replay, { gzip: true });
     expect(res.status).toBe(200);
-    expect(res.body.score.score).toBe(13959);
+    expect(res.body.score.score).toBe(34735);
   });
 
   it('truncated gzip and corrupt gzip -> 400, run not consumed', async () => {

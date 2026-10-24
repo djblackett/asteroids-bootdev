@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
 import { archetypeConfig, type Asteroid } from '../core/asteroid';
 import { BOOST_FLASH_COUNT, BOOST_FLASH_PERIOD, BOOST_WARNING_TIME } from '../core/constants';
-import { PICKUP_FLASH_DURATION, VOLATILE_FLASH_DURATION, type GameSim } from '../core/game';
+import { LIGHTNING_FLASH_DURATION, PICKUP_FLASH_DURATION, VOLATILE_FLASH_DURATION, type GameSim } from '../core/game';
 import type { LaserBeam } from '../core/laser';
 import { getForwardVector } from '../core/math';
 import { shipTriangle, type PlayerState } from '../core/player';
@@ -195,6 +195,15 @@ export function drawWorld(g: Graphics, sim: GameSim, timeMs: number): void {
     if (!s.alive) continue;
     g.lineStyle(2, coop ? (PLAYER_BASE_COLOR[s.owner - 1] ?? WHITE) : WHITE, 1);
     g.strokeCircle(s.position.x, s.position.y, s.radius);
+    if (s.charged) {
+      // Keep the owner-coloured centre visible in co-op; the cyan halo and tail identify charge.
+      const speed = Math.hypot(s.velocity.x, s.velocity.y) || 1;
+      const dx = s.velocity.x / speed;
+      const dy = s.velocity.y / speed;
+      g.lineStyle(2, POWERUP_COLOR.chain_lightning, 0.9);
+      g.strokeCircle(s.position.x, s.position.y, s.radius + 3);
+      g.lineBetween(s.position.x - dx * 5, s.position.y - dy * 5, s.position.x - dx * 14 + dy * 3, s.position.y - dy * 14 - dx * 3);
+    }
   }
 
   for (const u of sim.ufos) if (u.alive) drawUfo(g, u);
@@ -238,6 +247,40 @@ export function drawWorld(g: Graphics, sim: GameSim, timeMs: number): void {
       const dy = Math.sin(angle);
       g.lineStyle(2, i % 2 ? 0xffa52a : 0xffee99, fade * fade);
       g.lineBetween(x + dx * distance, y + dy * distance, x + dx * (distance + 9 * fade), y + dy * (distance + 9 * fade));
+    }
+  }
+
+  for (const flash of sim.lightningFlashes) {
+    const t = flash.age / LIGHTNING_FLASH_DURATION;
+    const fade = 1 - t;
+    for (let link = 1; link < flash.points.length; link++) {
+      const from = flash.points[link - 1]!;
+      const to = flash.points[link]!;
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const length = Math.hypot(dx, dy) || 1;
+      // Fixed jagged geometry: no rendering randomness ever touches the simulation RNG.
+      for (const [width, color, alpha] of [[7, 0x168dff, 0.25], [3, 0x39cfff, 0.85], [1, 0xeeffff, 1]] as const) {
+        g.lineStyle(width, color, fade * alpha);
+        g.beginPath();
+        g.moveTo(from.x, from.y);
+        for (let segment = 1; segment <= 7; segment++) {
+          const fraction = segment / 7;
+          const offset = segment === 7 ? 0 : Math.sin(segment * 7.3 + link * 2.1) * Math.min(8, length * 0.12);
+          g.lineTo(from.x + dx * fraction - dy / length * offset, from.y + dy * fraction + dx / length * offset);
+        }
+        g.strokePath();
+      }
+    }
+    for (const point of flash.points) {
+      for (let spark = 0; spark < 6; spark++) {
+        const angle = spark * Math.PI / 3 + point.x * 0.03;
+        const distance = 4 + t * 28;
+        const dx = Math.cos(angle);
+        const dy = Math.sin(angle);
+        g.lineStyle(2, spark % 2 ? 0xeeffff : 0x39cfff, fade * fade);
+        g.lineBetween(point.x + dx * distance, point.y + dy * distance, point.x + dx * (distance + 7 * fade), point.y + dy * (distance + 7 * fade));
+      }
     }
   }
 

@@ -301,8 +301,8 @@ function buildLegend(kit: PageKit, ctx: MenuContext, count: 1 | 2, nav: PageNav)
   const cell = (LEGEND.w - 40) / info.length;
   info.forEach((p, i) => {
     const cx = LEGEND.x + 20 + cell * i + cell / 2;
-    kit.text(cx, LEGEND.y + 142, p.name, { size: TEXT.body - 2, originX: 0.5, originY: 0.5, color: p.color });
-    kit.text(cx, LEGEND.y + 180, p.short, { size: TEXT.small, originX: 0.5, originY: 0.5, color: COLORS.hint, bold: false });
+    kit.text(cx, LEGEND.y + 142, p.name, { size: info.length > 6 ? 20 : TEXT.body - 2, originX: 0.5, originY: 0.5, color: p.color });
+    kit.text(cx, LEGEND.y + 180, p.short, { size: info.length > 6 ? 18 : TEXT.small, originX: 0.5, originY: 0.5, color: COLORS.hint, bold: false });
   });
   kit.onFrame((now) => {
     icons.clear();

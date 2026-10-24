@@ -3,6 +3,8 @@ import {
   BOUNDARY_PARTICLE_COUNT,
   BOUNDARY_SHAKE_AMOUNT,
   BOUNDARY_SPARK_INTERVAL,
+  CHAIN_LIGHTNING_MAX_TARGETS,
+  CHAIN_LIGHTNING_RANGE,
   DIFFICULTY_INCREASE_INTERVAL,
   DIFFICULTY_SPAWN_RATE_INCREMENT,
   DIFFICULTY_SPAWN_RATE_MIN,
@@ -46,6 +48,7 @@ import { circlesOverlap, rotateVec, type Circle, type Vec2 } from './math';
 import { emitBurst, ParticleSystem } from './particles';
 import {
   activateMegaPower,
+  activateChainLightning,
   activateMultiShot,
   activateRapidFire,
   activateShield,
@@ -111,6 +114,7 @@ export type SimEvent =
    */
   | { type: 'asteroid_destroyed'; radius: number; points: number; combo?: number; multiplier?: number; player?: number; volatile?: boolean }
   | { type: 'volatile_exploded'; position: Vec2; radius: number; depth: number }
+  | { type: 'lightning_discharged'; player: number }
   | { type: 'asteroid_hit'; position: Vec2 }
   | { type: 'powerup_dropped'; powerType: PowerUpType }
   | { type: 'powerup_collected'; powerType: PowerUpType; player?: number }
@@ -150,6 +154,14 @@ export interface VolatileFlash {
 }
 export const VOLATILE_FLASH_DURATION = 0.32;
 export const VOLATILE_FLASH_LIMIT = 32;
+
+/** Copied impact positions only: rendering and expiry never change gameplay or consume RNG. */
+export interface LightningFlash {
+  points: Vec2[];
+  age: number;
+}
+export const LIGHTNING_FLASH_DURATION = 0.16;
+export const LIGHTNING_FLASH_LIMIT = 24;
 
 interface VolatileBlast {
   position: Vec2;
@@ -198,6 +210,7 @@ export class GameSim {
   lasers: LaserBeam[] = [];
   pickupFlashes: PickupFlash[] = [];
   volatileFlashes: VolatileFlash[] = [];
+  lightningFlashes: LightningFlash[] = [];
   readonly particles = new ParticleSystem();
   readonly starfield: Starfield;
   readonly spawner: SpawnerState = createSpawner();
@@ -587,8 +600,10 @@ export class GameSim {
       for (const asteroid of this.asteroids) {
         if (!asteroid.alive || asteroid.dying) continue;
         if (!circlesOverlap(shot, asteroid)) continue;
-        this.hitAsteroid(asteroid, this.playerByNumber(shot.owner));
         shot.alive = false;
+        const owner = this.playerByNumber(shot.owner);
+        this.hitAsteroid(asteroid, owner);
+        if (shot.charged) this.chainLightning(asteroid, owner);
         break;
       }
     }
@@ -703,6 +718,9 @@ export class GameSim {
 
   private applyPowerUp(type: PowerUpType, player: PlayerState): void {
     switch (type) {
+      case 'chain_lightning':
+        activateChainLightning(player);
+        break;
       case 'mega_power':
         activateMegaPower(player);
         // Python sets (not extends) Slow Motion to the mega duration.
@@ -869,7 +887,37 @@ export class GameSim {
     }
   }
 
+  /** One chain per consumed bullet. Explosions resolve normally before choosing the next living target. */
+  private chainLightning(source: Asteroid, scorer: PlayerState): void {
+    const visited = new Set<Asteroid>([source]);
+    const points = [{ ...source.position }];
+    let previous = source;
+    for (let jump = 0; jump < CHAIN_LIGHTNING_MAX_TARGETS; jump++) {
+      let nearest: Asteroid | null = null;
+      let bestDistance = Infinity;
+      for (const target of this.asteroids) {
+        if (!target.alive || target.dying || visited.has(target)) continue;
+        const distance = (target.position.x - previous.position.x) ** 2 + (target.position.y - previous.position.y) ** 2;
+        // Strict improvement retains asteroid-list order for ties; include the exact range boundary.
+        if (distance <= CHAIN_LIGHTNING_RANGE ** 2 && distance < bestDistance) {
+          nearest = target;
+          bestDistance = distance;
+        }
+      }
+      if (!nearest) break;
+      visited.add(nearest);
+      points.push({ ...nearest.position });
+      this.hitAsteroid(nearest, scorer);
+      previous = nearest;
+    }
+    this.lightningFlashes.push({ points, age: 0 });
+    if (this.lightningFlashes.length > LIGHTNING_FLASH_LIMIT) this.lightningFlashes.shift();
+    this.events.push({ type: 'lightning_discharged', player: scorer.playerNumber });
+  }
+
   private updateVolatileFlashes(dt: number): void {
+    for (const flash of this.lightningFlashes) flash.age += dt;
+    this.lightningFlashes = this.lightningFlashes.filter((flash) => flash.age < LIGHTNING_FLASH_DURATION);
     for (const flash of this.volatileFlashes) flash.age += dt;
     this.volatileFlashes = this.volatileFlashes.filter((flash) => flash.age < VOLATILE_FLASH_DURATION);
   }

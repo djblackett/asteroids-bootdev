@@ -30,7 +30,7 @@ const challenge: RankedChallenge = {
   runId: '11111111-1111-4111-8111-111111111111',
   token: 't'.repeat(43),
   seed: 123456,
-  rulesVersion: '1.1.0',
+  rulesVersion: '1.2.0',
   schemaVersion: 1,
   tickRate: 60,
   config: { playerCount: 1, livesMode: 'independent', friendlyFire: false, speed: [1, 1] },
@@ -43,7 +43,7 @@ const reply = (status: number, body: unknown) => new Response(JSON.stringify(bod
 const acceptedBody = {
   status: 'accepted',
   replayed: false,
-  score: { id: 's1', nickname: 'Ace', score: 1250, rulesVersion: '1.1.0', completedAt: '2026-10-22T15:01:00.000Z', durationSeconds: 25, endReason: 'game_over' },
+  score: { id: 's1', nickname: 'Ace', score: 1250, rulesVersion: '1.2.0', completedAt: '2026-10-22T15:01:00.000Z', durationSeconds: 25, endReason: 'game_over' },
   ranks: { allTime: 3, weekly: 1 },
 };
 const ok = (body: unknown = acceptedBody): HttpResponse => ({ status: 200, body });
@@ -218,7 +218,7 @@ describe('SubmissionFlow', () => {
     await done;
     expect(states).toEqual(['uploading', 'verifying']);
     expect(made.flow.state).toMatchObject({ kind: 'accepted', score: { score: 1250 }, ranks: { weekly: 1 } });
-    expect(readLocalScores(storage)).toEqual([{ id: 's1', score: 1250, at: '2026-10-22T15:01:00.000Z', nickname: 'Ace', rulesVersion: '1.1.0' }]);
+    expect(readLocalScores(storage)).toEqual([{ id: 's1', score: 1250, at: '2026-10-22T15:01:00.000Z', nickname: 'Ace', rulesVersion: '1.2.0' }]);
     expect(lastNickname(storage)).toBe('Ace');
   });
 
@@ -376,13 +376,14 @@ describe('local score memory and personal best', () => {
   it('keeps a historical personal best and upgrades legacy cache metadata from the server', async () => {
     const s = memory();
     rememberScore({ id: 'v1', score: 5000, at: 'old', nickname: 'Old Champ' }, s);
-    rememberScore({ id: 'v2', score: 800, at: 'new', nickname: 'Ace', rulesVersion: '1.1.0' }, s);
+    rememberScore({ id: 'v2', score: 900, at: 'earlier', nickname: 'Ace', rulesVersion: '1.1.0' }, s);
+    rememberScore({ id: 'v3', score: 800, at: 'new', nickname: 'Ace', rulesVersion: '1.2.0' }, s);
     const detail = { score: { id: 'v1', rank: 2, nickname: 'Old Champ', score: 5000, completedAt: '', durationSeconds: 60, rulesVersion: '1.0.0' }, ranks: { allTime: 2, weekly: null } };
     const best = await refreshPersonalBest('http://x', s, async () => detail);
     expect(best).toMatchObject({ best: { id: 'v1', score: 5000, rulesVersion: '1.0.0' }, ranks: { allTime: 2, weekly: null } });
     expect(formatEraScore(best!.best.score, best!.best.rulesVersion)).toBe('5,000  V1');
     expect(localBest(s)?.rulesVersion).toBe('1.0.0');
-    expect(readLocalScores(s)).toHaveLength(2);
+    expect(readLocalScores(s).map((score) => score.rulesVersion)).toEqual(['1.0.0', '1.1.0', '1.2.0']);
     expect(await refreshPersonalBest(null, s)).toMatchObject({ best: { id: 'v1', rulesVersion: '1.0.0' }, ranks: null });
   });
   it('keeps this device\'s best server-confirmed scores and survives corrupt or blocked storage', () => {
@@ -427,35 +428,38 @@ describe('local score memory and personal best', () => {
 });
 
 describe('leaderboard client and ScoresModel', () => {
-  const entry = (rank: number) => ({ id: `id${rank}`, rank, nickname: `Pilot ${rank}`, score: 1000 - rank, rulesVersion: '1.1.0', completedAt: '2026-10-22T15:00:00.000Z', durationSeconds: 60, endReason: 'game_over' });
-  const page = (over: Record<string, unknown> = {}) => ({ scope: 'weekly', rulesVersion: '1.1.0', limit: 10, offset: 0, total: 25, timeZone: 'America/Halifax', weekStart: '2026-10-19T03:00:00.000Z', weekEnd: '2026-10-26T03:00:00.000Z', entries: [1, 2, 3].map(entry), ...over });
+  const entry = (rank: number) => ({ id: `id${rank}`, rank, nickname: `Pilot ${rank}`, score: 1000 - rank, rulesVersion: '1.2.0', completedAt: '2026-10-22T15:00:00.000Z', durationSeconds: 60, endReason: 'game_over' });
+  const page = (over: Record<string, unknown> = {}) => ({ scope: 'weekly', rulesVersion: '1.2.0', limit: 10, offset: 0, total: 25, timeZone: 'America/Halifax', weekStart: '2026-10-19T03:00:00.000Z', weekEnd: '2026-10-26T03:00:00.000Z', entries: [1, 2, 3].map(entry), ...over });
 
   it('asks for one screen at a time and parses the answer', async () => {
     let url = '';
     const p = await fetchLeaderboard('http://x', 'weekly', { limit: 10, offset: 20 }, async (u) => ((url = u), reply(200, page({ offset: 20 }))));
     expect(url).toBe('http://x/api/v1/leaderboard/weekly?limit=10&offset=20');
     expect(p).toMatchObject({ total: 25, offset: 20, timeZone: 'America/Halifax' });
-    expect(p.entries[0]).toMatchObject({ rank: 1, nickname: 'Pilot 1', rulesVersion: '1.1.0' });
+    expect(p.entries[0]).toMatchObject({ rank: 1, nickname: 'Pilot 1', rulesVersion: '1.2.0' });
   });
   it('preserves each stored rules version in mixed pages, score details and accepted submissions', async () => {
     const historical = { ...entry(1), rulesVersion: '1.0.0' };
+    const v2 = { ...entry(2), rulesVersion: '1.1.0' };
     const future = { ...entry(3), rulesVersion: '9.0.0' };
-    const p = await fetchLeaderboard('http://x', 'all-time', { limit: 10, offset: 0 }, async () => reply(200, page({ entries: [historical, entry(2), future] })));
-    expect(p.entries.map((e) => scoringEraLabel(e.rulesVersion))).toEqual(['V1', 'V2', 'VERSION UNKNOWN']);
+    const p = await fetchLeaderboard('http://x', 'all-time', { limit: 10, offset: 0 }, async () => reply(200, page({ entries: [historical, v2, entry(3), future] })));
+    expect(p.entries.map((e) => scoringEraLabel(e.rulesVersion))).toEqual(['V1', 'V2', 'V3', 'VERSION UNKNOWN']);
     const detail = await fetchScoreDetail('http://x', historical.id, async () => reply(200, { score: historical, ranks: { allTime: 1, weekly: null } }));
     expect(detail?.score.rulesVersion).toBe('1.0.0');
     const accepted = classifySubmitResponse(ok());
-    expect(accepted).toMatchObject({ kind: 'accepted', score: { rulesVersion: '1.1.0' } });
+    expect(accepted).toMatchObject({ kind: 'accepted', score: { rulesVersion: '1.2.0' } });
     const s = memory();
     const flow = new SubmissionFlow({ base: 'http://x', challenge, replay, controls: 'keyboard', storage: s, send: { transport: scripted([ok()]), ...noWait } });
     await flow.submit('Ace');
-    expect(localBest(s)?.rulesVersion).toBe('1.1.0');
+    expect(localBest(s)?.rulesVersion).toBe('1.2.0');
   });
 
   it('uses explicit scoring eras without guessing from unknown or missing technical versions', () => {
     expect(scoringEra('1.0.0')).toBe('V1');
     expect(scoringEra('1.1.0')).toBe('V2');
     expect(rulesInScoringEra('1.1.0')).toEqual(['1.1.0']);
+    expect(scoringEra('1.2.0')).toBe('V3');
+    expect(rulesInScoringEra('1.2.0')).toEqual(['1.2.0']);
     for (const version of ['1.1.1', '2.0.0', 'constructor', undefined]) expect(scoringEra(version)).toBeNull();
     expect(rulesInScoringEra('9.0.0')).toEqual([]);
     expect(formatEraScore(900, undefined)).toBe('900  VERSION UNKNOWN');

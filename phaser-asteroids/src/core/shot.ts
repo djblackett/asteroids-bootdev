@@ -7,17 +7,20 @@ export interface Shot {
   radius: number;
   /** Player number that fired the shot. UFO shots are a separate type (`UfoShot`) kept in their own list. */
   owner: number;
+  /** Frozen at firing time. Absent on legacy/test projectiles means an ordinary bullet. */
+  charged?: boolean;
   alive: boolean;
 }
 
 /** `rotationDegrees` uses the Pygame convention (0 = Down). */
-export function createShot(origin: Vec2, rotationDegrees: number, owner: number): Shot {
+export function createShot(origin: Vec2, rotationDegrees: number, owner: number, charged = false): Shot {
   const dir = getForwardVector(rotationDegrees);
   return {
     position: { x: origin.x, y: origin.y },
     velocity: { x: dir.x * PLAYER_SHOOT_SPEED, y: dir.y * PLAYER_SHOOT_SPEED },
     radius: SHOT_RADIUS,
     owner,
+    charged,
     alive: true,
   };
 }
