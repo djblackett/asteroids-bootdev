@@ -218,7 +218,7 @@ export class GameScene extends Phaser.Scene {
         };
       }
     } else {
-      this.sim = new GameSim({ config });
+      this.sim = new GameSim({ config, gameMode: setup.mode });
       this.fixedRunner = null;
       this.replayRecorder = null;
     }
@@ -293,7 +293,7 @@ export class GameScene extends Phaser.Scene {
       void import('../dev/bossTrial').then(({ installBossTrial }) => {
         if (this.scene.isActive() && this.sim === sim) installBossTrial(this, () => this.paused);
       });
-    } else {
+    } else if (this.sim.gameMode === 'invasion') {
       installBossEncounter(this, () => this.paused, () => this.runOver);
     }
     if (import.meta.env.DEV && !this.isVerifiedMode && !this.rankedChallenge && new URLSearchParams(window.location.search).has('lightningtrial')) {

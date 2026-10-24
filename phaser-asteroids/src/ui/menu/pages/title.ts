@@ -19,7 +19,7 @@ const LEFT_X = 40;
 const LEFT_W = 580;
 const RIGHT_X = 680;
 const RIGHT_W = 560;
-const LEGEND = { x: 40, y: 482, w: 1200, h: 224 };
+const LEGEND = { x: 40, y: 588, w: 1200, h: 118 };
 
 const HELP_TOP = 160;
 const HELP_STEP = 56;
@@ -86,6 +86,14 @@ export function buildTitlePage(kit: PageKit, ctx: MenuContext, nav: PageNav, pla
     buildDesktopPlay(kit, ctx, nav, count, recover);
   }
 
+  new MenuChoice(kit, {
+    id: 'game-mode', label: 'GAME MODE', y: 482,
+    frame: { x: 40, y: 482, w: 1200, h: MIN_TARGET },
+    options: ['CLASSIC\nEndless asteroid survival', 'INVASION\nSurvival with boss encounters'],
+    selected: () => ctx.setup().mode === 'invasion' ? 1 : 0,
+    onSelect: index => ctx.patchSetup(s => ({ ...s, mode: index === 1 ? 'invasion' : 'classic' })),
+    size: 26,
+  });
   buildLegend(kit, ctx, count, nav);
 
   const hotkeys: Record<string, () => void> = { Space: () => ctx.actions.play() };
@@ -116,16 +124,17 @@ export function buildTitlePage(kit: PageKit, ctx: MenuContext, nav: PageNav, pla
       play: { down: 'practice', up: touch ? 'powerups' : 'touch-on' },
       practice: { up: 'play', down: 'audio' },
       scores: { up: 'play', down: 'ranked' },
-      audio: { up: 'practice', down: 'powerups' },
-      controls: { up: 'practice', down: 'powerups' },
-      ranked: { up: 'scores', down: 'powerups' },
-      powerups: { up: 'audio', down: 'play' },
+      audio: { up: 'practice', down: 'game-mode' },
+      controls: { up: 'practice', down: 'game-mode' },
+      ranked: { up: 'scores', down: 'game-mode' },
+      'game-mode': { up: 'audio', down: 'powerups' },
+      powerups: { up: 'game-mode', down: 'play' },
       players: { down: 'play' },
       'touch-on': { down: 'play' },
     } } : {}),
     signature: () => {
       const s = ctx.setup();
-      return `${ctx.inputMode.mode}|${s.game.playerCount}|${s.p2Keys}|${s.game.livesMode}|${s.game.friendlyFire}|${s.game.speed.join(",")}|${ctx.movement.mode}|${ctx.pads.status(s.game.playerCount).map((p) => p.text).join('|')}`;
+      return `${ctx.inputMode.mode}|${s.mode}|${s.game.playerCount}|${s.p2Keys}|${s.game.livesMode}|${s.game.friendlyFire}|${s.game.speed.join(",")}|${ctx.movement.mode}|${ctx.pads.status(s.game.playerCount).map((p) => p.text).join('|')}`;
     },
   };
 }
@@ -157,11 +166,11 @@ function buildDesktopPlay(kit: PageKit, ctx: MenuContext, nav: PageNav, count: 1
     id: 'ranked',
     name: 'RANKED PLAY',
     rect: { x: RIGHT_X + half + 16, y, w: half, h: playH },
-    label: rankedOk ? 'RANKED' : 'RANKED\n1 PLAYER ONLY',
+    label: rankedOk ? (ctx.setup().mode === 'invasion' ? 'RANKED\nUNAVAILABLE' : 'RANKED') : 'RANKED\n1 PLAYER ONLY',
     color: COLORS.heading,
     enabled: () => rankedOk,
     onTap: () => nav.open('ranked'),
-    size: rankedOk ? 42 : 26,
+    size: rankedOk && ctx.setup().mode !== 'invasion' ? 42 : 26,
     ...(touch || !rankedOk ? {} : { hint: 'R' }),
   });
   y += playH + 16;
@@ -206,7 +215,7 @@ function buildMobilePlay(kit: PageKit, ctx: MenuContext, nav: PageNav, play: Tit
   new MenuButton(kit, {
     id: 'play', rect: { x: RIGHT_X, y: BAND_TOP, w: RIGHT_W, h: 120 },
     label: 'PLAY', primary: true, size: 60, onTap: ctx.actions.play,
-    hint: `ONLINE LEADERBOARD  /  ${play.timeLimitLabel} LIMIT`, hintSize: 24,
+    hint: ctx.setup().mode === 'invasion' ? 'RANKED INVASION UNAVAILABLE' : `ONLINE LEADERBOARD  /  ${play.timeLimitLabel} LIMIT`, hintSize: 24,
   });
   const half = (RIGHT_W - 16) / 2;
   new MenuButton(kit, {
@@ -290,8 +299,8 @@ function buildLegend(kit: PageKit, ctx: MenuContext, count: 1 | 2, nav: PageNav)
   // The card is itself the button: nothing but its frame and focus state are drawn by it, the rest is drawn on top.
   new MenuButton(kit, { id: 'powerups', name: 'POWER-UPS', rect: LEGEND, label: '', onTap: () => nav.open('powerups') });
   const icons = kit.graphics(); // created after the card, so the icons are drawn on top of its frame
-  kit.text(LEGEND.x + 28, LEGEND.y + 28, 'POWER-UPS', { size: TEXT.heading, originX: 0, originY: 0.5, color: COLORS.heading });
-  kit.text(LEGEND.x + LEGEND.w - 28, LEGEND.y + 28, ctx.inputMode.isTouch ? 'TAP FOR DETAILS  >' : 'DETAILS  >', {
+  kit.text(LEGEND.x + 28, LEGEND.y + 20, 'POWER-UPS', { size: TEXT.heading, originX: 0, originY: 0.5, color: COLORS.heading });
+  kit.text(LEGEND.x + LEGEND.w - 28, LEGEND.y + 20, ctx.inputMode.isTouch ? 'TAP FOR DETAILS  >' : 'DETAILS  >', {
     size: TEXT.small,
     originX: 1,
     originY: 0.5,
@@ -301,14 +310,14 @@ function buildLegend(kit: PageKit, ctx: MenuContext, count: 1 | 2, nav: PageNav)
   const cell = (LEGEND.w - 40) / info.length;
   info.forEach((p, i) => {
     const cx = LEGEND.x + 20 + cell * i + cell / 2;
-    kit.text(cx, LEGEND.y + 142, p.name, { size: info.length > 6 ? 20 : TEXT.body - 2, originX: 0.5, originY: 0.5, color: p.color });
-    kit.text(cx, LEGEND.y + 180, p.short, { size: info.length > 6 ? 18 : TEXT.small, originX: 0.5, originY: 0.5, color: COLORS.hint, bold: false });
+    kit.text(cx, LEGEND.y + 104, p.short, { size: info.length > 6 ? 18 : TEXT.small, originX: 0.5, originY: 0.5, color: COLORS.hint, bold: false });
+    kit.text(cx, LEGEND.y + 78, p.name, { size: info.length > 6 ? 20 : TEXT.body - 2, originX: 0.5, originY: 0.5, color: p.color });
   });
   kit.onFrame((now) => {
     icons.clear();
     info.forEach((p, i) => {
       const cx = LEGEND.x + 20 + cell * i + cell / 2;
-      drawPowerUpIcon(icons, p.type, cx, LEGEND.y + 92, POWERUP_RADIUS + 3, iconClock(now));
+      drawPowerUpIcon(icons, p.type, cx, LEGEND.y + 49, POWERUP_RADIUS - 4, iconClock(now));
     });
   });
 }

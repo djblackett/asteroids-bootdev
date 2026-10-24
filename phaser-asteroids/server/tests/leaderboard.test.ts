@@ -129,7 +129,7 @@ describe('weekly leaderboard', () => {
     expect(res.body.ranks).toEqual({ allTime: 2, weekly: 1 });
     const detail = await h.call('GET', `/api/v1/scores/${res.body.score.id}`);
     expect(detail.body.ranks).toEqual({ allTime: 2, weekly: 1 });
-    expect(detail.body.score.score).toBe(5710);
+    expect(detail.body.score.score).toBe(34735);
     expect(res.body.score.rulesVersion).toBe('1.3.0');
     expect(detail.body.score.rulesVersion).toBe('1.3.0');
   });

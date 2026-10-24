@@ -63,17 +63,17 @@ describe('submitting a legitimate run', () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('accepted');
     expect(res.body.replayed).toBe(false);
-    expect(res.body.score.score).toBe(5710);
+    expect(res.body.score.score).toBe(34735);
     expect(res.body.score.nickname).toBe('Dave J');
     expect(res.body.ranks).toEqual({ allTime: 1, weekly: 1 });
 
     const row = await h.db.first<Record<string, unknown>>('SELECT * FROM scores');
-    expect(row).toMatchObject({ score: 5710, ticks: bot.ticks, reported_controls: 'keyboard', visibility: 'visible', rules_version: '1.3.0' });
+    expect(row).toMatchObject({ score: 34735, ticks: bot.ticks, reported_controls: 'keyboard', visibility: 'visible', rules_version: '1.3.0' });
     expect(await count(h.db, 'runs', "status = 'accepted'")).toBe(1);
     expect(await count(h.db, 'scores')).toBe(1);
 
     const board = await h.call('GET', '/api/v1/leaderboard/all-time');
-    expect(board.body.entries.map((e: { score: number }) => e.score)).toEqual([5710]);
+    expect(board.body.entries.map((e: { score: number }) => e.score)).toEqual([34735]);
   });
 
   it('ignores the score the client claims when it is not consistent, and never takes it as the score', async () => {
@@ -84,7 +84,7 @@ describe('submitting a legitimate run', () => {
     delete (bot.replay as { claimedResult?: unknown }).claimedResult;
     const res = await h.playAndSubmit(run, bot.replay);
     expect(res.status).toBe(200);
-    expect(res.body.score.score).toBe(5710);
+    expect(res.body.score.score).toBe(34735);
   });
 });
 
@@ -385,7 +385,7 @@ describe('request size and encoding limits', () => {
     const run = await h.start({ seed: REFERENCE_SEED });
     const res = await h.playAndSubmit(run, reference().replay, { gzip: true });
     expect(res.status).toBe(200);
-    expect(res.body.score.score).toBe(5710);
+    expect(res.body.score.score).toBe(34735);
   });
 
   it('truncated gzip and corrupt gzip -> 400, run not consumed', async () => {

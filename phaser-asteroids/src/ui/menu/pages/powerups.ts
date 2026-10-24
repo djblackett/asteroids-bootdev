@@ -7,8 +7,8 @@ import { POWERUP_INFO } from '../powerupInfo';
 import { iconClock, TEXT, type PageKit } from '../widgets';
 import { backButton, pageTitle } from './common';
 
-const FIRST_Y = 130;
-const STEP = 74;
+const FIRST_Y = 118;
+const STEP = 66;
 const ICON_X = 90;
 const NAME_X = 160;
 const DETAIL_X = 470;

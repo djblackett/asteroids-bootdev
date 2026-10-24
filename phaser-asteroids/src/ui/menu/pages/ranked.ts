@@ -16,6 +16,7 @@ export type RankedRequestStatus =
 export interface RankedMenuContext {
   /** Reuses the same input recovery for the explicit unranked title action. */
   readonly practice?: boolean;
+  mode?(): 'classic' | 'invasion';
   readonly inputMode: MenuContext['inputMode'];
   inputAvailable(): boolean;
   status(): RankedRequestStatus;
@@ -39,6 +40,8 @@ const WIDE = { w: 600, h: 110 };
 /** What the player is told when the ranked service cannot start a run, and whether trying again could help. */
 export function describeRankedFailure(code: string): { lines: [string, string]; retry: boolean } {
   switch (code) {
+    case 'invasion_unavailable':
+      return { lines: ['RANKED INVASION IS NOT AVAILABLE YET.', 'SELECT CLASSIC FOR RANKED, OR PLAY PRACTICE.'], retry: false };
     case 'unconfigured':
       return { lines: ['RANKED PLAY IS NOT AVAILABLE IN THIS BUILD YET.', 'YOU CAN STILL PLAY PRACTICE.'], retry: false };
     case 'update_required':
@@ -56,7 +59,8 @@ export function describeRankedFailure(code: string): { lines: [string, string]; 
  * so plainly and offers a normal game instead. Nothing here starts a run on its own.
  */
 export function buildRankedPage(kit: PageKit, ctx: RankedMenuContext, nav: PageNav): PageDef {
-  const status = ctx.status();
+  const status: RankedRequestStatus = !ctx.practice && ctx.mode?.() === 'invasion'
+    ? { kind: 'error', code: 'invasion_unavailable' } : ctx.status();
   pageTitle(kit, ctx.practice ? 'PRACTICE' : 'RANKED PLAY');
 
   if (!ctx.inputAvailable()) {

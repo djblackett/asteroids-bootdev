@@ -6,7 +6,7 @@ export const BOSS_CINEMATIC = {
   entranceStart: 1.1,
   // Keep the original descent independent of the earlier combat/audio handoff.
   descentEnd: 14,
-  combatStart: 11,
+  combatStart: 9,
   skipAfter: 5,
   barFill: 0.75,
   failure: 0.65,

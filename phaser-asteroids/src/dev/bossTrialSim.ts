@@ -7,7 +7,7 @@ export * from '../boss/bossSim';
 /** Development-only immediate encounter and optional exposed-core shortcut. */
 export class BossTrialSim extends MothershipGameSim {
   constructor(config: Partial<GameConfig> = {}, options: { exposedCore?: boolean } = {}) {
-    super({ config, rng: seededRng(0xd4ead), startCooldown: 0 });
+    super({ gameMode: 'invasion', config, rng: seededRng(0xd4ead), startCooldown: 0 });
     this.startEncounter();
     for (const p of this.players) { p.isRespawning = false; p.respawnTimer = 0; }
     if (options.exposedCore) {

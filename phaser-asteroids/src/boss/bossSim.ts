@@ -1,3 +1,4 @@
+import type { GameMode } from '../gameSetup';
 import { MAX_FRAME_DT, SCREEN_WIDTH, UFO_CONTINUOUS_SPAWN_TIME } from '../core/constants';
 import { GameSim, type GameSimOptions, type SimEvent } from '../core/game';
 import { distanceToBeam, laserEndPosition, laserHits } from '../core/laser';
@@ -6,7 +7,7 @@ import { NO_INPUT } from '../core/player';
 import { createUfoShot, type UfoShot } from '../core/ufo';
 import { BOSS_CINEMATIC as C } from './bossCinematic';
 
-export const BOSS_BONUS = 2000;
+export const BOSS_BONUS = 20000;
 export const BOSS_TOTAL_HP = 76;
 /** Local playtest tuning: a shared cycle, regardless of how many turrets survive. */
 export const BOSS_ATTACK = {
@@ -110,7 +111,7 @@ export class Mothership {
 }
 
 /** Change this one constant to try an earlier encounter. */
-export const FIRST_BOSS_ENCOUNTER_SECONDS = 60;
+export const FIRST_BOSS_ENCOUNTER_SECONDS = 120;
 
 /** One encounter per ordinary run; the development trial uses these same mechanics. */
 export class MothershipGameSim extends GameSim {
@@ -125,7 +126,12 @@ export class MothershipGameSim extends GameSim {
   encounterStarted = false;
   ordinaryPlay = true;
 
-  constructor(options: GameSimOptions = {}) { super(options); }
+  readonly gameMode: GameMode;
+
+  constructor(options: GameSimOptions & { gameMode?: GameMode } = {}) {
+    super(options);
+    this.gameMode = options.gameMode ?? 'classic';
+  }
 
   protected startEncounter(): void {
     if (this.encounterStarted || this.isGameOver) return;
@@ -150,8 +156,10 @@ export class MothershipGameSim extends GameSim {
     });
   }
 
-  /** Fixed 60 Hz in the browser and authoritative replay, including noninteractive cinematics. */
+  /** Invasion uses fixed 60 Hz, including cinematics. Classic keeps the original simulation stepping. */
   override step(dt: number, input = NO_INPUT, input2 = NO_INPUT): SimEvent[] {
+    // Classic delegates unchanged, including variable-dt casual play and authoritative replay.
+    if (this.gameMode === 'classic') return super.step(dt, input, input2);
     const events: SimEvent[] = [];
     this.accumulator += Math.min(Math.max(dt, 0), MAX_FRAME_DT);
     while (this.accumulator + 1e-10 >= 1 / 60) {

@@ -180,7 +180,9 @@ export class StartScene extends Phaser.Scene {
       pads: this.pads,
       setup: () => this.setup,
       patchSetup: (change) => {
-        this.setup = change(this.setup);
+        const next = change(this.setup);
+        if (next.mode !== this.setup.mode) this.cancelRankedRequest();
+        this.setup = next;
         setSetup(this.registry, this.setup);
       },
       setPlayers: (count) => this.setPlayers(count),
@@ -311,6 +313,7 @@ export class StartScene extends Phaser.Scene {
   private makeRankedContext(nav: PageNav): RankedMenuContext {
     return {
       inputMode: this.inputMode,
+      mode: () => this.setup.mode,
       inputAvailable: () => this.rankedInputReady(),
       status: () => this.rankedStatus,
       best: () => this.personalBest,
@@ -341,6 +344,10 @@ export class StartScene extends Phaser.Scene {
    */
   private requestRanked(): void {
     if (this.starting || this.rankedStatus.kind === 'connecting') return;
+    if (this.setup.mode === 'invasion') {
+      this.failRanked('invasion_unavailable', 'Ranked Invasion is not available yet');
+      return;
+    }
     if (!this.rankedInputReady()) return;
     const mine = ++this.rankedRequest;
     rankedSession.beginRequest();

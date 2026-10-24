@@ -2,17 +2,20 @@ import type Phaser from 'phaser';
 import { DEFAULT_GAME_CONFIG, resolveGameConfig, type GameConfig } from './core/gameConfig';
 import type { P2KeyLayout } from './input/keyboardControls';
 
+export type GameMode = 'classic' | 'invasion';
+
 /**
  * Everything the title screen chooses for the next run: the simulation's `GameConfig` plus which keys Player 2 uses.
  * It lives in the Phaser registry (so it survives scene changes and retries, and is gone when the page reloads) and the
  * game scene turns it into a brand-new `GameSim` every time, so a one-player run can never inherit co-op state.
  */
 export interface GameSetup {
+  mode: GameMode;
   game: GameConfig;
   p2Keys: P2KeyLayout;
 }
 
-export const DEFAULT_SETUP: Readonly<GameSetup> = { game: DEFAULT_GAME_CONFIG, p2Keys: 'arrows' };
+export const DEFAULT_SETUP: Readonly<GameSetup> = { mode: 'classic', game: DEFAULT_GAME_CONFIG, p2Keys: 'arrows' };
 
 const SETUP_KEY = 'gameSetup';
 
