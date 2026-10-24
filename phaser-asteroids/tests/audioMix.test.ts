@@ -501,10 +501,11 @@ describe('the mix (guards for the default levels; the final judgement is by ear)
   });
 
   it('no effect is far louder than the music at default settings, and gunfire is at most half of it', () => {
-    // Gains are not loudness: the music file is mastered hotter than an explosion lasts, so explosions may sit a
-    // little above the music's gain (the biggest by 15 %) and still be well within it on average.
+    // Gains are not loudness: explosions may sit a little above the music's gain (the biggest by 15 %).
+    // The death cue gets the same headroom so it remains audible when a life is lost.
     for (const key of Object.keys(SFX_GAIN) as SfxKey[]) {
-      const limit = SFX_GROUP[key] === 'explosion' ? musicDefault * 1.15 : musicDefault;
+      const group = SFX_GROUP[key];
+      const limit = group === 'explosion' || group === 'death' ? musicDefault * 1.15 : musicDefault;
       expect(effective(key)).toBeLessThanOrEqual(limit + 1e-9);
     }
     for (const key of ['shoot_low', 'shoot_mid', 'shoot_high'] as const) expect(effective(key)).toBeLessThanOrEqual(musicDefault / 2);

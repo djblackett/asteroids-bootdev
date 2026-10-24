@@ -144,7 +144,7 @@ export const SFX_GAIN: Readonly<Record<SfxKey, number>> = {
   explosion_large: explosionGain('large'),
   laser: 0.5,
   boost: 0.6,
-  player_death: 0.7,
+  player_death: 0.8,
 };
 
 /**
