@@ -66,14 +66,15 @@ async function route(request: Request, url: URL, origin: string | null, deps: Se
     only(method, 'POST');
     requireAllowedOrigin(origin, deps);
     const ipHash = await clientHash(request, deps);
-    // Throttle before doing any work, so an abusive client cannot make us spend CPU. The global bucket is the hard ceiling on
-    // how much replay verification the service will perform per hour.
+    // Throttle each address before doing any work. The global bucket is the hard ceiling on how much replay verification the
+    // service will perform per hour; submitRun spends it only after the run token has been checked, so anonymous junk (which the
+    // per-address bucket still limits) cannot use it up for everyone.
     await hitRateLimit(deps.db, `submit:ip:${ipHash}`, settings.rate.submitPerIp, settings.rate.windowMs, deps.now());
-    await hitRateLimit(deps.db, 'submit:global', settings.rate.submitGlobal, settings.rate.windowMs, deps.now());
     const result = await submitRun(deps, {
       runId: submit[1]!,
       token: bearer(request),
       readBody: () => readBoundedBody(request, settings),
+      chargeVerification: () => hitRateLimit(deps.db, 'submit:global', settings.rate.submitGlobal, settings.rate.windowMs, deps.now()),
     });
     return json(result, 200, { 'Cache-Control': 'no-store' });
   }

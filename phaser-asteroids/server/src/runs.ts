@@ -111,6 +111,12 @@ export interface SubmitInput {
   token: string | null;
   /** Reads the (size-bounded) body. Called only after the run and its token have been checked. */
   readBody: () => Promise<Uint8Array>;
+  /**
+   * Spends one unit of the shared hourly verification budget (throws 429 when it is used up). Called only once the caller has shown
+   * the run's token and the run can still be submitted, so requests that could never reach verification (unknown run, wrong or
+   * missing token, a finished or expired run) cannot exhaust the budget for every honest player.
+   */
+  chargeVerification?: () => Promise<void>;
 }
 
 const loadRun = (db: Db, id: string) => db.first<RunRow>('SELECT * FROM runs WHERE id = ?', [id]);
@@ -127,6 +133,7 @@ export async function submitRun(deps: ServiceDeps, input: SubmitInput): Promise<
   }
   if (run.status === 'rejected') throw rejectedError(run);
   if (run.status === 'issued' && run.expires_at <= deps.now()) throw expiredError();
+  await input.chargeVerification?.();
 
   // 2. Read and hash the body. Problems up to and including step 3 are about the transport or the envelope, not about the play
   //    itself, so they do not consume the run: the client can fix or repeat the request.
