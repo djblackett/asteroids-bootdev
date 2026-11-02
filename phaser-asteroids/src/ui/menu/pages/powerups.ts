@@ -5,10 +5,13 @@ import type { MenuContext, PageNav } from '../context';
 import type { PageDef } from '../menuView';
 import { POWERUP_INFO } from '../powerupInfo';
 import { iconClock, TEXT, type PageKit } from '../widgets';
-import { backButton, pageTitle } from './common';
+import { BACK_Y, backButton, pageTitle } from './common';
 
-const FIRST_Y = 130;
-const STEP = 74;
+// The rows share the space between the title and BACK. Seven rows (LIGHTNING made it seven) at the old 74 px pitch ran the last
+// description into BACK; the pitch now shrinks to fit, and never grows past what two-line descriptions look right at.
+const FIRST_Y = 92;
+const LAST_Y = BACK_Y - 16;
+const STEP = Math.min(74, Math.floor((LAST_Y - FIRST_Y) / POWERUP_INFO.length));
 const ICON_X = 90;
 const NAME_X = 160;
 const DETAIL_X = 470;
