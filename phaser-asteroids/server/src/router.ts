@@ -1,6 +1,7 @@
-import { RANKED_SCHEMA_VERSION, RANKED_TICK_RATE } from './config';
+import { RANKED_TICK_RATE } from './config';
 import { constantTimeEqual, sha256Hex } from './crypto';
 import { readBoundedBody } from './body';
+import { ENGINES, engineFor } from './engines';
 import { ApiError } from './errors';
 import { getLeaderboard, getScoreDetail, type Scope } from './leaderboard';
 import { hitRateLimit } from './ratelimit';
@@ -13,7 +14,7 @@ const API = '/api/v1';
  * Worker, in Node (tests) or behind any other fetch-style host.
  *
  *   GET  /api/v1/health
- *   POST /api/v1/runs                              issue a ranked challenge
+ *   POST /api/v1/runs                              issue a ranked challenge (?rules=&schema=: the client's own versions)
  *   POST /api/v1/runs/:id/submit                   submit the recording for that challenge (Bearer run token)
  *   GET  /api/v1/leaderboard/all-time|weekly       ?limit=&offset=
  *   GET  /api/v1/scores/:id                        one entry with its ranks
@@ -48,7 +49,18 @@ async function route(request: Request, url: URL, origin: string | null, deps: Se
 
   if (path === `${API}/health`) {
     only(method, 'GET');
-    return json({ ok: true, rulesVersion: settings.rulesVersion, schemaVersion: RANKED_SCHEMA_VERSION, maxTicks: settings.maxTicks, timeLimitSeconds: settings.maxTicks / RANKED_TICK_RATE, time: new Date(deps.now()).toISOString() });
+    const engines = deps.engines ?? ENGINES;
+    // rulesVersion / schemaVersion: what a request without ?rules= is issued (the current version). supportedRules: every version
+    // this deployment verifies and issues on request; the release gate checks that it covers every distributed app.
+    return json({
+      ok: true,
+      rulesVersion: settings.rulesVersion,
+      schemaVersion: engineFor(engines, settings.rulesVersion)?.schemaVersion ?? null,
+      supportedRules: Object.keys(engines).sort((a, b) => a.localeCompare(b, 'en', { numeric: true })),
+      maxTicks: settings.maxTicks,
+      timeLimitSeconds: settings.maxTicks / RANKED_TICK_RATE,
+      time: new Date(deps.now()).toISOString(),
+    });
   }
 
   if (path === `${API}/runs`) {
@@ -57,7 +69,7 @@ async function route(request: Request, url: URL, origin: string | null, deps: Se
     const ipHash = await clientHash(request, deps);
     await hitRateLimit(deps.db, `start:ip:${ipHash}`, settings.rate.startPerIp, settings.rate.windowMs, deps.now());
     await hitRateLimit(deps.db, 'start:global', settings.rate.startGlobal, settings.rate.windowMs, deps.now());
-    const run = await createRun(deps, ipHash);
+    const run = await createRun(deps, ipHash, { rules: url.searchParams.get('rules'), schema: url.searchParams.get('schema') });
     return json(run, 201, { 'Cache-Control': 'no-store' });
   }
 

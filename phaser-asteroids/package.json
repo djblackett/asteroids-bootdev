@@ -28,6 +28,7 @@
     "test:mobile-entry": "npm run build && node scripts/mobile-entry.mjs",
     "test:pages": "npm run build && node scripts/pages-check.mjs",
     "test:server": "vitest run server/tests",
+    "rules:freeze": "node server/scripts/freeze-rules.mjs",
     "test:ranked": "npm run build && node scripts/ranked-browser.mjs",
     "test:ranked:ui": "npm run build && node scripts/ranked-ui.mjs",
     "test:lan": "node scripts/lan-check.mjs",

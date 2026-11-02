@@ -1,5 +1,5 @@
 // Focused release-blocker checks. Real local Worker/D1 + production browser build; no legacy browser sweep.
-import { clickItem, itemPoint, makeChecker, menuItems, openTitle, requireBuild, sceneTexts, sleep, startGameAndBrowser, WorkerStack } from './lib/rankedStack.mjs';
+import { challengeRoute, clickItem, isChallengeRequest, itemPoint, makeChecker, menuItems, openTitle, requireBuild, sceneTexts, sleep, startGameAndBrowser, WorkerStack } from './lib/rankedStack.mjs';
 import { settleTitleInput } from './lib/menuWaits.mjs';
 
 const PORT = 4416;
@@ -23,7 +23,7 @@ try {
     });
     const page = await openTitle(ctx, GAME, { api: worker.API });
     let requests = 0;
-    page.on('request', (r) => { if (r.method() === 'POST' && r.url().endsWith('/api/v1/runs')) requests++; });
+    page.on('request', (r) => { if (isChallengeRequest(r)) requests++; });
     return { ctx, page, requests: () => requests };
   };
   const tap = async (page, id) => {
@@ -104,7 +104,7 @@ try {
     await sleep(200);
     await joinPad(page);
     await tap(page, 'ranked');
-    await page.route(`${worker.API}/api/v1/runs`, (route) => route.request().method() === 'POST' ? route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":{"code":"unavailable","message":"Test outage"}}' }) : route.continue());
+    await page.route(challengeRoute(worker.API), (route) => route.request().method() === 'POST' ? route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":{"code":"unavailable","message":"Test outage"}}' }) : route.continue());
     await tap(page, 'start');
     await page.waitForFunction(() => window.__game.scene.getScene('StartScene').menuSnapshot().items.some((i) => i.id === 'play-normally'));
     check('service failure offers TRY AGAIN and PLAY NORMALLY with usable input', (await menuItems(page)).items.some((i) => i.id === 'start'));
@@ -127,7 +127,7 @@ try {
     const held = new Promise((r) => { release = r; });
     let received;
     const responseReady = new Promise((r) => { received = r; });
-    await page.route(`${worker.API}/api/v1/runs`, async (route) => {
+    await page.route(challengeRoute(worker.API), async (route) => {
       if (route.request().method() !== 'POST') return route.continue();
       const response = await route.fetch();
       received();

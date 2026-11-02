@@ -123,11 +123,20 @@ async function withTimeout(fetchFn: FetchLike, url: string, init: RequestInit, m
 
 // --- starting a run ----------------------------------------------------------------------------------------------------------
 
+/**
+ * The challenge request's URL. It names the rules and replay schema this build plays, so a server that has learned a newer version
+ * still issues this one for as long as it supports it (an installed app keeps working through a gameplay update). A query string, not
+ * a body or a header, keeps the request a CORS "simple" request: no preflight round trip on a phone.
+ */
+export function challengeUrl(base: string): string {
+  return `${base}/api/v1/runs?rules=${encodeURIComponent(GAMEPLAY_RULES_VERSION)}&schema=${REPLAY_SCHEMA_VERSION}`;
+}
+
 /** Asks the server for a ranked challenge. Throws RankedApiError; the caller must then NOT start a ranked run. */
 export async function requestChallenge(base: string, fetchFn: FetchLike = realFetch): Promise<RankedChallenge> {
   let res: Response;
   try {
-    res = await withTimeout(fetchFn, `${base}/api/v1/runs`, { method: 'POST' }, 10_000);
+    res = await withTimeout(fetchFn, challengeUrl(base), { method: 'POST' }, 10_000);
   } catch {
     throw new RankedApiError('network', 'The ranked service could not be reached');
   }

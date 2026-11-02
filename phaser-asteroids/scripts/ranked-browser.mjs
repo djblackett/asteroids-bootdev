@@ -56,6 +56,8 @@ try {
   const page = await openTitle(context, GAME, { api: API });
   const apiCalls = [];
   page.on('request', (r) => r.url().startsWith(API) && apiCalls.push(`${r.method()} ${new URL(r.url()).pathname}`));
+  const challengeQueries = [];
+  page.on('request', (r) => r.url().startsWith(API) && r.method() === 'POST' && new URL(r.url()).pathname === '/api/v1/runs' && challengeQueries.push(new URL(r.url()).search));
   const submitCalls = () => apiCalls.filter((c) => /POST \/api\/v1\/runs\/[0-9a-f-]+\/submit/.test(c)).length;
 
   const title = await menuItems(page, 'title');
@@ -88,6 +90,8 @@ try {
     if (attempt === 1) {
       check('the challenge came from the server before play (phase=playing, run id held)', session.ranked?.phase === 'playing' && /^[0-9a-f-]{36}$/.test(session.ranked.runId ?? ''));
       check('the challenge was requested with POST /api/v1/runs', apiCalls.includes('POST /api/v1/runs'));
+      const engine = await loadEngine();
+      check('...naming the rules and replay schema this build plays', challengeQueries[0] === `?rules=${engine.GAMEPLAY_RULES_VERSION}&schema=${engine.REPLAY_SCHEMA_VERSION}`, challengeQueries[0]);
       check('simulation seed is the server-issued seed (not a default, not from the URL)', Number.isInteger(session.seed) && session.seed > 1 && !new URL(page.url()).searchParams.has('seed'));
       check('the ranked indicator is on screen during play', (await sceneTexts(page, 'GameScene')).includes('RANKED'));
 

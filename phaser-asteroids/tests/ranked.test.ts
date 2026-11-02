@@ -25,6 +25,7 @@ import { rulesInScoringEra, scoringEra, scoringEraLabel } from '../src/ranked/sc
 import { rankedSession } from '../src/ranked/session';
 import { SubmissionFlow } from '../src/ranked/submission';
 import type { ReplayRecord } from '../src/replay';
+import { GAMEPLAY_RULES_VERSION, REPLAY_SCHEMA_VERSION } from '../src/replay/constants';
 
 const challenge: RankedChallenge = {
   runId: '11111111-1111-4111-8111-111111111111',
@@ -99,6 +100,18 @@ describe('requestChallenge', () => {
     const c = await requestChallenge('http://x', async () => reply(201, challenge));
     expect(c.seed).toBe(123456);
     expect(c.timeLimitTicks).toBe(72_000);
+  });
+  it('names the rules and schema this build plays, as a CORS-simple POST (no body, no custom headers)', async () => {
+    const seen: { url: string; init?: RequestInit }[] = [];
+    await requestChallenge('http://x', async (url, init) => {
+      seen.push({ url, init });
+      return reply(201, challenge);
+    });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.url).toBe(`http://x/api/v1/runs?rules=${GAMEPLAY_RULES_VERSION}&schema=${REPLAY_SCHEMA_VERSION}`);
+    expect(seen[0]!.init?.method).toBe('POST');
+    expect(seen[0]!.init?.body).toBeUndefined();
+    expect(seen[0]!.init?.headers).toBeUndefined();
   });
   it('fails (never invents a challenge) when offline, rate limited, or refused', async () => {
     await expect(requestChallenge('http://x', async () => Promise.reject(new TypeError('offline')))).rejects.toMatchObject({ code: 'network' });
