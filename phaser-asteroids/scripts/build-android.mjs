@@ -4,6 +4,10 @@
 //   npm run android:sync             the above, then `cap sync android` (copies dist-android/ into the Android project)
 //   node scripts/build-android.mjs --verify-only    check an existing dist-android/ without rebuilding
 //
+// Before building it also checks that the leaderboard will keep accepting this app's runs after later gameplay updates: the rules
+// version it plays must be frozen (server/rules/versions.json) and its versionCode recorded with those rules in
+// server/rules/released.json, which is what makes CI refuse to drop them (see server/rules/README.md).
+//
 // Different from `npm run build` (GitHub Pages) in exactly two ways:
 //   1. Only the browser game is built. The server-only replay verifier (dist/node, ~8 MB) is never in the app.
 //   2. The leaderboard URL comes from .env.android and is required: the build stops if it is missing, not https, a loopback or private
@@ -14,6 +18,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { readManifest, readReleased } from '../server/rules/policy.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const ANDROID_OUT_DIR = 'dist-android';
@@ -80,6 +85,40 @@ export function verifyAndroidBuild(dir, apiOrigin) {
   return problems;
 }
 
+/** versionCode and versionName from android/app/build.gradle. */
+export function parseGradleVersion(text) {
+  const code = /^\s*versionCode\s+(\d+)\s*$/m.exec(text);
+  const name = /^\s*versionName\s+"([^"]+)"\s*$/m.exec(text);
+  if (!code || !name) throw new Error('android/app/build.gradle: versionCode / versionName not found');
+  return { versionCode: Number(code[1]), versionName: name[1] };
+}
+
+/** The rules and replay schema this source tree plays (src/replay/constants.ts). */
+export function parseReplayVersions(text) {
+  const rules = /export const GAMEPLAY_RULES_VERSION = '([^']+)';/.exec(text);
+  const schema = /export const REPLAY_SCHEMA_VERSION = (\d+);/.exec(text);
+  if (!rules || !schema) throw new Error('src/replay/constants.ts: GAMEPLAY_RULES_VERSION / REPLAY_SCHEMA_VERSION not found');
+  return { rulesVersion: rules[1], schemaVersion: Number(schema[1]) };
+}
+
+/** Why this app build must not be packaged yet, as far as ranked compatibility goes (empty: fine). */
+export function releaseRecordProblems({ rulesVersion, schemaVersion, versionCode, versionName }, manifest, released) {
+  const problems = [];
+  if (manifest.versions[rulesVersion]?.schemaVersion !== schemaVersion) {
+    problems.push(`rules ${rulesVersion} (schema ${schemaVersion}) are not frozen: run \`npm run rules:freeze\` and register them in server/src/engines.ts`);
+  }
+  const record = released.builds.find((b) => b.platform === 'android' && b.versionCode === versionCode);
+  const wanted = JSON.stringify({ platform: 'android', versionName, versionCode, rulesVersion, schemaVersion, distributed: null, supersededOn: null });
+  if (!record) {
+    problems.push(`versionCode ${versionCode} is not recorded in server/rules/released.json; add ${wanted}`);
+  } else if (record.rulesVersion !== rulesVersion || record.schemaVersion !== schemaVersion) {
+    problems.push(`versionCode ${versionCode} is recorded with rules ${record.rulesVersion} (schema ${record.schemaVersion}) but this build plays ${rulesVersion} (schema ${schemaVersion}): raise versionCode in android/app/build.gradle and add ${wanted}`);
+  } else if (record.versionName !== versionName) {
+    problems.push(`versionCode ${versionCode} is recorded as versionName ${record.versionName}, but build.gradle says ${versionName}`);
+  }
+  return problems;
+}
+
 /** Reads and checks the API origin from .env.android against the shell environment. Throws with a clear message. */
 export function resolveAndroidApiOrigin(envFileText, shellValue) {
   const fromFile = parseEnvFile(envFileText).get(API_KEY);
@@ -100,6 +139,13 @@ function main() {
   if (!fs.existsSync(envPath)) throw new Error(`${ANDROID_ENV_FILE} is missing`);
   const origin = resolveAndroidApiOrigin(fs.readFileSync(envPath, 'utf8'), process.env[API_KEY]);
   const outDir = path.join(root, ANDROID_OUT_DIR);
+  const build = {
+    ...parseGradleVersion(fs.readFileSync(path.join(root, 'android', 'app', 'build.gradle'), 'utf8')),
+    ...parseReplayVersions(fs.readFileSync(path.join(root, 'src', 'replay', 'constants.ts'), 'utf8')),
+  };
+  const recordProblems = releaseRecordProblems(build, readManifest(), readReleased());
+  if (recordProblems.length > 0) throw new Error(`ranked compatibility check failed:\n  - ${recordProblems.join('\n  - ')}`);
+  console.log(`[build:android] ${build.versionName} (${build.versionCode}) plays rules ${build.rulesVersion}, schema ${build.schemaVersion}: frozen and recorded`);
 
   if (!verifyOnly) {
     console.log(`[build:android] API ${origin} -> ${ANDROID_OUT_DIR}/`);

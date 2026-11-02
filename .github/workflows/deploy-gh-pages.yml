@@ -47,6 +47,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          # Full history: the frozen-rules guard below compares this commit with the base it would merge into.
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -62,8 +65,21 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Includes server/tests/rulesCompat.test.ts, the release compatibility gate: every rules version a distributed Android build
+      # plays is still registered, frozen engines match their pinned hashes, and the reference replays still give the recorded results
+      # (an unversioned gameplay change fails here). See phaser-asteroids/server/rules/README.md.
       - name: Unit tests
         run: npm test
+
+      # A frozen engine may be added but never edited, and dropped only after its support period. The unit tests above check files
+      # against their pinned hashes; this checks the hashes and release records themselves were not rewritten.
+      - name: Frozen replay engines guard
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: |
+          node --test scripts/rules-guard.test.mjs
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then BASE=origin/main; fi
+          node scripts/rules-guard.mjs "$BASE"
 
       - name: Build (typecheck + vite build)
         env:
@@ -91,6 +107,10 @@ jobs:
 
       - name: Test production health verification (mock HTTP only)
         run: node --test scripts/production-health.test.mjs
+
+      # Includes the check that the Android versionCode is recorded in server/rules/released.json with the rules it plays.
+      - name: Test the Android build checks (no Android SDK needed)
+        run: node --test scripts/build-android.test.mjs
 
       - name: Upload build for deployment
         if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}

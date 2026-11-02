@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { checkProductionApiUrl, parseEnvFile, resolveAndroidApiOrigin, verifyAndroidBuild } from './build-android.mjs';
+import { checkProductionApiUrl, parseEnvFile, parseGradleVersion, parseReplayVersions, releaseRecordProblems, resolveAndroidApiOrigin, verifyAndroidBuild } from './build-android.mjs';
+import { readManifest, readReleased } from '../server/rules/policy.mjs';
 
 const PROD = 'https://asteroids-leaderboard.davejandrea.workers.dev';
 const envText = `# comment\n\nVITE_LEADERBOARD_API_URL=${PROD}\r\n`;
@@ -71,4 +72,24 @@ test('a build without the production origin, with the server bundle, or without 
 test('the committed .env.android names the production Worker', () => {
   const text = fs.readFileSync(new URL('../.env.android', import.meta.url), 'utf8');
   assert.equal(resolveAndroidApiOrigin(text, undefined), PROD);
+});
+
+test('this tree can be packaged: its rules are frozen and its versionCode is recorded with them', () => {
+  const build = {
+    ...parseGradleVersion(fs.readFileSync(new URL('../android/app/build.gradle', import.meta.url), 'utf8')),
+    ...parseReplayVersions(fs.readFileSync(new URL('../src/replay/constants.ts', import.meta.url), 'utf8')),
+  };
+  assert.deepEqual(releaseRecordProblems(build, readManifest(), readReleased()), []);
+});
+
+test('refuses to package a build whose rules are not frozen, or whose versionCode is unrecorded or recorded with other rules', () => {
+  const manifest = { versions: { '1.2.0': { schemaVersion: 1 } } };
+  const released = { policy: { supportDays: 90 }, builds: [{ platform: 'android', versionName: '1.0', versionCode: 1, rulesVersion: '1.2.0', schemaVersion: 1, distributed: null, supersededOn: null }] };
+  const build = { versionCode: 1, versionName: '1.0', rulesVersion: '1.2.0', schemaVersion: 1 };
+  assert.deepEqual(releaseRecordProblems(build, manifest, released), []);
+  assert.match(releaseRecordProblems({ ...build, rulesVersion: '1.3.0' }, manifest, released).join(), /not frozen.*raise versionCode/s);
+  assert.match(releaseRecordProblems({ ...build, versionCode: 2 }, manifest, released).join(), /versionCode 2 is not recorded/);
+  assert.match(releaseRecordProblems({ ...build, versionName: '1.1' }, manifest, released).join(), /recorded as versionName 1\.0/);
+  assert.throws(() => parseGradleVersion('defaultConfig {}'), /versionCode/);
+  assert.deepEqual(parseGradleVersion('        versionCode 12\r\n        versionName "1.4"\r\n'), { versionCode: 12, versionName: '1.4' });
 });

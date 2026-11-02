@@ -1,0 +1,16 @@
+{
+  "policy": {
+    "supportDays": 90
+  },
+  "builds": [
+    {
+      "platform": "android",
+      "versionName": "1.0",
+      "versionCode": 1,
+      "rulesVersion": "1.2.0",
+      "schemaVersion": 1,
+      "distributed": null,
+      "supersededOn": null
+    }
+  ]
+}

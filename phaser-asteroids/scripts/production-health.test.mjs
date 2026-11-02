@@ -3,7 +3,9 @@ import test from 'node:test';
 import { GAMEPLAY_RULES_VERSION, REPLAY_SCHEMA_VERSION } from '../dist/node/index.js';
 import { verifyProductionHealth } from './production-health.mjs';
 
-const healthy = { ok: true, rulesVersion: GAMEPLAY_RULES_VERSION, schemaVersion: REPLAY_SCHEMA_VERSION };
+const healthy = { ok: true, rulesVersion: GAMEPLAY_RULES_VERSION, schemaVersion: REPLAY_SCHEMA_VERSION, supportedRules: [GAMEPLAY_RULES_VERSION] };
+// An Android build on older rules that is still inside its support period.
+const releasedOld = { policy: { supportDays: 90 }, builds: [{ platform: 'android', versionName: '1.0', versionCode: 1, rulesVersion: '0.9.0', schemaVersion: 1, distributed: '2026-11-01', supersededOn: null }] };
 
 test('accepts matching production versions with a read-only unauthenticated request', async () => {
   await verifyProductionHealth(async (url, options) => {
@@ -30,6 +32,19 @@ test('retries propagation failures, then accepts a compatible Worker', async () 
   assert.deepEqual(waits, [5_000, 5_000]);
 });
 
+test('accepts a Worker that still supports an older version a distributed app needs', async () => {
+  await verifyProductionHealth(async () => Response.json({ ...healthy, supportedRules: ['0.9.0', GAMEPLAY_RULES_VERSION] }), async () => {}, { released: releasedOld });
+});
+
+test('blocks publication when the Worker dropped a version a distributed app still needs', async () => {
+  let calls = 0;
+  await assert.rejects(verifyProductionHealth(async () => {
+    calls++;
+    return Response.json(healthy);
+  }, async () => {}, { released: releasedOld }), /verification failed; do not publish/);
+  assert.equal(calls, 5);
+});
+
 for (const [name, response] of [
   ['HTTP failure', () => new Response('unavailable', { status: 503 })],
   ['invalid JSON', () => new Response('not JSON')],
@@ -38,7 +53,9 @@ for (const [name, response] of [
   ['truthy ok', () => Response.json({ ...healthy, ok: 'true' })],
   ['wrong rules', () => Response.json({ ...healthy, rulesVersion: 'previous-version' })],
   ['wrong schema', () => Response.json({ ...healthy, schemaVersion: REPLAY_SCHEMA_VERSION + 1 })],
-  ['missing schema', () => Response.json({ ok: true, rulesVersion: GAMEPLAY_RULES_VERSION })],
+  ['missing schema', () => Response.json({ ok: true, rulesVersion: GAMEPLAY_RULES_VERSION, supportedRules: [GAMEPLAY_RULES_VERSION] })],
+  ['missing supportedRules (a Worker from before multi-version support)', () => Response.json({ ok: true, rulesVersion: GAMEPLAY_RULES_VERSION, schemaVersion: REPLAY_SCHEMA_VERSION })],
+  ['supportedRules without the current rules', () => Response.json({ ...healthy, supportedRules: ['0.9.0'] })],
   ['network timeout', () => { throw new Error('request timed out'); }],
 ]) {
   test(`blocks publication after five attempts: ${name}`, async () => {
