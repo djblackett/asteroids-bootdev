@@ -1058,7 +1058,7 @@ async function runFullscreen() {
   await ios.finger.tap(ok.x, ok.y, 70);
   await sleep(200);
   check('OK closes the tip, and the title screen is unaffected', !(await ios.page.evaluate(() => document.querySelector('.tc-tip').classList.contains('tc-tip-open'))) && (await ios.activeScene()) === 'StartScene');
-  await ios.tapItem('play');
+  await ios.tapItem('practice');
   await ios.page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
   await sleep(300);
   check('the game itself is unaffected by the missing Fullscreen API (starts and plays)', (await ios.overlayShown()) && !(await pillState(ios)).shown);
@@ -1624,9 +1624,12 @@ async function mobilePage(width, height, { query = '?debug', mobile = true, touc
       if (steering === 'joystick') await page.evaluate(() => window.__game.registry.get('touchControls').setSteering('joystick'));
       await sleep(250);
     },
-    /** Taps PLAY and waits for the run. */
+    /**
+     * Taps PRACTICE and waits for the run. On a one-player phone PLAY is the ranked entry (it needs the leaderboard service, which
+     * these tests do not run); PRACTICE is the same game without an online score.
+     */
     play: async () => {
-      await api.tapItem('play');
+      await api.tapItem('practice');
       await page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
       await sleep(350);
     },
@@ -1661,7 +1664,7 @@ async function run() {
   check('the rotate prompt is not shown in landscape', (await m.rect('.tc-rotate')).display === 'none');
 
   await m.play();
-  check('tapping PLAY (a real touch) starts a one-player run', (await m.activeScene()) === 'GameScene' && (await m.page.evaluate(`window.__game.scene.getScene('GameScene').sim.players.length`)) === 1);
+  check('tapping PRACTICE (a real touch) starts a one-player run', (await m.activeScene()) === 'GameScene' && (await m.page.evaluate(`window.__game.scene.getScene('GameScene').sim.players.length`)) === 1);
   const a1 = await m.audio();
   check('that touch unlocks audio and starts exactly one music instance', !a1.locked && a1.playing && a1.instances === 1, JSON.stringify(a1));
   check('the control overlay appears in landscape during play', await m.overlayShown());
@@ -1987,14 +1990,19 @@ async function run() {
   const turnOn = await m.itemRect('touch-on');
   const turnOnTexts = await m.texts('StartScene');
   check('the way back is a big button, not small text: at least 44 CSS px tall and 120 wide, top right, labelled in words', turnOn.height >= 44 && turnOn.width >= 120 && turnOn.top < 40 && turnOn.right > 422 && turnOnTexts.some((t) => /^TOUCH CONTROLS: OFF\nTAP TO TURN ON$/.test(t)), JSON.stringify({ w: Math.round(turnOn.width), h: Math.round(turnOn.height), texts: turnOnTexts.filter((t) => /TOUCH/.test(t)) }));
-  const playLabel = (await m.menu()).items.find((i) => i.id === 'play');
-  check('a phone in keyboard mode offers PLAY WITH KEYBOARD, which says it needs SPACE (the green button above is the main thing)', playLabel.label === 'PLAY WITH KEYBOARD' && turnOnTexts.includes('PRESS SPACE ON A KEYBOARD'), turnOnTexts.filter((t) => /PLAY|SPACE/.test(t)).join('|'));
+  const keyboardTitle = (await m.menu()).items;
+  const playLabel = keyboardTitle.find((i) => i.id === 'play');
+  check('a phone in keyboard mode keeps the phone entry (PLAY for ranked, PRACTICE beside it; the green button above is the way back)', playLabel?.label === 'PLAY' && keyboardTitle.some((i) => i.id === 'practice'), keyboardTitle.map((i) => `${i.id}=${i.label}`).join('|'));
   await m.tapGame(300, 300); // empty space, over the controls reference
   await m.tapGame(640, 52); // the title itself
-  await m.tapItem('play'); // a tap on PLAY WITH KEYBOARD: a phone has no keyboard, so a tap alone does not start it either
+  await m.tapItem('practice'); // no keyboard has been used yet, so a tap alone must not start a game nobody could steer
   await sleep(400);
-  check('a stray tap anywhere on the keyboard title screen of a phone, even on PLAY itself, does NOT start a game', (await m.activeScene()) === 'StartScene');
-  await m.page.keyboard.press('Space');
+  const gate = await m.menu();
+  check('a stray tap anywhere on the keyboard title screen of a phone, even on PRACTICE itself, does NOT start a game: it asks for a keyboard first', (await m.activeScene()) === 'StartScene' && gate.page === 'practice' && gate.items.some((i) => i.id === 'start'), JSON.stringify({ page: gate.page, items: gate.items.map((i) => i.id) }));
+  await m.tapItem('start');
+  await sleep(300);
+  check('...and a finger cannot press its START WITH KEYBOARD', (await m.activeScene()) === 'StartScene');
+  await m.page.keyboard.press('Enter');
   await m.page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
   await sleep(250);
   check('in keyboard mode no touch controls are shown and touches do nothing to the ship', !(await m.overlayShown()) && (await m.cmd()).shoot === false);
@@ -2016,7 +2024,8 @@ async function run() {
   // ?touch=0 on a phone: the URL decides for the visit
   const forced = await mobilePage(844, 390, { query: '?debug&touch=0' });
   await forced.start();
-  check('?touch=0 forces the keyboard game on a phone', !(await forced.bodyClasses()).includes('tc-active') && (await forced.texts('StartScene')).includes('PLAY WITH KEYBOARD'));
+  const forcedItems = (await forced.menu()).items;
+  check('?touch=0 forces the keyboard game on a phone (touch controls off, the way back to touch offered)', !(await forced.bodyClasses()).includes('tc-active') && forcedItems.some((i) => i.id === 'touch-on') && forcedItems.some((i) => i.id === 'practice'), forcedItems.map((i) => i.id).join('|'));
   check('...and saves nothing (the URL only decides for this visit)', (await forced.page.evaluate(() => localStorage.getItem('asteroids.inputMode'))) === null);
   // The way back must also survive a clumsy touch: two fingers landing on it together switch once, not twice (back to keyboard).
   const turnOn3 = await forced.itemRect('touch-on');
@@ -2069,8 +2078,9 @@ async function run() {
   const portrait = await mobilePage(390, 844);
   await portrait.start();
   check('opening the page in portrait shows the rotate prompt straight away', (await portrait.rect('.tc-rotate')).display !== 'none');
-  const playBox = (await portrait.menu()).items.find((i) => i.id === 'play');
-  await portrait.tapGame(playBox.x + playBox.w / 2, playBox.y + playBox.h / 2); // a tap where PLAY is must not start a game
+  // PRACTICE, not PLAY: on a phone PLAY only opens the ranked page, so a tap on it would never start a game anyway.
+  const playBox = (await portrait.menu()).items.find((i) => i.id === 'practice');
+  await portrait.tapGame(playBox.x + playBox.w / 2, playBox.y + playBox.h / 2); // a tap where PRACTICE is must not start a game
   await sleep(300);
   check('and a tap through the prompt does not start a game', (await portrait.activeScene()) === 'StartScene');
   await portrait.shot('08-portrait-start');

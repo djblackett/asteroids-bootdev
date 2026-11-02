@@ -230,7 +230,7 @@ try {
   await sleep(500);
   await clickItem(page, 'ranked', 'title');
   await waitText(page, 'StartScene', /^YOUR BEST VERIFIED SCORE:/);
-  check('after a reload the ranked page still shows the verified personal best', (await sceneTexts(page, 'StartScene')).some((t) => t.includes(browserScore.toLocaleString('en-US')) && t.includes(NICK.toUpperCase())));
+  check('after a reload the ranked page still shows the verified personal best', (await sceneTexts(page, 'StartScene')).some((t) => t.includes(browserScore.toLocaleString('en-US')) && t.includes(NICK)));
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
@@ -266,7 +266,7 @@ try {
   await down.waitForFunction(() => window.__ASTEROIDS_RANKED__?.phase === 'failed', null, { timeout: 15000 });
   await sleep(500);
   const downTexts = await sceneTexts(down, 'StartScene');
-  check('ranked play with the backend down stays on the title screen and says so, in plain words', downTexts.includes('RANKED PLAY IS TEMPORARILY UNAVAILABLE.') && downTexts.includes('YOU CAN STILL PLAY NORMALLY.') && (await down.evaluate(() => !window.__game.scene.isActive('GameScene'))));
+  check('ranked play with the backend down stays on the title screen and says so, in plain words', downTexts.includes('RANKED PLAY IS TEMPORARILY UNAVAILABLE.') && downTexts.includes('YOU CAN STILL PLAY PRACTICE.') && (await down.evaluate(() => !window.__game.scene.isActive('GameScene'))));
   const downItems = await menuItems(down, 'title');
   check('it offers TRY AGAIN, PLAY NORMALLY and BACK (never a dead end)', ['start', 'play-normally', 'back'].every((id) => downItems.items.some((i) => i.id === id)));
   await clickItem(down, 'back', 'title');
