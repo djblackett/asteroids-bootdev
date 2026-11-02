@@ -117,11 +117,19 @@ const angleApart = (a, b) => Math.abs((((a - b) % 360) + 540) % 360 - 180);
 const headingOfMove = (dx, dy) => ((((Math.atan2(-dx, dy) * 180) / Math.PI) % 360) + 360) % 360;
 
 /** Puts the ship at the middle of the playfield facing `rot`, with nothing else going on, and waits a moment. */
+/**
+ * Puts the ship back in the middle, facing `rot`, in an empty world. UFOs and their shots go too, and none are scheduled: the UFO
+ * timer keeps running in these long sections, and a hit sends the ship to the respawn point facing 0, which once made a movement
+ * check fail at random (the ship was re-turning when the window ended).
+ */
 async function recentre(t, rot = 0) {
   await t.page.evaluate(
     ([rot]) => {
       const s = window.__game.scene.getScene('GameScene').sim;
       s.spawner.spawnTimer = -1e9;
+      s.ufoSpawner.enabled = false;
+      s.ufos.length = 0;
+      s.ufoShots.length = 0;
       s.asteroids.length = 0;
       s.player.position = { x: 640, y: 360 };
       s.player.rotation = rot;
@@ -184,7 +192,7 @@ async function runMovement() {
         angleApart(after.rot, heading) < 2 && Math.hypot(after.x - before.x, after.y - before.y) > 150;
       // Assisted travels straight at the thumb; Point-to-Fly curves round while it is still turning, so only the later part is straight.
       const straight = mode === 'assisted' ? angleApart(moved, heading) < 25 : true;
-      results.push(`${name}:${ok && straight ? 'ok' : `BAD(${JSON.stringify([cmd.steer, Math.round(after.rot), Math.round(moved)])})`}`);
+      results.push(`${name}:${ok && straight ? 'ok' : `BAD(${JSON.stringify([cmd.steer, Math.round(after.rot), Math.round(moved), { lives: after.lives }])})`}`);
     }
     check(`[${label}] thumb up / down / left / right and the four diagonals: the nose settles on that heading and the ship flies off`, results.every((r) => r.endsWith(':ok')), results.join(' '));
     await t.finger.up(1);
@@ -291,13 +299,38 @@ async function runMovement() {
       await t.finger.down(1, 150, 250);
       await t.finger.move(1, 150 + 46, 250); // right
       await simSeconds(t, 0.5);
-      const a = await t.sim();
+      // Measure in simulation time from the step that first received the flick, not between two wall-clock snapshots: how long the
+      // flick takes to reach the game varies, and at ~5 px per tick that once moved the result by more than the margin below.
+      await t.page.evaluate(() => {
+        const s = window.__game.scene.getScene('GameScene').sim;
+        const step = s.step.bind(s);
+        window.__flickTrace = [];
+        s.step = (dt, input, input2) => {
+          const before = { t: s.time, x: s.player.position.x, y: s.player.position.y };
+          const events = step(dt, input, input2);
+          window.__flickTrace.push({ ...before, t1: s.time, x1: s.player.position.x, y1: s.player.position.y, heading: input?.steer?.heading ?? null });
+          return events;
+        };
+      });
       await t.finger.move(1, 150, 250 - 46); // flick to up
-      await simSeconds(t, 0.35);
-      const b = await t.sim();
+      const WINDOW = 0.35;
+      await t.page.waitForFunction((w) => {
+        const tr = window.__flickTrace;
+        const k = tr.findIndex((e) => e.heading !== null && Math.abs(e.heading - 180) < 1);
+        return k >= 0 && tr[tr.length - 1].t1 >= tr[k].t + w;
+      }, WINDOW, { timeout: 8000, polling: 16 });
+      const { start, end } = await t.page.evaluate((w) => {
+        const tr = window.__flickTrace;
+        delete window.__game.scene.getScene('GameScene').sim.step; // back to the class's own step
+        const k = tr.findIndex((e) => e.heading !== null && Math.abs(e.heading - 180) < 1);
+        const at = tr[k].t + w;
+        const e = tr.find((x) => x.t1 >= at);
+        const f = e.t1 === e.t ? 1 : (at - e.t) / (e.t1 - e.t); // position exactly `w` seconds after the flick, within that step
+        return { start: { x: tr[k].x, y: tr[k].y }, end: { x: e.x + (e.x1 - e.x) * f, y: e.y + (e.y1 - e.y) * f } };
+      }, WINDOW);
       await t.finger.up(1);
       await sleep(80);
-      return { sideways: b.x - a.x, up: a.y - b.y };
+      return { sideways: end.x - start.x, up: start.y - end.y };
     };
     const p = await trial('pointToFly');
     const a = await trial('assisted');
@@ -1574,7 +1607,7 @@ async function mobilePage(width, height, { query = '?debug', mobile = true, touc
         x: p.position.x, y: p.position.y, rot: p.rotation, lives: p.lives, score: p.score, phase: s.phase, shots: s.shots.length,
         laser: p.laser.shotsRemaining, boost: p.boost.active, boostCd: p.boost.cooldown, retry: s.retryDelay, paused: sc.paused, time: s.time }; })()`),
     quiet: () =>
-      page.evaluate(`(() => { const s = window.__game.scene.getScene('GameScene').sim; s.spawner.spawnTimer = -1e9; s.asteroids.length = 0; s.shots.length = 0; s.startCooldown = 0; })()`),
+      page.evaluate(`(() => { const s = window.__game.scene.getScene('GameScene').sim; s.spawner.spawnTimer = -1e9; s.ufoSpawner.enabled = false; s.ufos.length = 0; s.ufoShots.length = 0; s.asteroids.length = 0; s.shots.length = 0; s.startCooldown = 0; })()`),
     audio: () =>
       page.evaluate(`(() => { const g = window.__game, a = g.registry.get('audio'), m = a.musicSound;
         return { locked: g.sound.locked, ctx: g.sound.context ? g.sound.context.state : 'n/a', playing: !!m && m.isPlaying, paused: !!m && m.isPaused,
