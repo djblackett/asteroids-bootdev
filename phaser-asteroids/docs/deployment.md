@@ -5,6 +5,10 @@ for ranked play. GitHub Actions validates both, deploys and checks the Worker, t
 
 **URL:** <https://djblackett.github.io/asteroids-bootdev/>
 
+The Android app is built separately (`npm run build:android`) and talks to the same Worker. **A Worker deploy that changes
+`GAMEPLAY_RULES_VERSION` turns off ranked play in every installed Android app until players update it.** See
+[android.md](android.md#risk-worker-rule-changes-break-installed-apps).
+
 The Pages site is exactly the contents of `phaser-asteroids/dist/`. The original Python/Pygame game stays in the repository
 root as source code but is no longer built or published (its pygbag web build was retired when Phaser became the primary
 game; `BUILD_WEB.md` and `pygbag` still work locally if you want it).

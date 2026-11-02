@@ -209,13 +209,18 @@ export const HOME_SCREEN_TIP = {
   ],
 } as const;
 
-/** Reads the real browser. Anything missing counts as "not available": the safe default. */
+/**
+ * Reads the real browser. Anything missing counts as "not available": the safe default. `nativeApp`: the page runs inside the Android
+ * app, which is already fullscreen (its system bars are hidden natively, see capacitor.config.ts) and whose WebView ends any Fullscreen
+ * API request at once, so it is treated like an installed web app: no Fullscreen button.
+ */
 export function browserFullscreenEnvironment(
   doc: Document = document,
   win: Pick<Window, 'matchMedia'> = window,
   nav: Navigator = navigator,
+  nativeApp = false,
 ): FullscreenEnvironment {
-  let standalone = (nav as Navigator & { standalone?: boolean }).standalone === true;
+  let standalone = nativeApp || (nav as Navigator & { standalone?: boolean }).standalone === true;
   try {
     standalone = standalone || win.matchMedia('(display-mode: standalone)').matches;
   } catch {

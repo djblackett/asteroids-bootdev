@@ -77,6 +77,12 @@ describe('resolveApiBase', () => {
     expect(resolveApiBase('?api=http://127.0.0.1:8792/', '127.0.0.1')).toBe('http://127.0.0.1:8792');
     expect(resolveApiBase('', 'localhost')).toBe('http://127.0.0.1:8787');
   });
+  it('the Android app only ever uses the configured URL: no ?api=, no wrangler dev fallback, even on a loopback hostname', () => {
+    for (const host of ['spacearcade.davidandrea.ca', 'localhost', '127.0.0.1']) {
+      expect(resolveApiBase('?api=http://127.0.0.1:8792/', host, 'https://lb.example.dev', true)).toBe('https://lb.example.dev');
+      expect(resolveApiBase('', host, undefined, true)).toBeNull();
+    }
+  });
   it('rejects non-http(s) and malformed URLs', () => {
     expect(resolveApiBase('?api=javascript:alert(1)', '127.0.0.1', undefined)).toBe('http://127.0.0.1:8787');
     expect(resolveApiBase('', 'example.com', 'not a url')).toBeNull();

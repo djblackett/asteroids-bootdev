@@ -7,6 +7,9 @@
     "dev": "vite",
     "dev:lan": "vite --config vite.lan.config.ts",
     "build": "tsc --noEmit && vite build && vite build --outDir dist/node --target node20 --ssr src/replay/index.ts",
+    "build:android": "tsc --noEmit && node scripts/build-android.mjs",
+    "android:sync": "npm run build:android && cap sync android",
+    "test:android-build": "node --test scripts/build-android.test.mjs",
     "preview": "vite preview",
     "preview:lan": "vite preview --host",
     "typecheck": "tsc --noEmit",
@@ -33,6 +36,7 @@
   },
   "dependencies": {
     "@capacitor/android": "^8.6.0",
+    "@capacitor/app": "^8.1.2",
     "@capacitor/core": "^8.6.0",
     "phaser": "4.2.1"
   },

@@ -1,3 +1,4 @@
+import { isNativeApp } from '../../../platform/nativeApp';
 import type { PersonalBest } from '../../../ranked/personalBest';
 import { formatEraScore } from '../../../ranked/scoresModel';
 import { COLORS } from '../../text';
@@ -37,12 +38,15 @@ export interface RankedMenuContext {
 const WIDE = { w: 600, h: 110 };
 
 /** What the player is told when the ranked service cannot start a run, and whether trying again could help. */
-export function describeRankedFailure(code: string): { lines: [string, string]; retry: boolean } {
+export function describeRankedFailure(code: string, nativeApp = false): { lines: [string, string]; retry: boolean } {
   switch (code) {
     case 'unconfigured':
       return { lines: ['RANKED PLAY IS NOT AVAILABLE IN THIS BUILD YET.', 'YOU CAN STILL PLAY PRACTICE.'], retry: false };
     case 'update_required':
-      return { lines: ['THE GAME HAS BEEN UPDATED.', 'RELOAD THE PAGE TO PLAY RANKED.'], retry: false };
+      // Reloading the Android app loads the same bundled game again; only a store update brings the new rules.
+      return nativeApp
+        ? { lines: ['RANKED PLAY NEEDS A NEWER VERSION OF THE APP.', 'UPDATE THE APP, OR PLAY PRACTICE.'], retry: false }
+        : { lines: ['THE GAME HAS BEEN UPDATED.', 'RELOAD THE PAGE TO PLAY RANKED.'], retry: false };
     case 'rate_limited':
       return { lines: ['TOO MANY RANKED RUNS STARTED RECENTLY.', 'TRY AGAIN IN A WHILE, OR PLAY PRACTICE.'], retry: true };
     default:
@@ -77,7 +81,7 @@ export function buildRankedPage(kit: PageKit, ctx: RankedMenuContext, nav: PageN
   }
 
   if (status.kind === 'error') {
-    const failure = describeRankedFailure(status.code);
+    const failure = describeRankedFailure(status.code, isNativeApp());
     kit.text(CENTER_X, 190, failure.lines[0], { size: TEXT.body + 2, originX: 0.5, originY: 0.5, color: '#ff9696' });
     kit.text(CENTER_X, 236, failure.lines[1], { size: TEXT.body, originX: 0.5, originY: 0.5, color: COLORS.hint });
     let y = 300;

@@ -1,4 +1,5 @@
 import type { GameConfig } from '../core/gameConfig';
+import { isNativeApp } from '../platform/nativeApp';
 import { FIXED_TICK_RATE, GAMEPLAY_RULES_VERSION, REPLAY_SCHEMA_VERSION } from '../replay/constants';
 import type { ReplayEndReason, ReplayRecord } from '../replay/types';
 import type { ControlScheme } from './controls';
@@ -61,8 +62,13 @@ const LOCAL_API = 'http://127.0.0.1:8787';
  * the browser tests) `?api=<url>` may point at a local backend, and with nothing configured the local `wrangler dev` address is used.
  * Anywhere else a query parameter is ignored: a crafted link cannot redirect a player's run to another server. Null: ranked play is
  * not available in this build.
+ *
+ * `nativeApp` (the Android app): only the configured URL counts, whatever the page's hostname is. The app is served from its own
+ * hostname (capacitor.config.ts), so the loopback rules would not apply anyway; this makes sure that a future change there can never
+ * point an installed app at `wrangler dev` or let `?api=` redirect it. `npm run build:android` refuses to build without the
+ * production URL.
  */
-export function resolveApiBase(search: string, hostname: string, configured?: string): string | null {
+export function resolveApiBase(search: string, hostname: string, configured?: string, nativeApp = false): string | null {
   const clean = (u: string) => u.replace(/\/+$/, '');
   const valid = (u: string | null | undefined): string | null => {
     if (!u) return null;
@@ -73,14 +79,14 @@ export function resolveApiBase(search: string, hostname: string, configured?: st
       return null;
     }
   };
-  if (LOOPBACK.has(hostname)) return valid(new URLSearchParams(search).get('api')) ?? valid(configured) ?? LOCAL_API;
+  if (!nativeApp && LOOPBACK.has(hostname)) return valid(new URLSearchParams(search).get('api')) ?? valid(configured) ?? LOCAL_API;
   return valid(configured);
 }
 
 /** The API base for this page, or null when the build has none configured (ranked play and the high scores are then "unavailable"). */
 export function getApiBase(): string | null {
   if (typeof window === 'undefined') return null;
-  return resolveApiBase(window.location.search, window.location.hostname, import.meta.env.VITE_LEADERBOARD_API_URL);
+  return resolveApiBase(window.location.search, window.location.hostname, import.meta.env.VITE_LEADERBOARD_API_URL, isNativeApp());
 }
 
 /**

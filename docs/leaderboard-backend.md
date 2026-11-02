@@ -374,7 +374,7 @@ Nothing above is a test against production Cloudflare infrastructure.
 
 The existing Cloudflare account is `620de0810a6cf29710d9fedb3a966d6f`. Production D1 `asteroids-leaderboard` is `cf4833f7-5fc9-45ca-a767-750df108f1e9` (ENAM). These identifiers are public configuration, not credentials. The `DB` binding in `env.production` points to this database; `0001_init.sql` and `0002_time_limit.sql` are applied remotely. Immediately before the approved deployment, Cloudflare confirmed that the Worker did not exist, so no existing Worker was overwritten.
 
-Production retains the 5,000 ms CPU cap, daily `17 7 * * *` UTC housekeeping, 20-minute ranked limit and `https://djblackett.github.io` CORS origin (origins have no repository path). Both secrets are declared required for production deployments. The API uses HTTPS on `workers.dev`; version preview URLs are disabled. GitHub Pages continues to host the game. The default D1 placeholder, local origins, `dev:lan`, `migrate:lan`, LAN proxy and `.wrangler/state-lan` remain separate from production.
+Production retains the 5,000 ms CPU cap, daily `17 7 * * *` UTC housekeeping, 20-minute ranked limit and the `https://djblackett.github.io` and `https://spacearcade.davidandrea.ca` (Android app, see `phaser-asteroids/docs/android.md`) CORS origins (origins have no repository path). Both secrets are declared required for production deployments. The API uses HTTPS on `workers.dev`; version preview URLs are disabled. GitHub Pages continues to host the game. The default D1 placeholder, local origins, `dev:lan`, `migrate:lan`, LAN proxy and `.wrangler/state-lan` remain separate from production.
 
 Preparation validation passed: frontend and backend typechecks, frontend production build, all 127 backend unit tests, all 32 real local Worker/D1 integration checks, production deployment dry-run with both secret bindings, and the existing LAN Chromium smoke test (ranked game, accepted replay, both boards and persistence after reload). The dry-run artifacts contain neither secret and no temporary plaintext upload file remains.
 
@@ -442,7 +442,7 @@ coordinated workflow above. The following records initial provisioning for a new
 
 1. `cd phaser-asteroids/server && npx wrangler login` and upgrade the account to **Workers Paid** in the dashboard (US$5/month).
 2. `npx wrangler d1 create asteroids-leaderboard` — paste the printed `database_id` into `[env.production]` in `wrangler.toml`.
-3. Set `ALLOWED_ORIGINS` in `[env.production.vars]` (default `https://djblackett.github.io`; include a custom domain if used).
+3. Set `ALLOWED_ORIGINS` in `[env.production.vars]` (default `https://djblackett.github.io,https://spacearcade.davidandrea.ca`, the second being the Android app's origin; include a custom domain if used).
 4. `npx wrangler d1 migrations apply asteroids-leaderboard --env production --remote`
 5. Prepare `IP_HASH_SALT` and `ADMIN_TOKEN` securely as above. Obtain approval before any command that publishes the Worker, including `secret put`.
 6. First deployment: use the helper's `Deploy` action above (or `npx wrangler deploy --env production --secrets-file <protected-file>`). Later code-only deployments preserve existing secrets. Note the `*.workers.dev` URL (or attach a custom domain).
