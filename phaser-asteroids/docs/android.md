@@ -56,10 +56,24 @@ Tests: [`tests/nativeApp.test.ts`](../tests/nativeApp.test.ts) (Back routing, li
 `tests/ranked.test.ts`, `tests/fullscreen.test.ts` and `tests/mobileEntry.test.ts`, and
 [`scripts/build-android.test.mjs`](../scripts/build-android.test.mjs) (`npm run test:android-build`).
 
-## Risk: Worker rule changes break installed apps
+## Gameplay updates and installed apps
 
-The Worker supports **one** gameplay rules version at a time. It is `GAMEPLAY_RULES_VERSION`, compiled in from `src/replay` at
-deploy time. A ranked client refuses a challenge for any other version (`update_required`), and the Worker rejects a run issued
+Resolved on 2026-11-02 (see [android-release-audit.md](android-release-audit.md) and [server/rules/README.md](../server/rules/README.md)):
+the app names its rules version when it asks for a ranked run, and the Worker verifies every version in its frozen-engine registry,
+chosen by the version recorded at issue. A rules bump therefore deploys a Worker that serves the old and the new version; installed
+apps keep playing ranked until their version is retired, at least 90 days after a successor build reached all users. CI refuses
+to drop a version a build in `server/rules/released.json` still plays, and `npm run build:android` refuses to package a build whose
+`versionCode` is not recorded there with its rules.
+
+**Releasing a build:** raise `versionCode` / `versionName` in `android/app/build.gradle` whenever the rules differ from the last
+recorded build, add the build to `server/rules/released.json`, and build only from a commit whose Worker is deployed.
+
+The rest of this section is the analysis from before the fix, kept for the record.
+
+### Before 2026-11-02: one rules version at a time
+
+The Worker supported **one** gameplay rules version at a time. It was `GAMEPLAY_RULES_VERSION`, compiled in from `src/replay` at
+deploy time. A ranked client refuses a challenge for any other version (`update_required`), and the Worker rejected a run issued
 under older rules (`rules_mismatch`). The Worker deploys automatically on every qualifying merge to `main`.
 
 On the web this costs nothing: the page reloads into the new build. An installed Android app keeps its bundled game until the

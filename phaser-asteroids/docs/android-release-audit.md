@@ -8,6 +8,12 @@ git-ignored). No production request was made. No secret was read. The probes wer
 repository and are not committed; their output is quoted below. They were: router + service tests against in-memory SQLite (the
 "audit probe"), a Playwright phone probe against a local static server (the "phone probe"), and patched *copies* of two suites.
 
+> **Status (follow-up, 2026-11-02, also on `dev`).** Done since this audit: #1 and #2 (multi-version ranked replay with frozen
+> engines, reference replays, CI guards; see [`server/rules/README.md`](../server/rules/README.md)), #3 (the global submission budget
+> is now spent only after the token check), #8 (stale suite expectations updated), #9 (POWER-UPS layout fixed) and the Point-to-Fly
+> flake in §6 (root-caused to a UFO hitting the ship during the check; the test's world reset now removes UFOs). Still open, by
+> decision: #4 (IPv6 /64 buckets), #5 (persisting unsent runs), #6 and #7. The body below is the audit as written.
+
 ---
 
 ## 1. Executive summary

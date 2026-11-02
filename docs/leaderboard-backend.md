@@ -196,7 +196,11 @@ Indexes: partial board index `(rules_version, score DESC, completed_at ASC, id A
 
 All JSON, all under `/api/v1`. Errors: `{"error":{"code":"…","message":"…", …}}`.
 
-### `POST /runs` → 201
+### `POST /runs?rules=1.2.0&schema=1` → 201
+
+The query names the rules and replay schema the client plays (clients since 2026-11 always send it; it keeps the request CORS-simple).
+A version the Worker supports is issued as asked; anything else, or no query, gets the current version. Anything in the body is ignored.
+See [`phaser-asteroids/server/rules/README.md`](../phaser-asteroids/server/rules/README.md).
 
 ```json
 {
@@ -258,7 +262,8 @@ Query: `limit` (1–100, default 10), `offset` (0–1000). Anything else → 400
 }
 ```
 ### `GET /scores/:id` → 200 `{ "score": {…}, "ranks": { "allTime": 3, "weekly": 1 } }` (404 if unknown **or hidden**)
-### `GET /health` → `{ "ok": true, "rulesVersion": "1.0.0", "schemaVersion": 1, "maxTicks": 72000, "timeLimitSeconds": 1200, "time": "…" }`
+### `GET /health` → `{ "ok": true, "rulesVersion": "1.2.0", "schemaVersion": 1, "supportedRules": ["1.2.0"], "maxTicks": 72000, "timeLimitSeconds": 1200, "time": "…" }`
+`rulesVersion` / `schemaVersion` are what a request without `?rules=` is issued; `supportedRules` lists every version this deployment verifies.
 ### `POST /admin/scores/:id/visibility` — body `{"visible": false, "reason": "offensive"}`, `Authorization: Bearer <ADMIN_TOKEN>`. The route does not exist (404) unless `ADMIN_TOKEN` (≥ 16 chars) is configured; never sends CORS headers; failed attempts are rate limited.
 
 Public entries expose only `id, rank, nickname, score, rulesVersion, completedAt, durationSeconds, endReason` (`game_over` or `time_limit`).
@@ -277,10 +282,10 @@ Tested: 12 simultaneous identical submissions and 5 simultaneous *different* one
 
 ## 8. Scoring-version compatibility policy
 
-* `GAMEPLAY_RULES_VERSION` (`src/replay/constants.ts`) must change whenever physics, spawning, collision or scoring changes. The server only verifies the version it was built with, and the replay header and the run must both match it.
+* `GAMEPLAY_RULES_VERSION` (`src/replay/constants.ts`) must change whenever physics, spawning, collision or scoring changes. The server verifies several versions side by side: each one is a frozen build of the engine in `phaser-asteroids/server/rules/<version>/`, registered in `server/src/engines.ts`, and chosen by the version stored with the run when it was issued. The replay header must match that version. The unit tests fail if gameplay changes without a bump (reference replays), and CI refuses to drop a version a distributed Android build still plays. Bump procedure, deployment order and retirement policy: [`phaser-asteroids/server/rules/README.md`](../phaser-asteroids/server/rules/README.md).
 * Public display support is defined separately in `src/ranked/scoringEras.ts`: `1.0.0` = **V1**, `1.1.0` = **V2**. These are deliberate scoring eras, not software release numbers. Compatible technical versions can be explicitly added to an existing era; introduce a new era only for substantial scoring/difficulty changes. Unknown versions receive no invented label and are excluded from public boards.
 * A client built for different rules refuses to start ranked play (`update_required`) when the challenge's rules version differs from its own.
-* Deploy the new game and the new Worker together. Runs issued before a server upgrade can no longer be reproduced and are rejected with `rules_mismatch` (a player mid-game at deploy time loses that one run).
+* A rules bump deploys a Worker that verifies the old and the new version, so runs issued before the deploy still verify. Only retiring a version (after its support period) makes its remaining runs fail with `rules_mismatch`.
 
 ## 9. Weekly / all-time definitions
 
@@ -301,7 +306,7 @@ The extra API field is additive; replay schema and gameplay rules remain unchang
 
 ## 10. Abuse prevention
 
-One-use run ids; CSPRNG tokens and seeds; expiry; atomic state transitions; per-client and global rate limits stored in the database (exact, shared by all instances); credentials and cheap checks before the body is read; strict size/encoding limits; validation before simulation; minimum-elapsed-time rule; rejection of non-approved configuration; an `Origin` allow-list for browser POSTs (hygiene, not authentication); nickname charset with no markup characters; admin routes disabled by default; no frontend API key (none would be secret). Rate limits (defaults, env-tunable): 30 run starts and 30 submissions per client-hash per hour; 3,000 starts and 1,200 submissions per hour globally. Client identity is a salted hash of `CF-Connecting-IP`, used only as one coarse layer; shared networks share a bucket, so limits are generous and nothing is *granted* based on an IP. Turnstile was not added: it adds friction and the main risk (bots playing well) is not something it fixes.
+One-use run ids; CSPRNG tokens and seeds; expiry; atomic state transitions; per-client and global rate limits stored in the database (exact, shared by all instances); credentials and cheap checks before the body is read; strict size/encoding limits; validation before simulation; minimum-elapsed-time rule; rejection of non-approved configuration; an `Origin` allow-list for browser POSTs (hygiene, not authentication); nickname charset with no markup characters; admin routes disabled by default; no frontend API key (none would be secret). Rate limits (defaults, env-tunable): 30 run starts and 30 submissions per client-hash per hour; 3,000 starts and 1,200 submissions per hour globally. The global submission budget is spent only after the run token has been checked (and the run is still open), so unauthenticated junk, which the per-client bucket still limits, cannot use it up for everyone. Client identity is a salted hash of `CF-Connecting-IP`, used only as one coarse layer; shared networks share a bucket, so limits are generous and nothing is *granted* based on an IP. Turnstile was not added: it adds friction and the main risk (bots playing well) is not something it fixes.
 
 Minimal logging (no IPs, nicknames or tokens): `run_rejected`, `verifier_threw`, `submit_failed`, `unhandled`, `prune`.
 
