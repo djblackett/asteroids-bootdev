@@ -50,6 +50,11 @@ describe('Android app configuration', () => {
     expect(config.plugins?.SystemBars).toMatchObject({ hidden: true, insetsHandling: 'css' });
   });
 
+  it('tells SystemBars up front that the page uses viewport-fit=cover, and the page really does', () => {
+    expect(config.plugins?.SystemBars).toMatchObject({ initialViewportFitValueHint: 'cover' });
+    expect(read('index.html')).toMatch(/<meta name="viewport" content="[^"]*viewport-fit=cover/);
+  });
+
   it('the manifest locks landscape and allows vibration', () => {
     const manifest = read('android/app/src/main/AndroidManifest.xml');
     expect(manifest).toContain('android:screenOrientation="sensorLandscape"');

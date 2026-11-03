@@ -1425,6 +1425,81 @@ async function runHaptics() {
   await d.close();
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// Safe areas: a camera cutout on one side (the Android app in landscape) must not move the playfield off the physical centre
+// ---------------------------------------------------------------------------------------------------------
+
+async function runSafeArea() {
+  // A Samsung-shaped phone (about 20:9). The insets are written the way Capacitor's SystemBars writes them in the app: --safe-area-inset-*
+  // on <html>. Turning the phone round moves the cutout to the other side, i.e. swaps left and right.
+  const W = 915;
+  const H = 412;
+  const s = await mobilePage(W, H);
+  await s.start();
+  const layout = () =>
+    s.page.evaluate(() => {
+      const box = (r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height });
+      const scale = window.__game.scale;
+      return { canvas: box(document.querySelector('canvas').getBoundingClientRect()), game: box(document.getElementById('game').getBoundingClientRect()), bounds: { x: scale.canvasBounds.x, y: scale.canvasBounds.y, width: scale.canvasBounds.width } };
+    });
+  /** Sets the insets (unlisted sides removed), then waits for Phaser's parent-size poll (every 500 ms) to refit the canvas. */
+  const insets = async (values) => {
+    await s.page.evaluate((values) => {
+      for (const side of ['top', 'right', 'bottom', 'left']) {
+        if (values[side] === undefined) document.documentElement.style.removeProperty(`--safe-area-inset-${side}`);
+        else document.documentElement.style.setProperty(`--safe-area-inset-${side}`, `${values[side]}px`);
+      }
+    }, values);
+    await sleep(100);
+    await s.page
+      .waitForFunction(() => {
+        const scale = window.__game.scale, c = document.querySelector('canvas').getBoundingClientRect(), g = document.getElementById('game').getBoundingClientRect();
+        return Math.abs(scale.parentSize.width - g.width) < 0.5 && Math.abs(scale.parentSize.height - g.height) < 0.5 && Math.abs(scale.canvasBounds.x - c.left) < 0.5 && Math.abs(scale.canvasBounds.y - c.top) < 0.5;
+      }, null, { timeout: 3000 })
+      .catch(() => info('Phaser had not refitted the canvas within 3 s; the checks below report what is there'));
+    await sleep(100);
+    return layout();
+  };
+  const near = (a, b) => Math.abs(a - b) < 0.75;
+  const centreX = (r) => (r.left + r.right) / 2;
+  const centreY = (r) => (r.top + r.bottom) / 2;
+  const fmt = (l) => JSON.stringify({ game: [l.game.left, l.game.right], canvas: [l.canvas.left, l.canvas.right, l.canvas.width, l.canvas.height] });
+
+  const plain = await insets({});
+  check('safe area: with no insets the canvas is centred and fills the height (16:9 inside a 20:9 phone)', near(centreX(plain.canvas), W / 2) && near(plain.canvas.height, H), fmt(plain));
+
+  const left = await insets({ left: 32 });
+  check('safe area: a cutout on the left keeps the canvas on the physical centre, the same size, clear of the cutout', near(centreX(left.canvas), W / 2) && near(left.canvas.width, plain.canvas.width) && left.canvas.left >= 32, fmt(left));
+  check('safe area: #game is inset by the larger side inset on both sides', near(left.game.left, 32) && near(left.game.right, W - 32), fmt(left));
+  check("safe area: Phaser's input bounds follow the canvas", near(left.bounds.x, left.canvas.left) && near(left.bounds.width, left.canvas.width), JSON.stringify(left.bounds));
+  await s.tapItem('audio');
+  check('safe area: a real tap on a menu button lands on it with the cutout inset in place', (await s.menu()).page === 'audio');
+  await s.tapItem('back');
+  check('safe area: ... and BACK returns to the title root', (await s.menu()).page !== 'audio');
+
+  const right = await insets({ right: 32 });
+  check('safe area: turning the phone round (cutout on the right) leaves the canvas exactly where it was', near(right.canvas.left, left.canvas.left) && near(right.canvas.width, left.canvas.width) && near(right.canvas.top, left.canvas.top), `${fmt(left)} vs ${fmt(right)}`);
+
+  const both = await insets({ left: 47, right: 47 });
+  check('safe area: equal side insets (iOS in landscape) give the same #game box as before', near(both.game.left, 47) && near(both.game.right, W - 47) && near(centreX(both.canvas), W / 2), fmt(both));
+
+  const bottom = await insets({ bottom: 21 });
+  check('safe area: top and bottom still use their own insets (a home indicator only shrinks the bottom)', near(bottom.game.top, 0) && near(bottom.game.bottom, H - 21) && near(centreY(bottom.canvas), (H - 21) / 2), JSON.stringify({ game: [bottom.game.top, bottom.game.bottom], canvas: [bottom.canvas.top, bottom.canvas.bottom] }));
+
+  // The touch controls are positioned on the full viewport and keep clear of each side's own inset, exactly as before.
+  await insets({ right: 32 });
+  await s.play();
+  const fireRight = (await s.rect('.tc-fire')).right;
+  const pauseRight = (await s.rect('.tc-pause')).right;
+  check('safe area: FIRE and PAUSE keep clear of a cutout on their side by the usual 18 px', near(fireRight, W - 32 - 18) && near(pauseRight, W - 32 - 18), `fire ${fireRight}, pause ${pauseRight}`);
+  await insets({ left: 32 });
+  const fireRightL = (await s.rect('.tc-fire')).right;
+  check('safe area: a cutout on the other side does not move FIRE (the controls are not made symmetric)', near(fireRightL, W - 18), `fire ${fireRightL}`);
+  await s.shot('safe-area-left-cutout');
+  check('safe area: no console errors', s.problems.length === 0, s.problems.join(' | '));
+  await s.context.close();
+}
+
 async function waitForServer() {
   for (let i = 0; i < 100; i++) {
     const ok = await new Promise((resolve) => {
@@ -2150,6 +2225,7 @@ async function run() {
   await runMovement();
   await runFullscreen();
   await runHaptics();
+  await runSafeArea();
 
   // =====================================================================================================
   // 9. Overall health

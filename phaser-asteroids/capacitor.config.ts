@@ -23,6 +23,9 @@ const config: CapacitorConfig = {
       hidden: true,
       style: 'DARK',
       insetsHandling: 'css',
+      // index.html's viewport has viewport-fit=cover. Without the hint the plugin assumes it does not until the page has rendered, and
+      // until then pads the WebView natively by the insets: an off-centre, smaller game at start, then one resize.
+      initialViewportFitValueHint: 'cover',
     },
   },
 };
