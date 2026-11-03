@@ -541,6 +541,48 @@ describe('rate limits', () => {
     expect(await count(h.db, 'scores')).toBe(0);
   });
 
+  it('submissions that cannot reach verification do not spend the global budget', async () => {
+    const h = makeHarness({ settings: { rate: { ...makeHarness().settings.rate, submitGlobal: 2 } } });
+    const run = await h.start({ seed: REFERENCE_SEED });
+    const bot = reference();
+    h.clock.advance(bot.ticks / 60 * 1000 + 1500);
+    // Junk from many addresses: unknown runs, a malformed id, a missing token and a wrong token for a real run.
+    for (let i = 0; i < 5; i++) {
+      const junk = await h.call('POST', `/api/v1/runs/${crypto.randomUUID()}/submit`, { ip: `198.51.100.${i}`, json: { replay: {} } });
+      expect(junk.status).toBe(404);
+    }
+    expect((await h.call('POST', '/api/v1/runs/not-a-uuid/submit', { ip: '198.51.100.20', json: {} })).status).toBe(404);
+    expect((await h.submit(run, bot.replay, { token: null, ip: '198.51.100.21' })).status).toBe(401);
+    expect((await h.submit(run, bot.replay, { token: 'guessed', ip: '198.51.100.22' })).status).toBe(401);
+    expect((await h.db.first<{ n: number }>("SELECT COALESCE(SUM(count), 0) AS n FROM rate_limits WHERE bucket = 'submit:global'"))!.n).toBe(0);
+
+    const res = await h.submit(run, bot.replay);
+    expect(res.status).toBe(200);
+    expect(res.body.score.score).toBe(34735);
+  });
+
+  it('the global budget still caps verification by token holders, from any address', async () => {
+    const h = makeHarness({ settings: { rate: { ...makeHarness().settings.rate, submitGlobal: 2, startPerIp: 100 } } });
+    const runs = [await h.start(), await h.start(), await h.start()];
+    h.clock.advance(5_000);
+    const status: number[] = [];
+    for (const [i, run] of runs.entries()) status.push((await h.submit(run, { header: {} }, { ip: `192.0.2.${i + 10}` })).status);
+    expect(status).toEqual([422, 422, 429]);
+    // The refused run was never claimed, so it can still be submitted once the window rolls over.
+    expect((await h.db.first<{ status: string }>('SELECT status FROM runs WHERE id = ?', [runs[2]!.runId]))!.status).toBe('issued');
+  });
+
+  it('expired and already-rejected runs are refused without spending the global budget', async () => {
+    const h = makeHarness({ settings: { runTtlMs: 60_000, rate: { ...makeHarness().settings.rate, submitGlobal: 1 } } });
+    const expired = await h.start();
+    const rejected = await h.start();
+    h.clock.advance(5_000);
+    expect((await h.submit(rejected, { header: {} })).status).toBe(422); // spends the only unit
+    expect((await h.submit(rejected, { header: {} })).status).toBe(409); // run_rejected, not 429
+    h.clock.advance(60_000); // still inside the same hourly window
+    expect((await h.submit(expired, { header: {} })).status).toBe(410); // run_expired, not 429
+  });
+
   it('refuses browser origins that are not allow-listed, but serves origin-less callers', async () => {
     const h = makeHarness({ settings: { allowedOrigins: ['https://game.example'] } });
     expect((await h.call('POST', '/api/v1/runs', { headers: { origin: 'https://evil.example' } })).status).toBe(403);

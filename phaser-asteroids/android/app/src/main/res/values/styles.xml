@@ -13,6 +13,9 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- Black behind the game: SystemBars colours any inset band (camera cutout) with the window background, which is white in
+             the light theme otherwise. -->
+        <item name="android:windowBackground">@android:color/black</item>
     </style>
 
 

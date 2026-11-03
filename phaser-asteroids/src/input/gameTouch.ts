@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { browserStorage } from '../audio/audioSettings';
+import { isNativeApp } from '../platform/nativeApp';
 import { SystemOverlay } from '../ui/systemOverlay';
 import { TouchOverlay } from '../ui/touchOverlay';
 import { browserFullscreenEnvironment, FullscreenController } from './fullscreen';
@@ -29,7 +30,7 @@ export function installTouchControls(game: Phaser.Game): {
   const storage = browserStorage();
   const mode = new InputModeController(browserInputEnvironment(), window.location.search, storage);
   const movement = new MovementController(storage);
-  const fullscreen = new FullscreenController(browserFullscreenEnvironment());
+  const fullscreen = new FullscreenController(browserFullscreenEnvironment(document, window, navigator, isNativeApp()));
   const touch = new TouchControls(new TouchOverlay(document, new SystemOverlay(document, fullscreen)), window, document);
   touch.setMovement(movement.mode);
   touch.setActive(mode.isTouch);

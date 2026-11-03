@@ -117,11 +117,19 @@ const angleApart = (a, b) => Math.abs((((a - b) % 360) + 540) % 360 - 180);
 const headingOfMove = (dx, dy) => ((((Math.atan2(-dx, dy) * 180) / Math.PI) % 360) + 360) % 360;
 
 /** Puts the ship at the middle of the playfield facing `rot`, with nothing else going on, and waits a moment. */
+/**
+ * Puts the ship back in the middle, facing `rot`, in an empty world. UFOs and their shots go too, and none are scheduled: the UFO
+ * timer keeps running in these long sections, and a hit sends the ship to the respawn point facing 0, which once made a movement
+ * check fail at random (the ship was re-turning when the window ended).
+ */
 async function recentre(t, rot = 0) {
   await t.page.evaluate(
     ([rot]) => {
       const s = window.__game.scene.getScene('GameScene').sim;
       s.spawner.spawnTimer = -1e9;
+      s.ufoSpawner.enabled = false;
+      s.ufos.length = 0;
+      s.ufoShots.length = 0;
       s.asteroids.length = 0;
       s.player.position = { x: 640, y: 360 };
       s.player.rotation = rot;
@@ -184,7 +192,7 @@ async function runMovement() {
         angleApart(after.rot, heading) < 2 && Math.hypot(after.x - before.x, after.y - before.y) > 150;
       // Assisted travels straight at the thumb; Point-to-Fly curves round while it is still turning, so only the later part is straight.
       const straight = mode === 'assisted' ? angleApart(moved, heading) < 25 : true;
-      results.push(`${name}:${ok && straight ? 'ok' : `BAD(${JSON.stringify([cmd.steer, Math.round(after.rot), Math.round(moved)])})`}`);
+      results.push(`${name}:${ok && straight ? 'ok' : `BAD(${JSON.stringify([cmd.steer, Math.round(after.rot), Math.round(moved), { lives: after.lives }])})`}`);
     }
     check(`[${label}] thumb up / down / left / right and the four diagonals: the nose settles on that heading and the ship flies off`, results.every((r) => r.endsWith(':ok')), results.join(' '));
     await t.finger.up(1);
@@ -291,13 +299,38 @@ async function runMovement() {
       await t.finger.down(1, 150, 250);
       await t.finger.move(1, 150 + 46, 250); // right
       await simSeconds(t, 0.5);
-      const a = await t.sim();
+      // Measure in simulation time from the step that first received the flick, not between two wall-clock snapshots: how long the
+      // flick takes to reach the game varies, and at ~5 px per tick that once moved the result by more than the margin below.
+      await t.page.evaluate(() => {
+        const s = window.__game.scene.getScene('GameScene').sim;
+        const step = s.step.bind(s);
+        window.__flickTrace = [];
+        s.step = (dt, input, input2) => {
+          const before = { t: s.time, x: s.player.position.x, y: s.player.position.y };
+          const events = step(dt, input, input2);
+          window.__flickTrace.push({ ...before, t1: s.time, x1: s.player.position.x, y1: s.player.position.y, heading: input?.steer?.heading ?? null });
+          return events;
+        };
+      });
       await t.finger.move(1, 150, 250 - 46); // flick to up
-      await simSeconds(t, 0.35);
-      const b = await t.sim();
+      const WINDOW = 0.35;
+      await t.page.waitForFunction((w) => {
+        const tr = window.__flickTrace;
+        const k = tr.findIndex((e) => e.heading !== null && Math.abs(e.heading - 180) < 1);
+        return k >= 0 && tr[tr.length - 1].t1 >= tr[k].t + w;
+      }, WINDOW, { timeout: 8000, polling: 16 });
+      const { start, end } = await t.page.evaluate((w) => {
+        const tr = window.__flickTrace;
+        delete window.__game.scene.getScene('GameScene').sim.step; // back to the class's own step
+        const k = tr.findIndex((e) => e.heading !== null && Math.abs(e.heading - 180) < 1);
+        const at = tr[k].t + w;
+        const e = tr.find((x) => x.t1 >= at);
+        const f = e.t1 === e.t ? 1 : (at - e.t) / (e.t1 - e.t); // position exactly `w` seconds after the flick, within that step
+        return { start: { x: tr[k].x, y: tr[k].y }, end: { x: e.x + (e.x1 - e.x) * f, y: e.y + (e.y1 - e.y) * f } };
+      }, WINDOW);
       await t.finger.up(1);
       await sleep(80);
-      return { sideways: b.x - a.x, up: a.y - b.y };
+      return { sideways: end.x - start.x, up: start.y - end.y };
     };
     const p = await trial('pointToFly');
     const a = await trial('assisted');
@@ -1025,7 +1058,7 @@ async function runFullscreen() {
   await ios.finger.tap(ok.x, ok.y, 70);
   await sleep(200);
   check('OK closes the tip, and the title screen is unaffected', !(await ios.page.evaluate(() => document.querySelector('.tc-tip').classList.contains('tc-tip-open'))) && (await ios.activeScene()) === 'StartScene');
-  await ios.tapItem('play');
+  await ios.tapItem('practice');
   await ios.page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
   await sleep(300);
   check('the game itself is unaffected by the missing Fullscreen API (starts and plays)', (await ios.overlayShown()) && !(await pillState(ios)).shown);
@@ -1392,6 +1425,81 @@ async function runHaptics() {
   await d.close();
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// Safe areas: a camera cutout on one side (the Android app in landscape) must not move the playfield off the physical centre
+// ---------------------------------------------------------------------------------------------------------
+
+async function runSafeArea() {
+  // A Samsung-shaped phone (about 20:9). The insets are written the way Capacitor's SystemBars writes them in the app: --safe-area-inset-*
+  // on <html>. Turning the phone round moves the cutout to the other side, i.e. swaps left and right.
+  const W = 915;
+  const H = 412;
+  const s = await mobilePage(W, H);
+  await s.start();
+  const layout = () =>
+    s.page.evaluate(() => {
+      const box = (r) => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height });
+      const scale = window.__game.scale;
+      return { canvas: box(document.querySelector('canvas').getBoundingClientRect()), game: box(document.getElementById('game').getBoundingClientRect()), bounds: { x: scale.canvasBounds.x, y: scale.canvasBounds.y, width: scale.canvasBounds.width } };
+    });
+  /** Sets the insets (unlisted sides removed), then waits for Phaser's parent-size poll (every 500 ms) to refit the canvas. */
+  const insets = async (values) => {
+    await s.page.evaluate((values) => {
+      for (const side of ['top', 'right', 'bottom', 'left']) {
+        if (values[side] === undefined) document.documentElement.style.removeProperty(`--safe-area-inset-${side}`);
+        else document.documentElement.style.setProperty(`--safe-area-inset-${side}`, `${values[side]}px`);
+      }
+    }, values);
+    await sleep(100);
+    await s.page
+      .waitForFunction(() => {
+        const scale = window.__game.scale, c = document.querySelector('canvas').getBoundingClientRect(), g = document.getElementById('game').getBoundingClientRect();
+        return Math.abs(scale.parentSize.width - g.width) < 0.5 && Math.abs(scale.parentSize.height - g.height) < 0.5 && Math.abs(scale.canvasBounds.x - c.left) < 0.5 && Math.abs(scale.canvasBounds.y - c.top) < 0.5;
+      }, null, { timeout: 3000 })
+      .catch(() => info('Phaser had not refitted the canvas within 3 s; the checks below report what is there'));
+    await sleep(100);
+    return layout();
+  };
+  const near = (a, b) => Math.abs(a - b) < 0.75;
+  const centreX = (r) => (r.left + r.right) / 2;
+  const centreY = (r) => (r.top + r.bottom) / 2;
+  const fmt = (l) => JSON.stringify({ game: [l.game.left, l.game.right], canvas: [l.canvas.left, l.canvas.right, l.canvas.width, l.canvas.height] });
+
+  const plain = await insets({});
+  check('safe area: with no insets the canvas is centred and fills the height (16:9 inside a 20:9 phone)', near(centreX(plain.canvas), W / 2) && near(plain.canvas.height, H), fmt(plain));
+
+  const left = await insets({ left: 32 });
+  check('safe area: a cutout on the left keeps the canvas on the physical centre, the same size, clear of the cutout', near(centreX(left.canvas), W / 2) && near(left.canvas.width, plain.canvas.width) && left.canvas.left >= 32, fmt(left));
+  check('safe area: #game is inset by the larger side inset on both sides', near(left.game.left, 32) && near(left.game.right, W - 32), fmt(left));
+  check("safe area: Phaser's input bounds follow the canvas", near(left.bounds.x, left.canvas.left) && near(left.bounds.width, left.canvas.width), JSON.stringify(left.bounds));
+  await s.tapItem('audio');
+  check('safe area: a real tap on a menu button lands on it with the cutout inset in place', (await s.menu()).page === 'audio');
+  await s.tapItem('back');
+  check('safe area: ... and BACK returns to the title root', (await s.menu()).page !== 'audio');
+
+  const right = await insets({ right: 32 });
+  check('safe area: turning the phone round (cutout on the right) leaves the canvas exactly where it was', near(right.canvas.left, left.canvas.left) && near(right.canvas.width, left.canvas.width) && near(right.canvas.top, left.canvas.top), `${fmt(left)} vs ${fmt(right)}`);
+
+  const both = await insets({ left: 47, right: 47 });
+  check('safe area: equal side insets (iOS in landscape) give the same #game box as before', near(both.game.left, 47) && near(both.game.right, W - 47) && near(centreX(both.canvas), W / 2), fmt(both));
+
+  const bottom = await insets({ bottom: 21 });
+  check('safe area: top and bottom still use their own insets (a home indicator only shrinks the bottom)', near(bottom.game.top, 0) && near(bottom.game.bottom, H - 21) && near(centreY(bottom.canvas), (H - 21) / 2), JSON.stringify({ game: [bottom.game.top, bottom.game.bottom], canvas: [bottom.canvas.top, bottom.canvas.bottom] }));
+
+  // The touch controls are positioned on the full viewport and keep clear of each side's own inset, exactly as before.
+  await insets({ right: 32 });
+  await s.play();
+  const fireRight = (await s.rect('.tc-fire')).right;
+  const pauseRight = (await s.rect('.tc-pause')).right;
+  check('safe area: FIRE and PAUSE keep clear of a cutout on their side by the usual 18 px', near(fireRight, W - 32 - 18) && near(pauseRight, W - 32 - 18), `fire ${fireRight}, pause ${pauseRight}`);
+  await insets({ left: 32 });
+  const fireRightL = (await s.rect('.tc-fire')).right;
+  check('safe area: a cutout on the other side does not move FIRE (the controls are not made symmetric)', near(fireRightL, W - 18), `fire ${fireRightL}`);
+  await s.shot('safe-area-left-cutout');
+  check('safe area: no console errors', s.problems.length === 0, s.problems.join(' | '));
+  await s.context.close();
+}
+
 async function waitForServer() {
   for (let i = 0; i < 100; i++) {
     const ok = await new Promise((resolve) => {
@@ -1574,7 +1682,7 @@ async function mobilePage(width, height, { query = '?debug', mobile = true, touc
         x: p.position.x, y: p.position.y, rot: p.rotation, lives: p.lives, score: p.score, phase: s.phase, shots: s.shots.length,
         laser: p.laser.shotsRemaining, boost: p.boost.active, boostCd: p.boost.cooldown, retry: s.retryDelay, paused: sc.paused, time: s.time }; })()`),
     quiet: () =>
-      page.evaluate(`(() => { const s = window.__game.scene.getScene('GameScene').sim; s.spawner.spawnTimer = -1e9; s.asteroids.length = 0; s.shots.length = 0; s.startCooldown = 0; })()`),
+      page.evaluate(`(() => { const s = window.__game.scene.getScene('GameScene').sim; s.spawner.spawnTimer = -1e9; s.ufoSpawner.enabled = false; s.ufos.length = 0; s.ufoShots.length = 0; s.asteroids.length = 0; s.shots.length = 0; s.startCooldown = 0; })()`),
     audio: () =>
       page.evaluate(`(() => { const g = window.__game, a = g.registry.get('audio'), m = a.musicSound;
         return { locked: g.sound.locked, ctx: g.sound.context ? g.sound.context.state : 'n/a', playing: !!m && m.isPlaying, paused: !!m && m.isPaused,
@@ -1591,9 +1699,12 @@ async function mobilePage(width, height, { query = '?debug', mobile = true, touc
       if (steering === 'joystick') await page.evaluate(() => window.__game.registry.get('touchControls').setSteering('joystick'));
       await sleep(250);
     },
-    /** Taps PLAY and waits for the run. */
+    /**
+     * Taps PRACTICE and waits for the run. On a one-player phone PLAY is the ranked entry (it needs the leaderboard service, which
+     * these tests do not run); PRACTICE is the same game without an online score.
+     */
     play: async () => {
-      await api.tapItem('play');
+      await api.tapItem('practice');
       await page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
       await sleep(350);
     },
@@ -1628,7 +1739,7 @@ async function run() {
   check('the rotate prompt is not shown in landscape', (await m.rect('.tc-rotate')).display === 'none');
 
   await m.play();
-  check('tapping PLAY (a real touch) starts a one-player run', (await m.activeScene()) === 'GameScene' && (await m.page.evaluate(`window.__game.scene.getScene('GameScene').sim.players.length`)) === 1);
+  check('tapping PRACTICE (a real touch) starts a one-player run', (await m.activeScene()) === 'GameScene' && (await m.page.evaluate(`window.__game.scene.getScene('GameScene').sim.players.length`)) === 1);
   const a1 = await m.audio();
   check('that touch unlocks audio and starts exactly one music instance', !a1.locked && a1.playing && a1.instances === 1, JSON.stringify(a1));
   check('the control overlay appears in landscape during play', await m.overlayShown());
@@ -1954,14 +2065,19 @@ async function run() {
   const turnOn = await m.itemRect('touch-on');
   const turnOnTexts = await m.texts('StartScene');
   check('the way back is a big button, not small text: at least 44 CSS px tall and 120 wide, top right, labelled in words', turnOn.height >= 44 && turnOn.width >= 120 && turnOn.top < 40 && turnOn.right > 422 && turnOnTexts.some((t) => /^TOUCH CONTROLS: OFF\nTAP TO TURN ON$/.test(t)), JSON.stringify({ w: Math.round(turnOn.width), h: Math.round(turnOn.height), texts: turnOnTexts.filter((t) => /TOUCH/.test(t)) }));
-  const playLabel = (await m.menu()).items.find((i) => i.id === 'play');
-  check('a phone in keyboard mode offers PLAY WITH KEYBOARD, which says it needs SPACE (the green button above is the main thing)', playLabel.label === 'PLAY WITH KEYBOARD' && turnOnTexts.includes('PRESS SPACE ON A KEYBOARD'), turnOnTexts.filter((t) => /PLAY|SPACE/.test(t)).join('|'));
+  const keyboardTitle = (await m.menu()).items;
+  const playLabel = keyboardTitle.find((i) => i.id === 'play');
+  check('a phone in keyboard mode keeps the phone entry (PLAY for ranked, PRACTICE beside it; the green button above is the way back)', playLabel?.label === 'PLAY' && keyboardTitle.some((i) => i.id === 'practice'), keyboardTitle.map((i) => `${i.id}=${i.label}`).join('|'));
   await m.tapGame(300, 300); // empty space, over the controls reference
   await m.tapGame(640, 52); // the title itself
-  await m.tapItem('play'); // a tap on PLAY WITH KEYBOARD: a phone has no keyboard, so a tap alone does not start it either
+  await m.tapItem('practice'); // no keyboard has been used yet, so a tap alone must not start a game nobody could steer
   await sleep(400);
-  check('a stray tap anywhere on the keyboard title screen of a phone, even on PLAY itself, does NOT start a game', (await m.activeScene()) === 'StartScene');
-  await m.page.keyboard.press('Space');
+  const gate = await m.menu();
+  check('a stray tap anywhere on the keyboard title screen of a phone, even on PRACTICE itself, does NOT start a game: it asks for a keyboard first', (await m.activeScene()) === 'StartScene' && gate.page === 'practice' && gate.items.some((i) => i.id === 'start'), JSON.stringify({ page: gate.page, items: gate.items.map((i) => i.id) }));
+  await m.tapItem('start');
+  await sleep(300);
+  check('...and a finger cannot press its START WITH KEYBOARD', (await m.activeScene()) === 'StartScene');
+  await m.page.keyboard.press('Enter');
   await m.page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
   await sleep(250);
   check('in keyboard mode no touch controls are shown and touches do nothing to the ship', !(await m.overlayShown()) && (await m.cmd()).shoot === false);
@@ -1983,7 +2099,8 @@ async function run() {
   // ?touch=0 on a phone: the URL decides for the visit
   const forced = await mobilePage(844, 390, { query: '?debug&touch=0' });
   await forced.start();
-  check('?touch=0 forces the keyboard game on a phone', !(await forced.bodyClasses()).includes('tc-active') && (await forced.texts('StartScene')).includes('PLAY WITH KEYBOARD'));
+  const forcedItems = (await forced.menu()).items;
+  check('?touch=0 forces the keyboard game on a phone (touch controls off, the way back to touch offered)', !(await forced.bodyClasses()).includes('tc-active') && forcedItems.some((i) => i.id === 'touch-on') && forcedItems.some((i) => i.id === 'practice'), forcedItems.map((i) => i.id).join('|'));
   check('...and saves nothing (the URL only decides for this visit)', (await forced.page.evaluate(() => localStorage.getItem('asteroids.inputMode'))) === null);
   // The way back must also survive a clumsy touch: two fingers landing on it together switch once, not twice (back to keyboard).
   const turnOn3 = await forced.itemRect('touch-on');
@@ -2036,8 +2153,9 @@ async function run() {
   const portrait = await mobilePage(390, 844);
   await portrait.start();
   check('opening the page in portrait shows the rotate prompt straight away', (await portrait.rect('.tc-rotate')).display !== 'none');
-  const playBox = (await portrait.menu()).items.find((i) => i.id === 'play');
-  await portrait.tapGame(playBox.x + playBox.w / 2, playBox.y + playBox.h / 2); // a tap where PLAY is must not start a game
+  // PRACTICE, not PLAY: on a phone PLAY only opens the ranked page, so a tap on it would never start a game anyway.
+  const playBox = (await portrait.menu()).items.find((i) => i.id === 'practice');
+  await portrait.tapGame(playBox.x + playBox.w / 2, playBox.y + playBox.h / 2); // a tap where PRACTICE is must not start a game
   await sleep(300);
   check('and a tap through the prompt does not start a game', (await portrait.activeScene()) === 'StartScene');
   await portrait.shot('08-portrait-start');
@@ -2107,6 +2225,7 @@ async function run() {
   await runMovement();
   await runFullscreen();
   await runHaptics();
+  await runSafeArea();
 
   // =====================================================================================================
   // 9. Overall health

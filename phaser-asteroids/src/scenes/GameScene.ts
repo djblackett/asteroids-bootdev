@@ -23,6 +23,7 @@ import {
 import { createKeyPressRouter } from '../input/keyPress';
 import { keySchemesFor, readPlayerInput, type KeyScheme } from '../input/keyboardControls';
 import { readPlayerInputs } from '../input/playerInputs';
+import { nativeBack } from '../platform/nativeBack';
 import { getApiBase, type RankedChallenge } from '../ranked/api';
 import { ControlTracker } from '../ranked/controls';
 import { localBest, readLocalScores, startingNickname, type LocalScore } from '../ranked/localScores';
@@ -839,10 +840,17 @@ export class GameScene extends Phaser.Scene {
       }),
       this.touch.onPortrait(() => autoPause()),
     ];
+    // Android Back (app only) is Escape: it pauses, closes a pause page, resumes, or leaves a finished run (`goBack`). It never leaves
+    // the app from a run, so it always counts as handled.
+    const stopNativeBack = nativeBack.setHandler(() => {
+      this.goBack();
+      return true;
+    });
     const events = this.game.events;
     events.on(Phaser.Core.Events.BLUR, autoPause);
     events.on(Phaser.Core.Events.HIDDEN, autoPause);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      stopNativeBack();
       stopPadEvents();
       for (const stop of stopTouchEvents) stop();
       this.touch.setLayer('off');

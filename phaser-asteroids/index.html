@@ -8,8 +8,17 @@
     <style>
       html, body { margin: 0; height: 100%; background: #000; overflow: hidden; overscroll-behavior: none; }
       /* The canvas stays inside the notch / rounded-corner safe area (all four insets are 0 on desktop, so nothing changes there).
-         The touch controls (src/ui/touch.css) use the full viewport and place themselves inside the same insets. */
-      #game { position: fixed; inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+         The touch controls (src/ui/touch.css) use the full viewport and place themselves inside the same insets.
+         Each inset reads Capacitor's --safe-area-inset-* first: the Android app's SystemBars plugin writes it, matching what the
+         WebView really leaves free. Browsers never set it, so they use env() exactly as before.
+         Left and right both use the larger of the two side insets: Phaser centres the canvas inside #game, so a camera cutout on one
+         side only (an Android phone in landscape) would otherwise push the playfield off the physical centre, and the other way when
+         the phone is turned round. Top and bottom keep their own insets. */
+      #game {
+        --game-inset-x: max(var(--safe-area-inset-left, env(safe-area-inset-left, 0px)), var(--safe-area-inset-right, env(safe-area-inset-right, 0px)));
+        position: fixed;
+        inset: var(--safe-area-inset-top, env(safe-area-inset-top, 0px)) var(--game-inset-x) var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)) var(--game-inset-x);
+      }
       canvas { display: block; }
     </style>
   </head>

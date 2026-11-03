@@ -87,10 +87,14 @@ try {
 
   // --- challenge issuance -------------------------------------------------------------------------------------------------
   const health = await api('GET', '/api/v1/health');
-  check('health reports rules version', health.json?.rulesVersion === '1.1.0');
+  const RULES = engine.GAMEPLAY_RULES_VERSION;
+  check('health reports the current rules version and every supported one', health.json?.rulesVersion === RULES && Array.isArray(health.json?.supportedRules) && health.json.supportedRules.includes(RULES), JSON.stringify(health.json));
   const probe = await api('POST', '/api/v1/runs', { body: JSON.stringify({ seed: 1, config: { playerCount: 2 } }), headers: { 'content-type': 'application/json' } });
   check('POST /runs issues a challenge (201) with server-chosen seed and approved config', probe.status === 201 && probe.json.seed !== 1 && probe.json.config.playerCount === 1);
-  check('challenge carries id, secret token, rules version, expiry', !!probe.json.runId && probe.json.token?.length >= 40 && probe.json.rulesVersion === '1.1.0' && Date.parse(probe.json.expiresAt) > Date.now());
+  check('challenge carries id, secret token, rules version, expiry', !!probe.json.runId && probe.json.token?.length >= 40 && probe.json.rulesVersion === RULES && Date.parse(probe.json.expiresAt) > Date.now());
+  const asked = await api('POST', `/api/v1/runs?rules=${RULES}&schema=${engine.REPLAY_SCHEMA_VERSION}`);
+  const unknownRules = await api('POST', '/api/v1/runs?rules=0.0.1&schema=1');
+  check('a client naming its supported rules gets them; an unknown version gets the current one', asked.status === 201 && asked.json.rulesVersion === RULES && asked.json.schemaVersion === engine.REPLAY_SCHEMA_VERSION && unknownRules.status === 201 && unknownRules.json.rulesVersion === RULES);
 
   // --- prepare several real games, all played against server-issued seeds -----------------------------------------------------
   const honest = await playableRun();

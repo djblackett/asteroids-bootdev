@@ -286,7 +286,7 @@ async function run() {
   // RANKED is PLAY's twin (same size, same row, to its right); every secondary button is smaller and below them.
   check('PLAY (with RANKED beside it) is the biggest button and sits above the secondary buttons, with PLAY focused first', play.h > Math.max(...others.map((i) => i.h)) && play.y < Math.min(...others.map((i) => i.y)) && ranked.y === play.y && ranked.h === play.h && ranked.w === play.w && ranked.x > play.x + play.w && snap.focus === 'play');
   check('the title screen answers "how do I control my ship": the real keys with what they do', ['HOW TO PLAY', 'W', 'S', 'A', 'D', 'SPACE', 'E', 'SHIFT', 'Move forward / back', 'Turn left / right', 'Laser beam', 'Boost'].every((t) => words.includes(t)) && words.some((t) => /^Shoot/.test(t)), words.slice(0, 20).join(' | '));
-  check('...and "what do the power-ups do": all five with their in-game names and a few words each', ['RAPID FIRE', 'MULTI-SHOT', 'SHIELD', 'SLOW MOTION', 'MEGA POWER', 'Shoot faster', 'Triple shot', 'Blocks 1 hit', 'Slow asteroids', 'All powers!'].every((t) => words.includes(t)) && !words.includes('REVIVE'), words.join(' | ').slice(0, 300));
+  check('...and "what do the power-ups do": all six one-player power-ups with their in-game names and a few words each', ['RAPID FIRE', 'MULTI-SHOT', 'SHIELD', 'SLOW MOTION', 'LIGHTNING', 'MEGA POWER', 'Shoot faster', 'Triple shot', 'Blocks 1 hit', 'Slow asteroids', 'Chain hits', '4 powers!'].every((t) => words.includes(t)) && !words.includes('REVIVE'), words.join(' | ').slice(0, 300));
   check('no settings on the first screen: no volumes, music, track, haptics, steering, controller status', !words.some((t) => /VOLUME|SOUND EFFECTS|^MUSIC|HAPTIC|STEERING|TRACK|Controller/i.test(t)), words.join(' | ').slice(0, 300));
   await d.shot('desktop-title');
 
@@ -676,11 +676,11 @@ async function run() {
   // phones: a touch on a menu never also steers, shoots or fires the laser / boost
   const tp = await open({ w: 844, h: 390, touch: true });
   await tp.goto();
-  await tp.tap('play');
+  await tp.tap('practice'); // PLAY on a one-player phone is the ranked entry; PRACTICE is the casual game
   await tp.page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
   await sleep(400);
   await tp.page.evaluate(`(() => { const s = window.__game.scene.getScene('GameScene').sim; s.spawner.spawnTimer = -1e9; s.asteroids.length = 0; s.player.lives = 99; })()`);
-  check('PLAY started the run and the finger that tapped it fired nothing', (await tp.sim()).shots === 0 && (await tp.sim()).laser === 15 && !(await tp.sim()).boost);
+  check('PRACTICE started the run and the finger that tapped it fired nothing', (await tp.sim()).shots === 0 && (await tp.sim()).laser === 15 && !(await tp.sim()).boost);
   const pauseBtn = await tp.page.evaluate(() => { const r = document.querySelector('.tc-pause').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
   await tp.page.touchscreen.tap(pauseBtn.x, pauseBtn.y);
   await sleep(500);
@@ -844,7 +844,7 @@ async function run() {
     await p.tap('controls');
     await review('controls');
     await p.tap('back');
-    await p.tap('play');
+    await p.tap('practice');
     await p.page.waitForFunction(() => window.__game.scene.isActive('GameScene'), null, { timeout: 5000 });
     await sleep(400);
     await p.page.evaluate(() => window.dispatchEvent(new Event('blur')));

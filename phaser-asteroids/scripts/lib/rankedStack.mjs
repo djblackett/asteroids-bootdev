@@ -22,6 +22,19 @@ export async function loadEngine() {
   return import(pathToFileURL(path.join(root, 'dist', 'node', 'index.js')).href);
 }
 
+/**
+ * page.route() pattern for the challenge request, POST <api>/api/v1/runs. The client adds `?rules=&schema=` to it, so an exact URL
+ * string would no longer match. One RegExp per API base, so page.unroute() receives the same object page.route() was given.
+ */
+const challengeRoutes = new Map();
+export function challengeRoute(api) {
+  if (!challengeRoutes.has(api)) challengeRoutes.set(api, new RegExp(`^${api.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/api/v1/runs(\\?.*)?$`));
+  return challengeRoutes.get(api);
+}
+
+/** True for the challenge request itself (POST /api/v1/runs, whatever its query string). */
+export const isChallengeRequest = (r) => r.method() === 'POST' && new URL(r.url()).pathname.endsWith('/api/v1/runs');
+
 export function makeChecker() {
   const state = { total: 0, failures: 0 };
   return {

@@ -1,0 +1,17 @@
+{
+  "versions": {
+    "1.2.0": {
+      "schemaVersion": 1,
+      "frozenAt": "2026-11-02",
+      "files": {
+        "engine.mjs": "e8852c740372cc3499287215aa86bdd95951c1b14fd47ab814ed6a400f44e72f",
+        "engine.d.mts": "2823580b116fdd0b46205382f47472fcfe0a5a5a719f1a64062afa7dd9435379",
+        "fixtures/game-over-reference.json.gz": "b47e22817f034b977ac97627310a952db1d7a770aa3634ffa6b923bfaf703fbe",
+        "fixtures/game-over-stress.json.gz": "136ea6641cdc1746299cdae61b87a7622b429f32010ba9a9b98df0c50ae063b7",
+        "fixtures/time-limit.json.gz": "ad9e658a5ad4f18b55792183801b3bf423b18bece5a84218839ac150586d9cb5",
+        "fixtures/stopped-early.json.gz": "f73083da65a7cba1d08ad5529175337c1b8c0f2750ae698ca3ca121ffc90f057",
+        "fixtures/forged-claim.json.gz": "b1a8328882f3be974e395acc452fe84667006ce1ebf3d6556ccd0bef0d88c59e"
+      }
+    }
+  }
+}

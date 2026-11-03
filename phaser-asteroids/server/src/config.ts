@@ -1,5 +1,5 @@
 import type { GameConfig } from '../../src/core/gameConfig';
-import { FIXED_TICK_RATE, GAMEPLAY_RULES_VERSION, REPLAY_SCHEMA_VERSION } from '../../src/replay/constants';
+import { FIXED_TICK_RATE, GAMEPLAY_RULES_VERSION } from '../../src/replay/constants';
 import type { D1Like } from './d1';
 
 /**
@@ -13,8 +13,8 @@ export const RANKED_CONFIG: Readonly<GameConfig> = Object.freeze({
   speed: Object.freeze([1, 1]) as unknown as readonly [number, number],
 });
 
+/** What a challenge is issued under when the client does not ask for a supported version; must be registered in engines.ts. */
 export const RANKED_RULES_VERSION = GAMEPLAY_RULES_VERSION;
-export const RANKED_SCHEMA_VERSION = REPLAY_SCHEMA_VERSION;
 export const RANKED_TICK_RATE = FIXED_TICK_RATE;
 
 /** Bindings and variables the Worker receives (see wrangler.toml). Everything except `DB` is optional so local runs need no setup. */

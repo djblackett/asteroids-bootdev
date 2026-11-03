@@ -35,4 +35,10 @@ describe('ranked service failures keep the choice explicit', () => {
       lines: ['THE GAME HAS BEEN UPDATED.', 'RELOAD THE PAGE TO PLAY RANKED.'], retry: false,
     });
   });
+  it('the Android app asks for an app update instead (reloading it loads the same bundled game)', () => {
+    expect(describeRankedFailure('update_required', true)).toEqual({
+      lines: ['RANKED PLAY NEEDS A NEWER VERSION OF THE APP.', 'UPDATE THE APP, OR PLAY PRACTICE.'], retry: false,
+    });
+    expect(describeRankedFailure('network', true)).toEqual(describeRankedFailure('network'));
+  });
 });

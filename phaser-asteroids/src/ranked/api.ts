@@ -1,4 +1,5 @@
 import type { GameConfig } from '../core/gameConfig';
+import { isNativeApp } from '../platform/nativeApp';
 import { FIXED_TICK_RATE, GAMEPLAY_RULES_VERSION, REPLAY_SCHEMA_VERSION } from '../replay/constants';
 import type { ReplayEndReason, ReplayRecord } from '../replay/types';
 import type { ControlScheme } from './controls';
@@ -61,8 +62,13 @@ const LOCAL_API = 'http://127.0.0.1:8787';
  * the browser tests) `?api=<url>` may point at a local backend, and with nothing configured the local `wrangler dev` address is used.
  * Anywhere else a query parameter is ignored: a crafted link cannot redirect a player's run to another server. Null: ranked play is
  * not available in this build.
+ *
+ * `nativeApp` (the Android app): only the configured URL counts, whatever the page's hostname is. The app is served from its own
+ * hostname (capacitor.config.ts), so the loopback rules would not apply anyway; this makes sure that a future change there can never
+ * point an installed app at `wrangler dev` or let `?api=` redirect it. `npm run build:android` refuses to build without the
+ * production URL.
  */
-export function resolveApiBase(search: string, hostname: string, configured?: string): string | null {
+export function resolveApiBase(search: string, hostname: string, configured?: string, nativeApp = false): string | null {
   const clean = (u: string) => u.replace(/\/+$/, '');
   const valid = (u: string | null | undefined): string | null => {
     if (!u) return null;
@@ -73,14 +79,14 @@ export function resolveApiBase(search: string, hostname: string, configured?: st
       return null;
     }
   };
-  if (LOOPBACK.has(hostname)) return valid(new URLSearchParams(search).get('api')) ?? valid(configured) ?? LOCAL_API;
+  if (!nativeApp && LOOPBACK.has(hostname)) return valid(new URLSearchParams(search).get('api')) ?? valid(configured) ?? LOCAL_API;
   return valid(configured);
 }
 
 /** The API base for this page, or null when the build has none configured (ranked play and the high scores are then "unavailable"). */
 export function getApiBase(): string | null {
   if (typeof window === 'undefined') return null;
-  return resolveApiBase(window.location.search, window.location.hostname, import.meta.env.VITE_LEADERBOARD_API_URL);
+  return resolveApiBase(window.location.search, window.location.hostname, import.meta.env.VITE_LEADERBOARD_API_URL, isNativeApp());
 }
 
 /**
@@ -117,11 +123,20 @@ async function withTimeout(fetchFn: FetchLike, url: string, init: RequestInit, m
 
 // --- starting a run ----------------------------------------------------------------------------------------------------------
 
+/**
+ * The challenge request's URL. It names the rules and replay schema this build plays, so a server that has learned a newer version
+ * still issues this one for as long as it supports it (an installed app keeps working through a gameplay update). A query string, not
+ * a body or a header, keeps the request a CORS "simple" request: no preflight round trip on a phone.
+ */
+export function challengeUrl(base: string): string {
+  return `${base}/api/v1/runs?rules=${encodeURIComponent(GAMEPLAY_RULES_VERSION)}&schema=${REPLAY_SCHEMA_VERSION}`;
+}
+
 /** Asks the server for a ranked challenge. Throws RankedApiError; the caller must then NOT start a ranked run. */
 export async function requestChallenge(base: string, fetchFn: FetchLike = realFetch): Promise<RankedChallenge> {
   let res: Response;
   try {
-    res = await withTimeout(fetchFn, `${base}/api/v1/runs`, { method: 'POST' }, 10_000);
+    res = await withTimeout(fetchFn, challengeUrl(base), { method: 'POST' }, 10_000);
   } catch {
     throw new RankedApiError('network', 'The ranked service could not be reached');
   }

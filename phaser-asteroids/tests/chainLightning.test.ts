@@ -238,18 +238,26 @@ describe('Chain Lightning power-up', () => {
     expect(eventsOfType(sim.step(FRAME), 'lightning_discharged')).toHaveLength(0);
   });
 
-  it('reproduces genuine lightning pickups and destruction order in the authoritative current-rules verifier', () => {
+  it('reproduces genuine lightning pickups and destruction order in the authoritative current-rules verifier', async () => {
     const seed = 54321;
+    // The server verifies with the frozen engine for the current rules (server/rules/<version>/engine.mjs), which has its own copy of
+    // GameSim: record live play's events from the live class and the verifier's events from the frozen one.
+    const frozen = (await import(`../server/rules/${GAMEPLAY_RULES_VERSION}/engine.mjs`)) as { GameSim: typeof GameSim };
+    const record = (cls: typeof GameSim, into: ReturnType<GameSim['step']>) => {
+      const original = cls.prototype.step;
+      return vi.spyOn(cls.prototype, 'step').mockImplementation(function (this: GameSim, ...args) {
+        const result = original.apply(this, args);
+        into.push(...result);
+        return result;
+      });
+    };
+    const trace: ReturnType<GameSim['step']> = [];
     const events: ReturnType<GameSim['step']> = [];
-    const original = GameSim.prototype.step;
-    const spy = vi.spyOn(GameSim.prototype, 'step').mockImplementation(function (this: GameSim, ...args) {
-      const result = original.apply(this, args);
-      events.push(...result);
-      return result;
-    });
+    const liveSpy = record(GameSim, trace);
+    const frozenSpy = record(frozen.GameSim, events);
     try {
       const run = generateBotReplay(engine, { seed });
-      const trace = events.splice(0);
+      expect(events).toHaveLength(0);
       const verdict = verifyRankedReplay(run.replay, {
         seed, rulesVersion: GAMEPLAY_RULES_VERSION, config: RANKED_CONFIG, createdAt: 0,
       }, run.ticks * FIXED_DT * 1000, loadSettings());
@@ -262,7 +270,8 @@ describe('Chain Lightning power-up', () => {
       oldReplay.header.rulesVersion = '1.1.0';
       expect(verifyRankedReplay(oldReplay, { seed, rulesVersion: GAMEPLAY_RULES_VERSION, config: RANKED_CONFIG, createdAt: 0 }, 1e9, loadSettings()).ok).toBe(false);
     } finally {
-      spy.mockRestore();
+      liveSpy.mockRestore();
+      frozenSpy.mockRestore();
     }
   });
 });

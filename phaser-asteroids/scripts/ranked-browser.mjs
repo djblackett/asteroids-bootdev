@@ -56,6 +56,8 @@ try {
   const page = await openTitle(context, GAME, { api: API });
   const apiCalls = [];
   page.on('request', (r) => r.url().startsWith(API) && apiCalls.push(`${r.method()} ${new URL(r.url()).pathname}`));
+  const challengeQueries = [];
+  page.on('request', (r) => r.url().startsWith(API) && r.method() === 'POST' && new URL(r.url()).pathname === '/api/v1/runs' && challengeQueries.push(new URL(r.url()).search));
   const submitCalls = () => apiCalls.filter((c) => /POST \/api\/v1\/runs\/[0-9a-f-]+\/submit/.test(c)).length;
 
   const title = await menuItems(page, 'title');
@@ -88,6 +90,8 @@ try {
     if (attempt === 1) {
       check('the challenge came from the server before play (phase=playing, run id held)', session.ranked?.phase === 'playing' && /^[0-9a-f-]{36}$/.test(session.ranked.runId ?? ''));
       check('the challenge was requested with POST /api/v1/runs', apiCalls.includes('POST /api/v1/runs'));
+      const engine = await loadEngine();
+      check('...naming the rules and replay schema this build plays', challengeQueries[0] === `?rules=${engine.GAMEPLAY_RULES_VERSION}&schema=${engine.REPLAY_SCHEMA_VERSION}`, challengeQueries[0]);
       check('simulation seed is the server-issued seed (not a default, not from the URL)', Number.isInteger(session.seed) && session.seed > 1 && !new URL(page.url()).searchParams.has('seed'));
       check('the ranked indicator is on screen during play', (await sceneTexts(page, 'GameScene')).includes('RANKED'));
 
@@ -230,7 +234,7 @@ try {
   await sleep(500);
   await clickItem(page, 'ranked', 'title');
   await waitText(page, 'StartScene', /^YOUR BEST VERIFIED SCORE:/);
-  check('after a reload the ranked page still shows the verified personal best', (await sceneTexts(page, 'StartScene')).some((t) => t.includes(browserScore.toLocaleString('en-US')) && t.includes(NICK.toUpperCase())));
+  check('after a reload the ranked page still shows the verified personal best', (await sceneTexts(page, 'StartScene')).some((t) => t.includes(browserScore.toLocaleString('en-US')) && t.includes(NICK)));
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.waitForFunction(() => window.__game?.scene.isActive('StartScene'), null, { timeout: 20000 });
@@ -266,7 +270,7 @@ try {
   await down.waitForFunction(() => window.__ASTEROIDS_RANKED__?.phase === 'failed', null, { timeout: 15000 });
   await sleep(500);
   const downTexts = await sceneTexts(down, 'StartScene');
-  check('ranked play with the backend down stays on the title screen and says so, in plain words', downTexts.includes('RANKED PLAY IS TEMPORARILY UNAVAILABLE.') && downTexts.includes('YOU CAN STILL PLAY NORMALLY.') && (await down.evaluate(() => !window.__game.scene.isActive('GameScene'))));
+  check('ranked play with the backend down stays on the title screen and says so, in plain words', downTexts.includes('RANKED PLAY IS TEMPORARILY UNAVAILABLE.') && downTexts.includes('YOU CAN STILL PLAY PRACTICE.') && (await down.evaluate(() => !window.__game.scene.isActive('GameScene'))));
   const downItems = await menuItems(down, 'title');
   check('it offers TRY AGAIN, PLAY NORMALLY and BACK (never a dead end)', ['start', 'play-normally', 'back'].every((id) => downItems.items.some((i) => i.id === id)));
   await clickItem(down, 'back', 'title');

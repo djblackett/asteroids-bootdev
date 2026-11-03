@@ -8,7 +8,7 @@
 // Network faults are injected with Playwright routes on the browser side of the wire ("the response got lost"); the server stays real.
 import crypto from 'node:crypto';
 import { playUntilScoredThenDie } from './lib/browserPlay.mjs';
-import { clickItem, itemPoint, makeChecker, menuItems, openTitle, rankedState, requireBuild, sceneTexts, sleep, startGameAndBrowser, WorkerStack } from './lib/rankedStack.mjs';
+import { challengeRoute, clickItem, itemPoint, makeChecker, menuItems, openTitle, rankedState, requireBuild, sceneTexts, sleep, startGameAndBrowser, WorkerStack } from './lib/rankedStack.mjs';
 
 const GAME_PORT = Number(process.env.RANKED_GAME_PORT ?? 4411);
 const A = new WorkerStack({ port: Number(process.env.RANKED_API_PORT_A ?? 8794), gamePort: GAME_PORT });
@@ -393,7 +393,7 @@ INSERT INTO scores (id, run_id, score, nickname, completed_at, rules_version, ti
     const page = await openTitle(ctx, GAME, { api: A.API });
     const submits = [];
     page.on('request', (r) => /\/submit$/.test(r.url()) && r.method() === 'POST' && submits.push(r.url()));
-    await page.route(`${A.API}/api/v1/runs`, async (route) => {
+    await page.route(challengeRoute(A.API), async (route) => {
       if (route.request().method() !== 'POST') return route.continue();
       const res = await route.fetch();
       const body = await res.json();

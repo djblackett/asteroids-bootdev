@@ -109,6 +109,14 @@ describe('fullscreen support detection', () => {
     expect(browserFullscreenEnvironment(doc, { matchMedia: () => ({ matches: false }) } as unknown as Window, { standalone: true } as unknown as Navigator).standalone).toBe(true);
     expect(browserFullscreenEnvironment(doc, { matchMedia: () => ({ matches: false }) } as unknown as Window, nav).standalone).toBe(false);
   });
+
+  it('inside the Android app: already fullscreen natively, so no Fullscreen button (WebView would end the request at once)', () => {
+    const doc = { documentElement: {} } as unknown as Document;
+    const win = { matchMedia: () => ({ matches: false }) } as unknown as Window;
+    const env = browserFullscreenEnvironment(doc, win, {} as Navigator, true);
+    expect(env.standalone).toBe(true);
+    expect(fullscreenButtonSpec({ support: detectSupport(env), active: false, failure: null }).visible).toBe(false);
+  });
 });
 
 describe('entering and leaving fullscreen', () => {

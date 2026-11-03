@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { SCREEN_HEIGHT, SCREEN_WIDTH } from './core/constants';
+import { installNativeApp } from './platform/nativeApp';
 import { BootScene } from './scenes/BootScene';
 import { GameScene } from './scenes/GameScene';
 import { StartScene } from './scenes/StartScene';
@@ -21,6 +22,9 @@ const game = new Phaser.Game({
   input: { activePointers: 3 },
   scene: [BootScene, StartScene, GameScene],
 });
+
+// Android app only (a no-op in every browser): system Back, app pause / resume and the system bars. See src/platform/nativeApp.ts.
+installNativeApp();
 
 // `?debug` exposes the game instance for manual inspection and browser automation.
 if (new URLSearchParams(window.location.search).has('debug')) {

@@ -1,7 +1,7 @@
 // Focused title-entry regression checks against the production build and real local Worker/D1.
 // Faults are injected at the browser network boundary; no gameplay or ranked validation is bypassed.
 import fs from 'node:fs';
-import { clickItem, itemPoint, makeChecker, menuItems, openTitle, requireBuild, sceneTexts, sleep, startGameAndBrowser, WorkerStack } from './lib/rankedStack.mjs';
+import { challengeRoute, clickItem, isChallengeRequest, itemPoint, makeChecker, menuItems, openTitle, requireBuild, sceneTexts, sleep, startGameAndBrowser, WorkerStack } from './lib/rankedStack.mjs';
 
 const PORT = 4417;
 const worker = new WorkerStack({ port: 8797, gamePort: PORT });
@@ -25,7 +25,7 @@ try {
     }, off);
     const page = await openTitle(ctx, GAME, { api: worker.API, query });
     let requests = 0;
-    page.on('request', (r) => { if (r.method() === 'POST' && r.url().endsWith('/api/v1/runs')) requests++; });
+    page.on('request', (r) => { if (isChallengeRequest(r)) requests++; });
     return { ctx, page, requests: () => requests };
   };
   const tap = async (page, id) => {
@@ -38,7 +38,7 @@ try {
   const titleActive = (page) => page.evaluate(() => window.__game.scene.isActive('StartScene'));
   const prefsOff = (page) => page.evaluate(() => localStorage.getItem('asteroids.inputMode') === 'desktop' && localStorage.getItem('asteroids.touchMovement') === 'pointToFly');
   const waitError = (page) => page.waitForFunction(() => window.__game.scene.getScene('StartScene').menuSnapshot().items.some((i) => i.id === 'play-normally'));
-  const outage = (page) => page.route(`${worker.API}/api/v1/runs`, (route) => route.request().method() === 'POST'
+  const outage = (page) => page.route(challengeRoute(worker.API), (route) => route.request().method() === 'POST'
     ? route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":{"code":"unavailable","message":"Test outage"}}' })
     : route.continue());
   const putPad = (page, pressed = false) => page.evaluate((pressed) => {
@@ -128,7 +128,7 @@ try {
     await outage(page);
     await tap(page, 'play');
     await waitError(page);
-    await page.unroute(`${worker.API}/api/v1/runs`);
+    await page.unroute(challengeRoute(worker.API));
     await tap(page, 'start');
     await playing(page, true);
     check('RETRY after service recovery starts the existing ranked flow', requests() === 2);
@@ -179,7 +179,7 @@ try {
     const held = new Promise((r) => { release = r; });
     let received;
     const responseReady = new Promise((r) => { received = r; });
-    await page.route(`${worker.API}/api/v1/runs`, async (route) => {
+    await page.route(challengeRoute(worker.API), async (route) => {
       if (route.request().method() !== 'POST') return route.continue();
       const response = await route.fetch();
       received();
@@ -199,7 +199,7 @@ try {
     const { ctx, page, requests } = await phone();
     let release;
     const held = new Promise((r) => { release = r; });
-    await page.route(`${worker.API}/api/v1/runs`, async (route) => {
+    await page.route(challengeRoute(worker.API), async (route) => {
       if (route.request().method() !== 'POST') return route.continue();
       const response = await route.fetch();
       await held;
@@ -224,7 +224,7 @@ try {
     });
     const page = await openTitle(ctx, GAME, { api: worker.API });
     let requests = 0;
-    page.on('request', (r) => { if (r.method() === 'POST' && r.url().endsWith('/api/v1/runs')) requests++; });
+    page.on('request', (r) => { if (isChallengeRequest(r)) requests++; });
     const snap = await menuItems(page);
     check(`desktop touch-capable=${touchCapable}: original PLAY / RANKED / player selector remain`, !snap.items.some((i) => i.id === 'practice') && ['play', 'ranked', 'players', 'scores'].every((id) => snap.items.some((i) => i.id === id)));
     await page.keyboard.press('Digit2');

@@ -5,6 +5,11 @@ for ranked play. GitHub Actions validates both, deploys and checks the Worker, t
 
 **URL:** <https://djblackett.github.io/asteroids-bootdev/>
 
+The Android app is built separately (`npm run build:android`) and talks to the same Worker. The Worker verifies every gameplay
+rules version a distributed app still plays (frozen engines in `server/rules/`), so a gameplay update does not stop ranked play in
+installed apps. The bump procedure, the deployment order and the retirement policy are in
+[server/rules/README.md](../server/rules/README.md).
+
 The Pages site is exactly the contents of `phaser-asteroids/dist/`. The original Python/Pygame game stays in the repository
 root as source code but is no longer built or published (its pygbag web build was retired when Phaser became the primary
 game; `BUILD_WEB.md` and `pygbag` still work locally if you want it).
@@ -22,7 +27,9 @@ game; `BUILD_WEB.md` and `pygbag` still work locally if you want it).
 Changes to the Python game or to root docs do not deploy.
 
 **These block deployment** (job `phaser`, Node 22, Ubuntu): `npm ci` → `npm run typecheck` → `npm test` (Vitest unit tests) →
-`npm run build` → `node scripts/pages-check.mjs`. The last step loads the production build in real headless Chrome, served
+`npm run build` → `node scripts/pages-check.mjs`. `npm test` includes the release compatibility gate
+(`server/tests/rulesCompat.test.ts`), and a separate step runs `scripts/rules-guard.mjs` against the merge base (frozen engines
+and release records were not rewritten; the checkout fetches full history for it). The last step loads the production build in real headless Chrome, served
 as the site root at `/asteroids-bootdev/` (the Pages URL path) **and** at `/` (a custom domain), and checks: no console or
 page errors, no HTTP errors, all 10 start-up audio files load from under that path, the two extra soundtracks are *not* requested at start-up but load from under it when picked (and a saved choice plays after a reload), nothing is requested outside it, the title screen
 renders in WebGL, a one-player game starts with the music playing, `?keydebug` loads, and the Gamepad API is available.
@@ -38,7 +45,8 @@ runs and old reruns fail without deploying. It runs `npx wrangler deploy --env p
 Next, `scripts/production-health.mjs` makes only a read-only GET to
 <https://asteroids-leaderboard.davejandrea.workers.dev/api/v1/health>. It requires HTTP success, `ok: true`, and exact
 `rulesVersion` / `schemaVersion` matches with `GAMEPLAY_RULES_VERSION` / `REPLAY_SCHEMA_VERSION` exported by the
-build's `dist/node/index.js`. These come from shared `src/replay/constants.ts`; there is no separate CI version.
+build's `dist/node/index.js`, and a `supportedRules` list that includes them and every rules version a distributed Android
+build still needs (`server/rules/released.json`). These come from shared `src/replay/constants.ts`; there is no separate CI version.
 Exact schema equality follows the existing replay compatibility policy. It attempts at most five requests, each
 with a 10-second timeout, waiting five seconds between failures. Logs show expected versions and failure reasons.
 It never creates challenges or scores. This checks Worker compatibility, not D1 connectivity; an optional read-only

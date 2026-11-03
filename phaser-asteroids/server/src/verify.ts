@@ -1,8 +1,7 @@
 import type { GameConfig } from '../../src/core/gameConfig';
-import { FIXED_TICK_RATE } from '../../src/replay/constants';
-import { verifyReplay } from '../../src/replay/verifier';
 import type { VerificationResult } from '../../src/replay/types';
 import { MAX_RANKED_TICKS, type ServerSettings } from './config';
+import { ENGINES, engineFor, type EngineRegistry } from './engines';
 
 /** What the server issued for this run; the replay must agree with every field. */
 export interface IssuedRunFacts {
@@ -54,16 +53,16 @@ function configMatches(actual: unknown, expected: GameConfig): boolean {
  * Whatever the replay says about its own score (`claimedResult`) is never used as the score; verifyReplay only cross-checks it,
  * and a disagreement is a rejection.
  */
-export function verifyRankedReplay(replay: unknown, run: IssuedRunFacts, now: number, settings: ServerSettings): RankedVerdict {
+export function verifyRankedReplay(replay: unknown, run: IssuedRunFacts, now: number, settings: ServerSettings, engines: EngineRegistry = ENGINES): RankedVerdict {
   if (!replay || typeof replay !== 'object' || Array.isArray(replay)) return reject('invalid_replay', 'replay must be an object');
   const r = replay as { header?: Record<string, unknown>; totalTicks?: unknown };
   const header = r.header;
   if (!header || typeof header !== 'object' || Array.isArray(header)) return reject('invalid_replay', 'replay header is missing');
 
-  // The verifier in this deployment only knows one rules version. A run issued before an upgrade can no longer be reproduced.
-  if (run.rulesVersion !== settings.rulesVersion) {
-    return reject('rules_mismatch', `this run was issued under rules ${run.rulesVersion}; the server now verifies ${settings.rulesVersion}`);
-  }
+  // The engine is chosen by the rules version stored when the run was ISSUED, never by anything in the submission. Each one is a
+  // frozen build (engines.ts), so a run verifies the same way whatever the current rules are, until its version is retired.
+  const engine = engineFor(engines, run.rulesVersion);
+  if (!engine) return reject('rules_mismatch', `this run was issued under rules ${run.rulesVersion}, which this server no longer verifies`);
   if (header.seed !== run.seed) return reject('seed_mismatch', 'replay seed is not the seed issued for this run');
   if (header.rulesVersion !== run.rulesVersion) {
     return reject('rules_mismatch', `replay rules version ${String(header.rulesVersion)} is not the issued ${run.rulesVersion}`);
@@ -84,7 +83,7 @@ export function verifyRankedReplay(replay: unknown, run: IssuedRunFacts, now: nu
   // The game clock cannot run faster than the wall clock: ticks advance at most once per 1/60 s of real time, and the client
   // could not begin playing before the challenge existed. This rejects "ten minutes of play submitted five seconds later".
   // It cannot prove a human played; a bot may simply wait.
-  const simulatedMs = (totalTicks * 1000) / FIXED_TICK_RATE;
+  const simulatedMs = (totalTicks * 1000) / engine.tickRate;
   const elapsedMs = now - run.createdAt;
   if (simulatedMs > elapsedMs + settings.elapsedSlackMs) {
     return reject('too_fast', `replay covers ${Math.round(simulatedMs)} ms of play but only ${Math.max(0, Math.round(elapsedMs))} ms have passed since the challenge was issued`);
@@ -92,7 +91,7 @@ export function verifyRankedReplay(replay: unknown, run: IssuedRunFacts, now: nu
 
   // A run still alive at the limit ends there; the client cannot pick the tick, because only a replay of exactly `limit` ticks
   // qualifies and a game over before it always takes precedence. A run issued without a recorded limit can only end in game over.
-  const result = verifyReplay(replay, {
+  const result = engine.verifyReplay(replay, {
     maxTicks: limit,
     requireGameOver: true,
     ...(run.timeLimitTicks != null && { timeLimitTicks: limit }),

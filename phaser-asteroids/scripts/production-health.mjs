@@ -2,10 +2,15 @@
 import { setTimeout } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { GAMEPLAY_RULES_VERSION, REPLAY_SCHEMA_VERSION } from '../dist/node/index.js';
+import { readReleased, supportProblems } from '../server/rules/policy.mjs';
 
 const HEALTH_URL = 'https://asteroids-leaderboard.davejandrea.workers.dev/api/v1/health';
 
-export async function verifyProductionHealth(fetchImpl = fetch, wait = setTimeout) {
+/**
+ * Checks the deployed Worker before Pages publishes the web build: it must issue the web build's rules by default (rulesVersion /
+ * schemaVersion), and its supportedRules must still include every rules version a distributed Android build plays (released.json).
+ */
+export async function verifyProductionHealth(fetchImpl = fetch, wait = setTimeout, { released = readReleased(), today = new Date() } = {}) {
   console.log(`Expected rules=${GAMEPLAY_RULES_VERSION}, schema=${REPLAY_SCHEMA_VERSION}`);
   for (let attempt = 1; attempt <= 5; attempt++) {
     try {
@@ -20,7 +25,10 @@ export async function verifyProductionHealth(fetchImpl = fetch, wait = setTimeou
       if (health?.ok !== true || health.rulesVersion !== GAMEPLAY_RULES_VERSION || health.schemaVersion !== REPLAY_SCHEMA_VERSION) {
         throw new Error(`Incompatible health: ok=${JSON.stringify(health?.ok)}, rules=${JSON.stringify(health?.rulesVersion)}, schema=${JSON.stringify(health?.schemaVersion)}`);
       }
-      console.log(`Production Worker healthy: rules=${health.rulesVersion}, schema=${health.schemaVersion}`);
+      if (!Array.isArray(health.supportedRules)) throw new Error('Health does not list supportedRules');
+      const problems = supportProblems({ supported: health.supportedRules, current: GAMEPLAY_RULES_VERSION, released, today });
+      if (problems.length) throw new Error(`Worker would strand installed apps: ${problems.join('; ')}`);
+      console.log(`Production Worker healthy: rules=${health.rulesVersion}, schema=${health.schemaVersion}, supported=${health.supportedRules.join(',')}`);
       return;
     } catch (error) {
       console.error(`Health attempt ${attempt}/5 failed: ${error.message}`);

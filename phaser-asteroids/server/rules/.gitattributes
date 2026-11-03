@@ -1,0 +1,2 @@
+# Frozen engines and their records must be byte-identical on every checkout (their hashes are pinned in versions.json).
+* -text

@@ -10,6 +10,7 @@ import { getInputMode, getMovement, getTouchControls } from '../input/gameTouch'
 import type { GamepadHub } from '../input/gamepadHub';
 import type { InputModeController } from '../input/inputMode';
 import { createKeyPressRouter } from '../input/keyPress';
+import { nativeBack } from '../platform/nativeBack';
 import { rankedInputAvailable } from '../input/rankedInput';
 import { getApiBase, RANKED_MAX_TICKS, RankedApiError, rankedRequested, requestChallenge } from '../ranked/api';
 import { readLocalScores } from '../ranked/localScores';
@@ -148,7 +149,13 @@ export class StartScene extends Phaser.Scene {
     // The system controls (Fullscreen) belong to the touch screens; leaving the scene takes them away again.
     const touch = getTouchControls(this);
     touch.setLayer('menu');
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => touch.setLayer('off'));
+    // Android Back (app only): the same as Escape on this menu. On the root page there is nothing to close, so the app goes to the
+    // background; while a run is starting Back is swallowed.
+    const stopNativeBack = nativeBack.setHandler(() => this.starting || this.menu.controller.back());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      touch.setLayer('off');
+      stopNativeBack();
+    });
 
     const keyboard = this.input.keyboard;
     if (keyboard) {

@@ -52,4 +52,5 @@ database_id = "cf4833f7-5fc9-45ca-a767-750df108f1e9"
 migrations_dir = "migrations"
 
 [env.production.vars]
-ALLOWED_ORIGINS = "https://djblackett.github.io"
+# GitHub Pages, and the Android app (its page origin is set by server.hostname in ../capacitor.config.ts; see ../docs/android.md).
+ALLOWED_ORIGINS = "https://djblackett.github.io,https://spacearcade.davidandrea.ca"

@@ -1,7 +1,8 @@
 import type { GameConfig } from '../../src/core/gameConfig';
-import { RANKED_CONFIG, RANKED_SCHEMA_VERSION, RANKED_TICK_RATE, type ServerSettings } from './config';
+import { RANKED_CONFIG, type ServerSettings } from './config';
 import { constantTimeEqual, randomId, randomSeed, randomToken, sha256Hex } from './crypto';
 import type { Db } from './db';
+import { ENGINES, issueEngine, type EngineRegistry } from './engines';
 import { ApiError } from './errors';
 import { getScoreRow, rankOf, type PublicScore } from './leaderboard';
 import { sanitizeNickname } from './nickname';
@@ -24,6 +25,14 @@ export interface ServiceDeps {
   now: () => number;
   /** Replaceable in tests only; production always uses verifyRankedReplay. */
   verify?: (replay: unknown, run: IssuedRunFacts, now: number, settings: ServerSettings) => RankedVerdict;
+  /** The frozen rules engines this server issues and verifies (engines.ts). Replaceable in tests only. */
+  engines?: EngineRegistry;
+}
+
+/** What the client asked to play (`POST /runs?rules=&schema=`). Untrusted: it only selects among the registered engines. */
+export interface IssueRequest {
+  rules: string | null;
+  schema: string | null;
 }
 
 export interface IssuedRun {
@@ -80,16 +89,25 @@ export function sanitizeControls(input: unknown): string {
 
 // --- issuing ---------------------------------------------------------------------------------------------------------------
 
-export async function createRun(deps: ServiceDeps, issuerHash: string | null): Promise<IssuedRun> {
+export async function createRun(deps: ServiceDeps, issuerHash: string | null, requested: IssueRequest = { rules: null, schema: null }): Promise<IssuedRun> {
   const { db, settings } = deps;
   const now = deps.now();
+  // The stored rules_version is what later selects the verifier (verify.ts); the schema is the one that engine reads.
+  const engine = issueEngine(deps.engines ?? ENGINES, settings.rulesVersion, requested.rules, requested.schema);
+  if (!engine) {
+    console.error(JSON.stringify({ evt: 'no_current_engine', rules: settings.rulesVersion }));
+    throw new ApiError(503, 'service_unavailable', 'Ranked play is temporarily unavailable', {}, { 'Retry-After': '60' });
+  }
+  if (requested.rules !== null && engine.rulesVersion !== requested.rules) {
+    console.warn(JSON.stringify({ evt: 'rules_not_supported', requested: requested.rules.slice(0, 32), issued: engine.rulesVersion }));
+  }
   const run: IssuedRun = {
     runId: randomId(),
     token: randomToken(),
     seed: randomSeed(),
-    rulesVersion: settings.rulesVersion,
-    schemaVersion: RANKED_SCHEMA_VERSION,
-    tickRate: RANKED_TICK_RATE,
+    rulesVersion: engine.rulesVersion,
+    schemaVersion: engine.schemaVersion,
+    tickRate: engine.tickRate,
     config: { ...RANKED_CONFIG, speed: [...RANKED_CONFIG.speed] as [number, number] },
     timeLimitTicks: settings.maxTicks,
     issuedAt: new Date(now).toISOString(),
@@ -111,6 +129,12 @@ export interface SubmitInput {
   token: string | null;
   /** Reads the (size-bounded) body. Called only after the run and its token have been checked. */
   readBody: () => Promise<Uint8Array>;
+  /**
+   * Spends one unit of the shared hourly verification budget (throws 429 when it is used up). Called only once the caller has shown
+   * the run's token and the run can still be submitted, so requests that could never reach verification (unknown run, wrong or
+   * missing token, a finished or expired run) cannot exhaust the budget for every honest player.
+   */
+  chargeVerification?: () => Promise<void>;
 }
 
 const loadRun = (db: Db, id: string) => db.first<RunRow>('SELECT * FROM runs WHERE id = ?', [id]);
@@ -127,6 +151,7 @@ export async function submitRun(deps: ServiceDeps, input: SubmitInput): Promise<
   }
   if (run.status === 'rejected') throw rejectedError(run);
   if (run.status === 'issued' && run.expires_at <= deps.now()) throw expiredError();
+  await input.chargeVerification?.();
 
   // 2. Read and hash the body. Problems up to and including step 3 are about the transport or the envelope, not about the play
   //    itself, so they do not consume the run: the client can fix or repeat the request.
@@ -170,7 +195,9 @@ export async function submitRun(deps: ServiceDeps, input: SubmitInput): Promise<
         createdAt: run.created_at,
         timeLimitTicks: run.time_limit_ticks,
       };
-      verdict = (deps.verify ?? verifyRankedReplay)(payload.replay, facts, claimedAt, settings);
+      verdict = deps.verify
+        ? deps.verify(payload.replay, facts, claimedAt, settings)
+        : verifyRankedReplay(payload.replay, facts, claimedAt, settings, deps.engines ?? ENGINES);
     } catch (e) {
       // A replay that crashes the verifier cannot be scored. Treat it as a rejection (not a retryable error) so a crafted
       // payload cannot be resubmitted indefinitely; the stack trace goes to the operator's logs.
