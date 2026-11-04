@@ -374,7 +374,7 @@ export interface BoardPage {
 async function getJson(base: string, path: string, fetchFn: FetchLike): Promise<{ status: number; body: unknown }> {
   let res: Response;
   try {
-    res = await withTimeout(fetchFn, `${base}/api/v1${path}`, { method: 'GET' }, 10_000);
+    res = await withTimeout(fetchFn, `${base}/api/v1${path}`, { method: 'GET', cache: 'no-store' }, 10_000);
   } catch {
     throw new RankedApiError('network', 'The leaderboard could not be reached');
   }

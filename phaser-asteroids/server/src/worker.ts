@@ -3,6 +3,7 @@ import { d1Db } from './d1';
 import { pruneRateLimits } from './ratelimit';
 import { handleRequest } from './router';
 import { pruneStaleRuns } from './runs';
+import { pruneReports } from './moderation';
 
 /** Cloudflare Worker entry: wires the D1 binding and environment variables into the portable service. */
 export default {
@@ -17,6 +18,7 @@ export default {
     const now = Date.now();
     const runs = await pruneStaleRuns(db, now);
     const limits = await pruneRateLimits(db, now, settings.rate.windowMs);
-    console.log(JSON.stringify({ evt: 'prune', ...runs, rateLimitRows: limits }));
+    const reports = await pruneReports(db, now);
+    console.log(JSON.stringify({ evt: 'prune', ...runs, rateLimitRows: limits, reportRows: reports }));
   },
 };

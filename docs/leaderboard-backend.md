@@ -310,7 +310,7 @@ One-use run ids; CSPRNG tokens and seeds; expiry; atomic state transitions; per-
 
 Minimal logging (no IPs, nicknames or tokens): `run_rejected`, `verifier_threw`, `submit_failed`, `unhandled`, `prune`.
 
-Moderation: `POST /admin/scores/:id/visibility`, or directly: `wrangler d1 execute asteroids-leaderboard --remote --command "UPDATE scores SET visibility='hidden', hidden_reason='…', hidden_at=strftime('%s','now')*1000 WHERE id='…'"`.
+Moderation: use the Worker-origin `/admin` console or the authenticated APIs in the [moderation operator guide](leaderboard-moderation.md). Pending migrations 0003/0004 add private reports, reversible display names and transactional audit records. Avoid direct SQL moderation: it bypasses revision guards and audit history. Public boards/details now use `Cache-Control: no-store`.
 
 ## 11. What an attacker can and cannot do
 
@@ -434,7 +434,9 @@ Set the **repository Actions variable** `VITE_LEADERBOARD_API_URL` to
 production build, which fails if it is missing or empty. Use a repository variable because the build job does not use
 the `github-pages` environment. Ordinary local builds may omit it; the opt-in LAN config still selects its local proxy.
 
-No production migrations are run by CI. V1/V2 score history needs no new migration. Schema changes are separately
+No production migrations are run by CI. Moderation requires **0003 and 0004 before the Worker release**;
+do not merge/trigger the main release until their schema/data checks pass. Follow the
+[production preflight and recovery runbook](release-preflight.md). Schema changes are separately
 reviewed, controlled operations; keep migration credentials out of the release workflow. Existing scores and the
 `env.production.DB` binding are preserved. For verification, partial releases, manual fallback and rollback, use the
 [release/recovery guide](../phaser-asteroids/docs/deployment.md#rolling-back). These changes do not configure repository
@@ -548,5 +550,5 @@ No real device was available to this work; the Android keyboard, `visualViewport
 * A ranked run at the full 20:00 has not been played in automated tests; the time-limit rules are tested at 8 s (real Chromium + Worker) and 1500 ticks (unit), and full-length cost is a measurement (see §3).
 * Gamepad-only players cannot type a nickname without a keyboard (they can SUBMIT with the remembered one, or leave it blank for `Anonymous`); there is no on-screen controller keyboard by design.
 * The nickname has no word filter (moderation is after the fact, §12.4).
-* Rank text uses the ranks returned at acceptance; the High Scores screen is a snapshot and may be a few seconds stale (`Cache-Control: public, max-age=5`).
+* Rank text uses ranks returned at acceptance; already displayed screens remain snapshots. Updated public boards/details send `Cache-Control: no-store`; current clients bypass HTTP caching. Old cached responses may survive their former five-second lifetime during rollout. Dashboard cache rules and installed WebViews still need verification; see [production preflight](release-preflight.md).
 * Ranked scores and bots: §12.1 is unchanged. Anyone can generate a valid replay offline for the issued seed.

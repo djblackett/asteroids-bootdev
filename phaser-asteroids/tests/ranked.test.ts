@@ -494,6 +494,18 @@ describe('leaderboard client and ScoresModel', () => {
     expect(d?.ranks).toEqual({ allTime: 1, weekly: null });
   });
 
+  it('bypasses cached leaderboard and score responses after moderation', async () => {
+    const requests: RequestInit[] = [];
+    await fetchLeaderboard('http://x', 'all-time', { limit: 10, offset: 0 }, async (_url, init) => {
+      requests.push(init!); return reply(200, page());
+    });
+    await fetchScoreDetail('http://x', 'id1', async (_url, init) => {
+      requests.push(init!); return reply(404, {});
+    });
+    expect(requests).toHaveLength(2);
+    expect(requests.every(r => r.cache === 'no-store')).toBe(true);
+  });
+
   it('loads, switches boards, pages, and drops answers for a screen the player already left', async () => {
     const calls: string[] = [];
     const slow: Array<() => void> = [];

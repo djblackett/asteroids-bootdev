@@ -12,7 +12,7 @@ Status: implemented and unit/browser tested on the desktop. **Not yet tried on a
 cd phaser-asteroids
 npm run build:android     # typecheck, build the web game into dist-android/, verify it
 npm run android:sync      # the above, then `cap sync android` (copies dist-android/ and plugins into android/)
-cd android && ./gradlew assembleDebug   # JDK 21 is pinned in android/gradle.properties
+cd android && ./gradlew assembleDebug   # Set JAVA_HOME to JDK 21 first
 ```
 
 `npm run build:android` is separate from `npm run build` (GitHub Pages), and differs in two ways:

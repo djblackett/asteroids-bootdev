@@ -1,4 +1,5 @@
 import type { PersonalBest } from '../../../ranked/personalBest';
+import { NicknameBlocks } from '../../../ranked/moderation';
 import { formatEraScore, formatScore, weekLabel, BOARD_PAGE_SIZE, type ScoresModel } from '../../../ranked/scoresModel';
 import { scoringEra } from '../../../ranked/scoringEras';
 import { COLORS } from '../../text';
@@ -14,6 +15,7 @@ export interface ScoresContext {
   /** Public ids of the scores this device had accepted: a matching row is marked. An id is not proof of anything; this is a convenience. */
   highlightIds(): ReadonlySet<string>;
   best(): PersonalBest | null;
+  readonly blocks?: NicknameBlocks;
 }
 
 const TABLE_TOP = 214;
@@ -50,6 +52,7 @@ export function buildScoresPage(kit: PageKit, ctx: ScoresContext, nav: PageNav):
     onSelect: (index) => void model.setScope(index === 0 ? 'weekly' : 'all-time'),
     size: 30,
   });
+  new MenuButton(kit, { id: 'moderation', rect: { x: 972, y: 72, w: 268, h: MIN_TARGET }, label: 'REPORT /\nBLOCK', onTap: () => nav.open('moderation'), size: 26 });
 
   const week = model.scope === 'weekly' && model.page ? weekLabel(model.page) : null;
   const caption = model.scope === 'weekly' ? (week ? `WEEK OF ${week}  (ATLANTIC TIME)` : 'THIS WEEK') : 'SCORES FROM DIFFERENT VERSIONS MAY NOT BE DIRECTLY COMPARABLE.';
@@ -64,7 +67,7 @@ export function buildScoresPage(kit: PageKit, ctx: ScoresContext, nav: PageNav):
   }
   const best = ctx.best();
   if (best) {
-    const who = best.best.nickname ? `  (${best.best.nickname})` : '';
+    const who = best.best.nickname && !ctx.blocks?.has(best.best.nickname) ? `  (${best.best.nickname})` : '';
     const bestLabel = kit.text(CENTER_X, FOOT_Y + 28, `YOUR BEST VERIFIED SCORE: ${formatEraScore(best.best.score, best.best.rulesVersion)}${who}`, { size: TEXT.hint + 2, originX: 0.5, originY: 0.5, color: COLORS.heading });
     if (bestLabel.width > 1120) bestLabel.setScale(1120 / bestLabel.width);
   }
@@ -82,7 +85,7 @@ export function buildScoresPage(kit: PageKit, ctx: ScoresContext, nav: PageNav):
   keyHint(kit, ctx, 'LEFT / RIGHT: THIS WEEK / ALL TIME     UP / DOWN: CHOOSE     ESC: BACK');
   return {
     defaultFocus: 'back',
-    signature: () => `${model.version}|${touch}|${ctx.highlightIds().size}|${ctx.best()?.best.id ?? ''}|${ctx.best()?.best.rulesVersion ?? ''}`,
+    signature: () => `${model.version}|${touch}|${ctx.highlightIds().size}|${ctx.best()?.best.id ?? ''}|${ctx.best()?.best.rulesVersion ?? ''}|${ctx.blocks?.version ?? 0}`,
   };
 }
 
@@ -110,6 +113,10 @@ function drawBody(kit: PageKit, ctx: ScoresContext): void {
   const g = kit.graphics();
   entries.forEach((entry, i) => {
     const y = TABLE_TOP + i * ROW_STEP;
+    if (ctx.blocks?.has(entry.nickname)) {
+      kit.text(NAME_X, y, '[BLOCKED NICKNAME]', { size: TEXT.hint, originX: 0, originY: 0.5, color: COLORS.dim });
+      return;
+    }
     const isMine = mine.has(entry.id);
     if (isMine) {
       g.fillStyle(PALETTE.gold, 0.16);

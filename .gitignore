@@ -22,3 +22,9 @@ highscores.json
 nul
 
 node_modules/
+
+# Signing material, including files outside android/.
+*.jks
+*.keystore
+*.p12
+keystore.properties

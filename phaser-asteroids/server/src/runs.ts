@@ -331,12 +331,4 @@ export async function pruneStaleRuns(db: Db, now: number): Promise<{ abandoned: 
   return { abandoned: abandoned.changes, rejected: rejected.changes };
 }
 
-export async function setScoreVisibility(db: Db, scoreId: string, visible: boolean, reason: string | null, now: number): Promise<boolean> {
-  const res = await db.run(
-    visible
-      ? `UPDATE scores SET visibility = 'visible', hidden_reason = NULL, hidden_at = NULL WHERE id = ?`
-      : `UPDATE scores SET visibility = 'hidden', hidden_reason = ?, hidden_at = ? WHERE id = ?`,
-    visible ? [scoreId] : [reason ? reason.slice(0, 200) : null, now, scoreId],
-  );
-  return res.changes === 1;
-}
+export { setScoreVisibility } from './moderation';

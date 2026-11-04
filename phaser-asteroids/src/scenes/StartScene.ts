@@ -16,6 +16,9 @@ import { getApiBase, RANKED_MAX_TICKS, RankedApiError, rankedRequested, requestC
 import { readLocalScores } from '../ranked/localScores';
 import { refreshPersonalBest, type PersonalBest } from '../ranked/personalBest';
 import { ScoresModel } from '../ranked/scoresModel';
+import { NicknameBlocks } from '../ranked/moderation';
+import { moderationPage } from '../ui/menu/pages/moderation';
+import { privacyPages } from '../ui/menu/pages/privacy';
 import { rankedSession } from '../ranked/session';
 import { FIXED_TICK_RATE } from '../replay';
 import { drawStarfield } from '../render/worldRenderer';
@@ -111,12 +114,15 @@ export class StartScene extends Phaser.Scene {
     const ctx = this.makeContext();
     const rankedCtx = this.makeRankedContext(nav);
     const scoresCtx: ScoresContext = {
+      blocks: new NicknameBlocks(),
       inputMode: this.inputMode,
       model: this.scoresModel,
       highlightIds: () => new Set(readLocalScores().map((s) => s.id)),
       best: () => this.personalBest,
     };
     const builders: Record<string, PageBuilder> = {
+      ...privacyPages(nav),
+      moderation: moderationPage(this.scoresModel, scoresCtx.blocks!, nav),
       title: (kit) => buildTitlePage(kit, ctx, nav, {
         practice: () => this.startPractice(),
         timeLimitLabel: rankedCtx.timeLimitLabel,
