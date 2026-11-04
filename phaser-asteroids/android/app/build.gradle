@@ -1,5 +1,18 @@
 apply plugin: 'com.android.application'
 
+// Upload key only: keep the keystore outside the checkout and passwords out of
+// Gradle arguments, checked-in files and VITE_* variables.
+def uploadSigning = [
+    store: System.getenv('ASTEROIDS_UPLOAD_STORE_FILE'),
+    storePassword: System.getenv('ASTEROIDS_UPLOAD_STORE_PASSWORD'),
+    alias: System.getenv('ASTEROIDS_UPLOAD_KEY_ALIAS'),
+    keyPassword: System.getenv('ASTEROIDS_UPLOAD_KEY_PASSWORD')
+]
+def hasUploadSigning = uploadSigning.values().every { it != null && !it.isBlank() }
+if (uploadSigning.values().any { it != null } && !hasUploadSigning) {
+    throw new GradleException('Supply all four ASTEROIDS_UPLOAD_* environment variables, or unset all four.')
+}
+
 android {
     namespace = "ca.davidandrea.spacearcade"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +29,19 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasUploadSigning) {
+            upload {
+                storeFile file(uploadSigning.store)
+                storePassword uploadSigning.storePassword
+                keyAlias uploadSigning.alias
+                keyPassword uploadSigning.keyPassword
+            }
+        }
+    }
     buildTypes {
         release {
+            if (hasUploadSigning) signingConfig signingConfigs.upload
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
@@ -43,6 +67,18 @@ dependencies {
 }
 
 apply from: 'capacitor.build.gradle'
+
+// Audit-only unsigned output requires an explicit flag. Never use the debug key
+// as a fallback for release signing.
+tasks.configureEach { task ->
+    if (task.name in ['preReleaseBuild', 'validateSigningRelease']) {
+        task.doFirst {
+            if (!hasUploadSigning && providers.gradleProperty('allowUnsignedRelease').orNull != 'true') {
+                throw new GradleException('Release signing is missing. Set ASTEROIDS_UPLOAD_* or use -PallowUnsignedRelease=true for audit-only unsigned output.')
+            }
+        }
+    }
+}
 
 try {
     def servicesJSON = file('google-services.json')

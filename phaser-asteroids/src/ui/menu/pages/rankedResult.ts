@@ -83,7 +83,7 @@ function reasonText(reason: string): string {
  * skip, play again or leave in every state where those make sense. "SCORE VERIFIED!" appears only for a state the server confirmed.
  * The page is rebuilt whenever the state changes; the typed name lives in the DOM input and survives that.
  */
-export function buildRankedResultPage(kit: PageKit, ctx: RankedResultContext, _nav: PageNav): PageDef {
+export function buildRankedResultPage(kit: PageKit, ctx: RankedResultContext, nav: PageNav): PageDef {
   const { flow, actions } = ctx;
   const state = flow.state;
   const timed = ctx.endReason === 'time_limit';
@@ -120,6 +120,9 @@ export function buildRankedResultPage(kit: PageKit, ctx: RankedResultContext, _n
       const submit = (): void => void flow.submit(ctx.input.value);
       new MenuButton(kit, { id: 'submit', rect: { x: CENTER_X - 300, y: top, w: 392, h: MIN_TARGET }, label: 'SUBMIT SCORE', primary: true, onTap: submit, size: 30, hint: ctx.inputMode.isTouch ? undefined : 'ENTER' });
       new MenuButton(kit, { id: 'skip', rect: { x: CENTER_X + 108, y: top, w: 192, h: MIN_TARGET }, label: 'SKIP', onTap: () => flow.skip(), size: 30 });
+      kit.text(CENTER_X, 467, 'SUBMIT MAKES YOUR NICKNAME AND SCORE PUBLIC.', { size: 24, originX: 0.5, originY: 0.5, color: COLORS.hint });
+      kit.text(CENTER_X, 505, 'BY SUBMITTING YOU ACCEPT THE LEADERBOARD RULES.', { size: 24, originX: 0.5, originY: 0.5, color: COLORS.hint });
+      new MenuButton(kit, { id: 'privacy', rect: { x: CENTER_X - 300, y: 550, w: 600, h: MIN_TARGET }, label: 'PRIVACY / LEADERBOARD RULES', onTap: () => { ctx.input.hide(); nav.open('privacy'); }, size: 26 });
       return { defaultFocus: 'nickname', signature };
     }
 

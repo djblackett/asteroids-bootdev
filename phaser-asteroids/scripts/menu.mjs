@@ -279,7 +279,7 @@ async function run() {
   let snap = await d.menu();
   let words = await d.words();
   const ids = snap.items.map((i) => i.id);
-  check('the title page offers PLAY, RANKED, the player count, AUDIO, CONTROLS, HIGH SCORES and the power-up legend (and no CO-OP page in a one-player game)', JSON.stringify(ids) === JSON.stringify(['play', 'ranked', 'players', 'audio', 'controls', 'scores', 'powerups']), JSON.stringify(ids));
+  check('the title page offers PLAY, RANKED, the player count, AUDIO, CONTROLS, PRIVACY, HIGH SCORES and the power-up legend (and no CO-OP page in a one-player game)', JSON.stringify(ids) === JSON.stringify(['play', 'ranked', 'players', 'audio', 'controls', 'privacy', 'scores', 'powerups']), JSON.stringify(ids));
   const play = snap.items.find((i) => i.id === 'play');
   const others = snap.items.filter((i) => ['players', 'audio', 'controls', 'scores'].includes(i.id));
   const ranked = snap.items.find((i) => i.id === 'ranked');
@@ -835,6 +835,13 @@ async function run() {
       tour.push([label, await layoutProblems(p, scene)]);
     };
     await review('title');
+    await p.tap('privacy');
+    await review('privacy-1');
+    for (let i = 2; i <= 4; i++) {
+      await p.tap('privacy-next');
+      await review(`privacy-${i}`);
+    }
+    for (let i = 0; i < 4; i++) await p.tap('back');
     await p.tap('powerups');
     await review('powerups');
     await p.tap('back');

@@ -43,6 +43,9 @@ import {
 } from '../replay';
 import { AbilityHud, ComboHud, Hud, KillStreakBanner, Overlay, playerColor, TeamHud, TOUCH_HUD_SCALE } from '../ui/hud';
 import { NicknameInput } from '../ui/nicknameInput';
+import { NicknameBlocks } from '../ranked/moderation';
+import { moderationPage } from '../ui/menu/pages/moderation';
+import { privacyPages } from '../ui/menu/pages/privacy';
 import { addText, COLORS, formatClock } from '../ui/text';
 import { abilityLabels } from '../ui/touchLabels';
 import type { MenuContext, PageNav } from '../ui/menu/context';
@@ -466,6 +469,7 @@ export class GameScene extends Phaser.Scene {
       back: () => void this.resultMenu?.controller.back(),
     };
     const scoresCtx: ScoresContext = {
+      blocks: new NicknameBlocks(),
       inputMode: getInputMode(this),
       model: this.scoresModel,
       highlightIds: () => new Set(readLocalScores().map((s) => s.id)),
@@ -473,6 +477,8 @@ export class GameScene extends Phaser.Scene {
     };
     const builders: Record<string, PageBuilder> = {
       result: (kit) => buildRankedResultPage(kit, this.resultContext(nav), nav),
+      ...privacyPages(nav),
+      moderation: moderationPage(this.scoresModel, scoresCtx.blocks!, nav),
       scores: (kit) => buildScoresPage(kit, scoresCtx, nav),
     };
     this.resultMenu = new MenuView(this, 22, builders, 'result');

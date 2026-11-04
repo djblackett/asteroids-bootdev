@@ -188,6 +188,7 @@ function buildDesktopPlay(kit: PageKit, ctx: MenuContext, nav: PageNav, count: 1
   const buttons: Array<[string, string, () => void]> = [
     ['audio', 'AUDIO', () => nav.open('audio')],
     ['controls', 'CONTROLS', () => nav.open('controls')],
+    ['privacy', 'PRIVACY', () => nav.open('privacy')],
     ...(count === 2 ? ([['coop', 'CO-OP', () => nav.open('coop')]] as Array<[string, string, () => void]>) : []),
     // On a phone (no player switch) HIGH SCORES joins this row; elsewhere it sits beside the player switch, above.
     ...(touch ? ([['scores', 'HIGH SCORES', openScores]] as Array<[string, string, () => void]>) : []),
@@ -217,11 +218,11 @@ function buildMobilePlay(kit: PageKit, ctx: MenuContext, nav: PageNav, play: Tit
     id: 'scores', rect: { x: RIGHT_X + half + 16, y: 244, w: half, h: MIN_TARGET },
     label: 'HIGH SCORES', size: 30, color: COLORS.heading, onTap: () => nav.open('scores'),
   });
-  const width = (RIGHT_W - 32) / 3;
-  for (const [i, [id, label]] of ([['audio', 'AUDIO'], ['controls', 'CONTROLS'], ['ranked', 'RANKED\nINFO']] as const).entries()) {
+  const width = (RIGHT_W - 48) / 4;
+  for (const [i, [id, label]] of ([['audio', 'AUDIO'], ['controls', 'CONTROLS'], ['ranked', 'RANKED\nINFO'], ['privacy', 'PRIVACY']] as const).entries()) {
     new MenuButton(kit, {
       id, rect: { x: RIGHT_X + i * (width + 16), y: 346, w: width, h: MIN_TARGET },
-      label, size: 26, onTap: () => nav.open(id),
+      label, size: 22, onTap: () => nav.open(id),
     });
   }
 }

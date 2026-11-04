@@ -5,6 +5,7 @@ import { ENGINES, engineFor } from './engines';
 import { ApiError } from './errors';
 import { getLeaderboard, getScoreDetail, type Scope } from './leaderboard';
 import { hitRateLimit } from './ratelimit';
+import { deleteScore, reportScore } from './moderation';
 import { createRun, setScoreVisibility, submitRun, type ServiceDeps } from './runs';
 
 const API = '/api/v1';
@@ -98,6 +99,26 @@ async function route(request: Request, url: URL, origin: string | null, deps: Se
     const offset = intParam(url, 'offset', 0, 0, settings.page.maxOffset);
     const page = await getLeaderboard(deps.db, settings, deps.now(), board[1] as Scope, limit, offset);
     return json(page, 200, { 'Cache-Control': 'public, max-age=5' });
+  }
+
+  const report = /^\/api\/v1\/scores\/([0-9a-f-]{36})\/report$/.exec(path);
+  if (report) {
+    only(method, 'POST');
+    requireAllowedOrigin(origin, deps);
+    const ipHash = await clientHash(request, deps);
+    await hitRateLimit(deps.db, `report:ip:${ipHash}`, 10, settings.rate.windowMs, deps.now());
+    await hitRateLimit(deps.db, 'report:global', 1000, settings.rate.windowMs, deps.now());
+    const body = await readJsonObject(request);
+    await reportScore(deps.db, report[1]!, ipHash, body.reason, deps.now());
+    return json({ status: 'received' }, 200, { 'Cache-Control': 'no-store' });
+  }
+
+  const deletion = /^\/api\/v1\/admin\/scores\/([0-9a-f-]{36})\/delete$/.exec(path);
+  if (deletion && settings.adminToken) {
+    only(method, 'POST');
+    await requireAdmin(request, deps);
+    if (!await deleteScore(deps.db, deletion[1]!)) throw new ApiError(404, 'score_not_found', 'No such score');
+    return json({ status: 'deleted' }, 200, { 'Cache-Control': 'no-store' });
   }
 
   const score = /^\/api\/v1\/scores\/([^/]+)$/.exec(path);

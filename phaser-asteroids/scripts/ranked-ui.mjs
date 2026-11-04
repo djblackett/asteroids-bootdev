@@ -135,6 +135,31 @@ INSERT INTO scores (id, run_id, score, nickname, completed_at, rules_version, ti
     check('Previous is disabled on the first screen, Next enabled', !snap.items.find((i) => i.id === 'prev').enabled && snap.items.find((i) => i.id === 'next').enabled);
     check('the High Scores screen has no overlapping or off-screen controls', layoutProblems(snap).length === 0, layoutProblems(snap).join('; '));
 
+    await clickItem(page, 'moderation', 'title');
+    check('Report / Block has no overlapping or off-screen controls', layoutProblems(await menuItems(page, 'title')).length === 0);
+    await clickItem(page, 'report-send', 'title');
+    await waitText(page, 'StartScene', /REPORT RECEIVED/);
+    check('in-app reporting reaches the real Worker and private D1 queue', B.sql('SELECT COUNT(*) AS n FROM score_reports')?.[0]?.n === 1);
+    await page.route('**/api/v1/scores/*/report', (route) => route.abort());
+    await clickItem(page, 'report-send', 'title');
+    await waitText(page, 'StartScene', /REPORT NOT SENT/);
+    check('an offline report displays failure and leaves Retry available', (await menuItems(page, 'title')).items.find((i) => i.id === 'report-send').enabled);
+    await page.unroute('**/api/v1/scores/*/report');
+    await clickItem(page, 'nickname-block', 'title');
+    await clickItem(page, 'back', 'title');
+    texts = await sceneTexts(page, 'StartScene');
+    check('blocking suppresses the nickname and score row locally without changing server totals', !texts.includes('Week 01') && texts.includes('[BLOCKED NICKNAME]') && texts.includes('PAGE 1 / 2'));
+    await page.reload();
+    await page.waitForFunction(() => window.__game?.scene.isActive('StartScene'));
+    await clickItem(page, 'scores', 'title');
+    await waitText(page, 'StartScene', /BLOCKED NICKNAME/);
+    check('nickname blocking survives a reload', !(await sceneTexts(page, 'StartScene')).includes('Week 01'));
+    await clickItem(page, 'moderation', 'title');
+    await clickItem(page, 'nickname-block', 'title');
+    await clickItem(page, 'back', 'title');
+    await waitText(page, 'StartScene', /^Week 01$/);
+    check('unblocking restores the original entry', true);
+
     await clickItem(page, 'next', 'title');
     await waitText(page, 'StartScene', /^Week 11$/);
     texts = await sceneTexts(page, 'StartScene');
