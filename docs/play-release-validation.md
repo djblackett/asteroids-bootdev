@@ -2,7 +2,43 @@
 
 Prepared on `dev`, base HEAD `c1871a92c6f2a99bbac6f8dc8885691804826737`, plus the uncommitted privacy/release changes. No push, merge, deployment, production data mutation, key generation, signing or Play publication. Pre-existing Android Studio `.idea` changes and inaccessible tracked `tmp/` deletions were left alone. The Gradle settings typo seen initially was already corrected in the working tree before this task's Android edits.
 
-## Moderation follow-up — 2026-11-04
+## Production preparation verification — 2026-11-04
+
+Audited `dev` at `f540cafb2da864d3d3da52619910f062acfff9c3`. The moderation implementation is committed (`91c349c`, then `f540caf`); this pass adds local tests/docs. No commit/push/merge, production backup/export/restore/migration/deployment, credentials changes, score writes or Play upload. Five existing root `tmp/` deletions were preserved. See the [current release preflight](release-preflight.md) for readiness, compatibility findings, configuration uncertainties and exact approval-only production commands. Earlier sections below are historical snapshots.
+
+| Command / check (from phaser-asteroids unless stated) | Exact result this pass |
+| --- | --- |
+| `npm test -- --maxWorkers=4` | **Verified:** 67 files / 1,667 tests passed |
+| `npm run build` | **Verified:** frontend TypeScript, production browser and replay SSR builds passed |
+| `npm run typecheck --prefix server` | **Verified:** passed |
+| `npm run test:android-build` | **Verified:** 8/8 passed |
+| `node --test scripts/rules-guard.test.mjs scripts/production-health.test.mjs` | **Verified:** 19/19 passed; mocked health cases intentionally log failures while testing refusal |
+| `node server/scripts/worker-e2e.mjs` | **Verified:** 33/33 real workerd/local D1 checks passed |
+| `node scripts/moderation-admin.mjs` | **Verified:** 28/28 Chromium/admin/local D1 checks passed |
+| `node scripts/ranked-ui.mjs` | **Verified:** 99/99 passed; ranked verification, retry/expiry/time limits, reporting/blocking, touch/gamepad and layout |
+| `node scripts/menu.mjs` | **Verified:** 127/127 passed; Chromium headless, no physical phone/controller/GPU |
+| `npm run test:release:migrations` | **Verified:** 40/40 real local D1/historical Worker/client/recovery checks passed |
+| `node scripts/production-health.mjs` | **Verified:** actual public production GET; rules 1.2.0 / schema 1 / supported 1.2.0 |
+| Public production board/detail GETs | **Verified:** HTTP 200, required fields and Android CORS retained; still `public, max-age=5`, so current no-store change is not deployed on those reads |
+| From server: `node node_modules/wrangler/bin/wrangler.js deploy --dry-run --env production --outdir .wrangler/release-dry-run` | **Verified:** compiled production Worker, 140.51 KiB / gzip 38.39 KiB; no deployment or secret-presence proof |
+| `npm run android:sync` | **Verified:** production HTTPS endpoint baked in, frozen-version guard passed, latest assets copied, Capacitor App 8.1.2 synced |
+| JDK 21.0.5, from android: `.\gradlew.bat :app:bundleRelease :app:assembleRelease :app:lintRelease -PallowUnsignedRelease=true --no-daemon --console=plain` | **Verified:** BUILD SUCCESSFUL, 175 actionable tasks (46 executed / 129 up-to-date); lint 0 errors / 14 warnings |
+| `.\scripts\inspect-android-release.ps1 -Unsigned` | **Verified:** correct package/code/name/SDK/permissions; APK/AAB contain no `.so` or SSR verifier |
+| Frontend/server lint | **Not applicable:** no configured lint script. TypeScript and Android lint results above are separate checks |
+| Signed build, old installed APK, devices/16 KB runtime and Play-delivered install/update | **Requires manual verification:** not available/performed; unsigned artifacts are not release approval |
+
+First sandbox launches failed on Worker source/log-directory access and Capacitor `uv_os_get_passwd ENOMEM`; authorized local tools passed with expanded local access. A dry-run initially invoked from the frontend directory failed to find Worker configuration; it was rerun successfully from `server`. No production fallback or configuration change was used. Browser suites ran sequentially to avoid port/resource interference. Local migration rehearsal first passed 34/34; the extended version passed 40/40 after correcting an unsupported local-export flag. Pinned Wrangler local export has no `--persist-to`, so the rehearsal uses an isolated config-relative default path. Export imported into a second empty D1 with matching score/run/report/audit counts and no foreign-key errors. Production Time Travel/export remains untested. ADB enumeration initially failed in sandbox; the expanded-access read-only retry found **0 authorized devices**, so physical/16 KB tests could not proceed. Scoped diff hygiene and 26 relative documentation links passed.
+
+New unsigned artifacts built from the audited frontend (still containing draft privacy/contact placeholders):
+
+| Artifact under phaser-asteroids | SHA-256 |
+| --- | --- |
+| `android/app/build/outputs/bundle/release/app-release.aab` | `8CC0A4F864573E394A160AB7A1771E618D20BB00CE71AA7A0A1E652F4775EFB2` |
+| `android/app/build/outputs/apk/release/app-release-unsigned.apk` | `284F84C1EC9C596693AAF3767AF861D74AB15C40BD18034B0140B32EB1FBD01C` |
+
+Package `ca.davidandrea.spacearcade`, version `1.0` / code `1`, compile/target 36, min 24, rules `1.2.0` / schema `1`. No keystore generated or signing performed. These replace the earlier artifact snapshot for local audit purposes only; later policy/version changes require rebuilding. Remaining gates: protected recoverable production backup, applied 0003/0004 and backend release, actual old-device compatibility, live cache/cron/admin/logging controls, public contact/approved hosted policy/provider retention/UGC decisions, signing, Console version history and internal/16 KB tests. **Blocked for production release.**
+
+## Earlier moderation implementation follow-up — 2026-11-04
 
 Audited existing implementation at `91c349c` on `dev` and extended it in the working tree. No commit, push, production migration/deployment, credential change or production score write. Existing root `tmp/` deletions remain untouched. This section supersedes the earlier moderation/API-scope statements below; older Android artifact hashes remain historical and were not regenerated.
 

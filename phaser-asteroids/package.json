@@ -34,6 +34,7 @@
     "test:ranked:ui": "npm run build && node scripts/ranked-ui.mjs",
     "test:lan": "node scripts/lan-check.mjs",
     "test:moderation:admin": "node scripts/moderation-admin.mjs",
+    "test:release:migrations": "node scripts/release-migration-check.mjs",
     "test:worker": "npm run build && node server/scripts/worker-e2e.mjs",
     "bench:workerd": "npm run build && node server/scripts/bench-workerd.mjs"
   },

@@ -88,4 +88,6 @@ Still requires interpretation/external evidence: whether submit-as-acceptance is
 
 ## Verification
 
+Production preparation at committed HEAD `f540caf` is documented in the [release preflight/runbook](release-preflight.md): staged migration commands, backup/recovery, historical-client compatibility, configuration checklist and stop/go gates. The earlier implementation-pass statements above are historical; this follow-up verified the code is committed and ran only local mutation tests plus a public production health GET. No production migration/deployment/backup/restore was performed.
+
 See [release validation](play-release-validation.md) for results. Reproduce from `phaser-asteroids`: full Vitest, server typecheck, production build, `test:worker`, `test:ranked:ui`, `test:menu`, and `test:moderation:admin`. The last runs real Chromium against a disposable local Worker/D1 and covers login, report review, name replacement/restoration, hide/restore, resolution/reopening, history, erasure, unrelated-row preservation, lock/reload and responsive layout. Screenshots are under ignored `scripts/.smoke-output/moderation-admin-*.png`. Nothing in these tests targets production.

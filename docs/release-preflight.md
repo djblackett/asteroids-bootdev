@@ -1,156 +1,229 @@
-# Ranked leaderboard release preflight — 2026-10-22
+# Orbital Impact production release preflight and runbook
 
-**Decision: suitable for a reviewed feature commit; HOLD deployment.** No critical score-forgery or credential-disclosure defect was found. Resolve the mobile start safeguard below, finish the bounded verification gates, and supply production configuration before a controlled release. Keep the production time limit fixed at 1,200 seconds until the configuration-change defect is fixed.
+Audit: 2026-11-04. **Blocked for production release pending external gates.** Local preparation is verified; production backup/export/restore, migrations, deployment, credentials changes and Play upload were not performed. This replaces the historical 2026-10-22 preflight. See [operator workflow](leaderboard-moderation.md), [test evidence](play-release-validation.md), [data inventory](play-data-inventory.md), [policy draft](privacy-policy-draft.md) and [Android signing/build/Play instructions](../phaser-asteroids/docs/google-play-release.md).
 
-This was an audit. No application code, existing tests, configuration, history or cloud resources were changed. No commit, push, merge or deployment was performed. This report and ignored local verification artifacts are the only additions from this task.
+## Release identity and assessment
 
-## 1. Repository state
+- **Verified:** `dev`, audited HEAD `f540cafb2da864d3d3da52619910f062acfff9c3` (`Implement moderation workflow and admin UI`). Reporting/0003 originated in `91c349c`; workflow/admin UI/0004 in HEAD. Local `origin/dev` matches HEAD; this is a remote-tracking observation, not a fresh server-side push audit.
+- **Verified:** five existing root `tmp/` deletions remain untouched. This pass adds a local rehearsal script, package-script entry and documentation changes. Use a reviewed clean release checkout; do not stage those unrelated deletions.
+- **Verified:** compatibility baseline `c1871a92c6f2a99bbac6f8dc8885691804826737` precedes moderation and is contained in local `origin/main` (`532f8fb`). Its actual Worker and API client were extracted from Git and tested against expanded local D1. This does not identify the binary installed on any phone or the exact deployed Worker revision.
+- **Verified:** public production health GET on 2026-11-04 reported rules `1.2.0`, schema `1`, supported `[1.2.0]`. Health does not query D1. Production Worker compilation with `--dry-run --env production` passed.
+- **Requires manual verification:** live migration ledger/schema/data, Worker version/commit, installed APK provenance, Cloudflare controls and recoverable backup. No authenticated production account inspection was performed.
+- **Blocked:** deployment awaits approved release SHA, backup readiness, verified migrations and operational checks. Android distribution also awaits policy/contact approval, signing, devices and Play testing.
 
-- Branch: `feature/leaderboard-ui`; HEAD `0963cd4` (`Add ranked leaderboard functionality and related tests`). Previous commits: `ae1eaf8` (nonzero browser replay verification), `63a0a6d` (reject post-game-over replay ticks).
-- Initially: **25 modified tracked feature files + 14 untracked feature files = 39 feature paths**, nothing staged. Tracked feature diff: **1,728 insertions / 556 deletions**; that statistic excludes untracked contents. This report adds one further untracked path.
-- Five unrelated tracked `tmp/` paths appear deleted, accompanied by access-denied / inconsistent missing-directory warnings. Their actual state could not be established reliably; do not interpret this as authorization to delete or restore them.
-- Global `git diff --check` reported no whitespace violations but could not read those five paths. The scoped check over `docs/` and `phaser-asteroids/` passed cleanly. Git also reports routine LF/CRLF conversion warnings.
-- Root, frontend and server `node_modules/` directories exist and are ignored; none is tracked. Frontend and server lockfiles are unchanged. Frontend build, dependencies and Worker types are usable.
-- No unexpected gameplay-engine, audio, asset, Python, workflow or lockfile changes were found in the feature diff. The viewport adjustment supports the new mobile nickname field. Shared menu changes are limited to the title layout, hint fitting, a text-field widget and a narrower context type.
+## Migration and compatibility report
 
-## 2. Files reviewed
-
-All 39 feature paths were inspected, including all 14 new files. Paths below are under `phaser-asteroids/` unless prefixed otherwise; **new files are marked +**.
-
-| Area | Files |
+| Area | Status / evidence |
 | --- | --- |
-| Documentation / entry | `../docs/leaderboard-backend.md`, `docs/menus.md`, `index.html`, `package.json` |
-| Browser verification | `scripts/menu.mjs`, `scripts/ranked-browser.mjs`, **+** `scripts/ranked-ui.mjs`, **+** `scripts/lib/rankedStack.mjs` |
-| Backend | `server/src/{config,leaderboard,nickname,router,runs,verify}.ts`, `server/tests/leaderboard.test.ts`, **+** `server/tests/timelimit.test.ts`, **+** `server/migrations/0002_time_limit.sql` |
-| Ranked client | `src/ranked/{api,localScores,session}.ts`, **+** `src/ranked/{nickname,personalBest,scoresModel,submission}.ts` |
-| Replay / integration | `src/replay/{recorder,types,verifier}.ts`, `src/scenes/{GameScene,StartScene}.ts` |
-| Menus / input | `src/ui/menu/pages/{common,title}.ts`, `src/ui/menu/widgets.ts`, **+** `src/ui/menu/pages/{ranked,rankedResult,scores}.ts`, **+** `src/ui/nicknameInput.ts`, **+** `src/ui/nickname.css` |
-| Client tests | `tests/ranked.test.ts`, **+** `tests/timeLimit.test.ts` |
+| 0003_reports.sql | **Verified:** new WITHOUT ROWID reports table, score/reporter composite PK, fixed reason CHECK, creation index, score FK with CASCADE; scores/runs untouched. |
+| 0004_moderation_workflow.sql | **Verified:** nullable display override; revision/review flags default 0; report rebuild copies all four old fields, adds open/resolved status default open and suspicious_score, recreates creation index and adds queue index. |
+| Audit association | **Verified:** auto-increment ID, nullable score FK with SET NULL, score/ID index. API batches audit and changes atomically. Action/category strings and flag/revision ranges are application-validated, not fully SQL-constrained; direct privileged SQL bypasses that validation. |
+| Preservation | **Verified locally:** scores, hidden reason/time, accepted linked runs, token/replay/issuer hashes and reports on visible/hidden entries survive staged 0003/0004. Original fields compared exactly; FK checks empty; invalid reason and orphan audit rejected. |
+| Failure/retry | **Verified locally:** deliberately failing final 0004 statement rolls back columns, reports rebuild and ledger insert. Exact committed bytes then apply. Recorded migrations skip on reapply. Raw SQL rerun fails on existing schema; files are not idempotent. Never delete ledger rows or hand-run a migration suffix. |
+| Migration interval | **Verified locally:** actual pre-moderation Worker reads and accepts an anonymous gzip replay on expanded D1. Explicit-column INSERTs work with new defaults. 0003 is additive. Migration operations may interrupt requests; client retry still matters. |
+| Older client | **Verified locally:** actual baseline challenge/parser/submission/read functions work with updated Worker; accepted-run retry stays idempotent across Worker change. No new field, account, replay schema or rules change required. Score/run/hash relationship remains valid. |
+| Validation change | **Verified:** narrow content screen intentionally rejects some formerly valid nicknames. Old client recognizes `invalid_nickname`; run remains issued and can be corrected or submitted as Anonymous. Accepted historical retries resolve before re-screening. Do not promise identical acceptance for every old nickname. |
+| Names/ranks/paging | **Verified locally:** both boards, totals, ordinal ranks, offset pages and detail exclude hidden rows; names use unchanged nickname field and preserve score. Concurrent moderation can shift offset pages between requests; there is no snapshot-pagination guarantee. |
+| Installed Android | **Requires manual verification:** no historical signed APK or physical-device session tested. Preserve an existing install, record version/signing/provenance, test ranked challenge/play/submission/retry, Anonymous, nickname correction and board/detail on updated backend. Native builds pin production: use a controlled test variant or separately approved harmless production canaries, never silently repoint the distributed artifact. |
 
-Supporting review covered both ignore files and lockfile status, Wrangler configuration, migration 0001, Worker entry/crypto/router/lifecycle, SQLite harness, menu controller/view, input routing, production debug hooks, Vite configuration, deployment documentation/workflow, browser-suite entry points, and available verification logs/screenshot inventory. The Phase 3 behavior was assessed against the supplied brief and repository documentation; no separate original Phase 3 specification was supplied.
+Reproduce from `phaser-asteroids`: `npm run build`, then `npm run test:release:migrations`. It only uses temporary zero-ID D1 configs and `--local`, extracts tracked historical sources without a checkout, and alters only a disposable migration copy for failure injection. Seed data is representative synthetic data, not a production-size/copy rehearsal. Live database size/free space/rebuild duration remain manual checks; 0004 temporarily holds a second reports table.
 
-## 3. Confirmed defects and release gates
+The rehearsal requires the baseline commit in local Git history and system `tar` (Windows' built-in tar was available here), plus installed locked frontend/server tooling. No new dependency or production credential is required.
 
-**Mobile release gate — ranked start bypasses the existing touch-off safeguard.** In `src/ui/menu/pages/title.ts:67`, casual PLAY becomes `keysOnly` on a coarse-pointer phone in keyboard mode. The adjacent ranked button (`:82`) and Ranked Play START (`pages/ranked.ts:89`) have no equivalent restriction. `StartScene.ts:314` accepts that start, while `GameScene.ts:241` leaves the touch UI off. A phone without a physical keyboard/controller can therefore tap into a run it cannot steer. This is a confirmed code-path inconsistency; it has not been reproduced on physical hardware in this audit. **Narrow fix:** preserve the input preference and apply the existing pointer-start restriction at every ranked entry/start action, including TRY AGAIN and PLAY NORMALLY, with a clear route back to touch controls. Verify the touch-off path before mobile release.
+**Verified:** finalized rehearsal passed 40/40, including full local SQL export/import into a second empty D1, matching score/run/report/audit counts and empty foreign-key errors. This verifies local export recovery only. Read-only ADB enumeration found 0 authorized devices; no physical or 16 KB runtime evidence was available.
 
-**Configuration-change defect — issued time limits are not immutable.** `server/src/verify.ts:78` uses `Math.min(issuedLimit, settings.maxTicks)`. An actual-verifier reproduction produced:
+## Cache findings
 
-| Issued limit | Current limit | Submission | Result |
-| --- | --- | --- | --- |
-| 900 | 72,000 | Alive at 900 ticks | accepted |
-| 900 | 600 | Same original 900-tick recording | `too_long` |
-| 900 | 600 | Alive at 600 ticks | accepted as `time_limit` |
+**Verified:** weekly/all-time/detail responses, their errors, submissions, reports, admin APIs and console send no-store. Current client's shared board/detail GET uses `cache: 'no-store'`. No application service worker or Cache API write was found. Real local Worker/browser tests exercise hide/restore and rename/restore-name; historical client rehearsal checks both boards and details after changes.
 
-This contradicts `docs/leaderboard-backend.md:130` and migration 0002's comment. The existing configuration-change test only covers raising the limit (`server/tests/timelimit.test.ts:186`). **Narrow fix:** distinguish the fixed 72,000-tick resource ceiling from the configurable limit for *new* challenges; verify recorded limits against the fixed ceiling. Add one lowering-limit regression. This does not block the first controlled release if production stays at the default throughout, but it blocks safely changing that setting during active play.
+**Requires manual verification:** Cloudflare Cache/Page Rules, custom proxies/routes and Android WebView behavior. Ensure nothing forces caching for `/api/v1/*` or `/admin*`; inspect live headers/CF-Cache-Status after deployment. Old HTTP caches may retain former responses for five seconds under the old freshness policy. Open screens and device-local bests/nicknames/blocks can retain previous content until refresh; offline copies/screenshots cannot be recalled. No push invalidation exists. Rolling back code can restore original names and older caching behavior.
 
-**Deployment gates:** production D1 ID is a placeholder; secrets must be supplied; the Pages build does not wire `VITE_LEADERBOARD_API_URL` into its environment. Without the latter, ranked play is deliberately unavailable on the published host. These are known setup requirements, not evidence of a broken casual game. Browser/phone gates are listed in sections 8–9.
+**Verified production observation (2026-11-04, GET only):** both boards and one existing score detail return HTTP 200 with `Cache-Control: public, max-age=5`; the no-store change is not live on these reads. Android-origin CORS matches. Board fields are scope/rulesVersion/limit/offset/total/entries, weekly adds timeZone/weekStart/weekEnd; entry fields are id/rank/nickname/score/rulesVersion/completedAt/durationSeconds/endReason; detail has score/ranks (allTime/weekly). These match the updated public contract. No names or private values were logged. Missing CF-Cache-Status on these samples is not proof of dashboard cache configuration.
 
-## 4. Non-blocking issues to track
+## Cloudflare configuration checklist
 
-- Production still supports `?debug`, `?keydebug`, `?verified`/`?seed` and publishes replay/session inspection objects (`src/main.ts:26`, `GameScene.ts:195`, `src/ranked/session.ts:122`). There is no enabled god-mode or score-acceptance cheat handler. `?debug` exposes mutable local scene state, including in-memory client objects; TypeScript `private` is not a security boundary. These hooks existed before this diff and cannot bypass server replay verification. Consider development gating separately; browser scripts currently depend on them.
-- `src/ranked/api.ts:106` clears its fetch timeout after response headers, before JSON body consumption (`:126`, `:362`). A stalled response body can leave ranked/board loading waiting indefinitely. This is a confirmed timeout-coverage gap, not an observed outage; casual play remains independent.
-- Browser harness cleanup kills parent processes without awaiting complete process-tree shutdown (`scripts/lib/rankedStack.mjs:93`, `:137`). Startup failures can also leave the preview child without the normal close handle. Orphan-process/hanging-shutdown risk is plausible, but this audit did not establish it as the cause of the reported keyboard hang.
-- Full-length 20-minute verification cost remains measured evidence, not a full-length accepted browser test. Physical mobile keyboard behavior and a controller-flown ranked run remain unverified.
-- The intro always says 20:00 even for a deliberately shortened test Worker; this is already documented. Local personal best is device convenience, not an authenticated identity. Bots that produce valid issued-seed replays and wait out elapsed time remain an acknowledged limitation.
-
-## 5. Security and configuration findings
-
-| Requirement | Evidence / result |
+| Control | Status / manual gate |
 | --- | --- |
-| Server-issued ranked challenge | Worker creates CSPRNG ID/token/seed, stores only the token hash and approved configuration; game consumes a challenge once. Failed requests do not silently start ranked play. |
-| Casual cannot post an arbitrary ranked score | Casual has no challenge/submission flow. Submit requires a real run/token and checks issued seed, exact configuration, rules and elapsed time before independent simulation. Merely enabling the experimental replay path grants no credential. |
-| Verification cannot be switched off by the client | Production Worker injects no verifier override; test-only dependency injection is internal. Claimed score is cross-checked, never used as the authoritative score. |
-| Credential handling | Tokens remain in browser memory and Authorization headers; no raw token is in session snapshots, local storage, leaderboard output or intentional application logs. Public run IDs and replay seeds are not secrets. Debug inspection of the player's own runtime remains possible as above. |
-| Nickname injection | Shared charset/normalization rules; canvas text, DOM input `.value` and live-region `.textContent`; no nickname HTML insertion. Parameterized SQL handles storage/moderation. |
-| Idempotency / personal best | Prepared bytes are reused for bounded automatic/manual retries; conditional claims, atomic score finalization and UNIQUE(run_id) protect acceptance. Local score/nickname writes occur only after a server acceptance. |
-| Casual during outages | Ranked requests are asynchronous; casual simulation/start does not await them. Existing browser journey reports this path working; no new browser run was performed here. |
-| Time limit | Server caps work, replays all ticks and accepts an alive ending only at its selected exact limit; padding after natural game over is rejected. Default 72,000-tick enforcement is sound, subject to the configuration-change defect above. |
-| Administration | Admin route absent without a token of at least 16 characters; bearer comparison, failed-auth throttling, no admin CORS. No frontend admin secret or admin-client route found. Hide/unhide SQL and unit coverage exist. |
-| CORS / production defaults | Explicit allowed origin, no wildcard or credentialed CORS; foreign browser POST origins rejected. Originless scripts are allowed intentionally: CORS is not authentication. Production repeats D1/vars and excludes loopback origins. API query override works only on loopback hosts. |
+| Account/Worker/D1 | **Verified from config:** account `620de0810a6cf29710d9fedb3a966d6f`; Worker `asteroids-leaderboard`; binding `DB`, DB `asteroids-leaderboard`, ID `cf4833f7-5fc9-45ca-a767-750df108f1e9`. Top-level zero ID is local only. **Requires manual verification:** authenticated target matches. |
+| Domains/routes | **Verified from config:** workers.dev on, preview URLs off, no custom routes declared. Public origin `https://asteroids-leaderboard.davejandrea.workers.dev`. **Requires manual verification:** dashboard routes, Access/WAF and HTTPS, including `/admin`. |
+| Secrets/admin | **Verified from code:** required ADMIN_TOKEN/IP_HASH_SALT; admin minimum 16 chars, hash comparison, failed-auth limits, no admin CORS, same-origin check, console token in memory only. **Requires manual verification:** secret presence, protected recovery copy, operator/MFA/least-privilege access. Never print/rotate secrets for this rollout. Shared token does not identify individual staff. |
+| CORS/CSP | **Verified:** exact origins `https://djblackett.github.io`, `https://spacearcade.davidandrea.ca`; admin uses Worker's own origin, restrictive shell CSP/text rendering/no framing. **Requires manual verification:** deployed preflights, denied origins, dashboard policies and console HTTPS. CORS is not native/non-browser authentication. |
+| Cron/retention | **Verified from source:** `17 7 * * *` UTC; abandoned/rejected runs, counters, open/resolved reports pruned; accepted scores/runs and audit have no automatic expiry. **Requires manual verification:** deployed trigger, successful prune events/failure alerts and provider retention. |
+| Limits/cost | **Verified from source:** CPU 5,000 ms; DB-backed start/submit/report/failed-admin limits. **Requires manual verification:** paid plan, quotas, CPU/D1 latency/errors, budgets, WAF. Write limits do not establish read-rate protection. |
+| Logging | **Verified:** structured rejection/error/prune events; no Wrangler observability section. **Requires manual verification:** enabled logs/sampling/destinations/retention and error alerts. Omission does not prove disabled logs. Avoid body/token capture. |
+| Recovery | **Requires manual verification:** storage backend, recovery window/bookmark/access, protected export and rehearsal; SQL erasure does not erase provider history. |
+| Operations | **Verified locally:** token refusal, console lock/reload, revision conflict, audit/erasure. **Requires manual verification:** deployed behavior, review coverage, appeals and erasure ownership checks. No external admin service required. |
 
-`IP_HASH_SALT` silently falls back to a public development value (`server/src/config.ts:105`); setting a random production secret is mandatory for the intended IP privacy. Admin is disabled by default. The API URL is public configuration and must use HTTPS in production; URL validation also permits HTTP for local use. Never put admin or Cloudflare credentials into any `VITE_*` variable.
+## Backup and recovery readiness
 
-## 6. Exclusions and secret scan
+Cloudflare documents automatic Time Travel on production-storage D1, with 7-day Free / 30-day Paid recovery limits. Actual backend/plan/history is **Requires manual verification**. No backup was created here. Record a current bookmark immediately before rollout and verify timestamp lookup; do not assume a manually triggered snapshot exists. [Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/), [D1 limits](https://developers.cloudflare.com/d1/platform/limits/).
 
-277 tracked/untracked text files were scanned for common private-key/token formats, credential URLs and secret assignments, without printing candidate values. The only assignment match was the explicit test fixture in `server/tests/harness.ts:82`; the tracked `.dev.vars.example` contains recognizable placeholders. No actual credential was identified. This was a working-tree scan, not an exhaustive Git-history or ignored-file secret audit. No actual `.env` or `.dev.vars` file was found at the frontend/server roots.
+Record UTC time, approved SHA, current Worker version, DB ID, ledger, schema/counts and recovery bookmark in a protected release record. Add a full SQL export outside Git in an approved protected directory: it contains private run/report data. Confirm nonempty file/hash; inspect schema/data without logging private rows; import into empty disposable local D1 and compare counts/FKs before trusting recovery. Export can interrupt service and is not itself a rollback. [D1 import/export](https://developers.cloudflare.com/d1/best-practices/import-export-data/).
 
-Keep dependencies, `dist/`, `.node/`, `.wrangler/`, `.dev.vars`, logs, screenshots, benchmark/reproduction output and local game data excluded. Existing rules cover these paths. **Generic `.env`, `.env.*` and `.dev.vars.*` variants are not currently ignored**: add narrowly scoped rules before using those secret-bearing files, preserving `.dev.vars.example`.
+These **remote backup instructions require approval and were not executed**. From `phaser-asteroids/server`, define the locked CLI helper used throughout this runbook. Set `$backupDir` to an existing approved protected directory, `$backupUtc` to the recorded RFC3339 UTC time and `$bookmark` to the recorded bookmark; no placeholder is a default.
 
-Exclude these unrelated apparent deletions from feature staging; investigate their access problem separately:
-
-```
-tmp/test_add_score_sorts_and_limit0/scores.json
-tmp/test_get_top_scores_returns_re0/scores.json
-tmp/test_is_high_score_checks_thre0/scores.json
-tmp/test_load_highscores_returns_e1/scores.json
-tmp/test_log_event_writes_json_lin0/game_events.jsonl
+```powershell
+function Invoke-Wrangler {
+    & node .\node_modules\wrangler\bin\wrangler.js @args
+    if ($LASTEXITCODE -ne 0) { throw 'Wrangler failed; stop this stage' }
+}
+Invoke-Wrangler d1 info asteroids-leaderboard --env production
+Invoke-Wrangler d1 time-travel info asteroids-leaderboard --env production --json
+Invoke-Wrangler d1 time-travel info asteroids-leaderboard --env production --timestamp $backupUtc --json
+Invoke-Wrangler d1 export asteroids-leaderboard --env production --remote --output (Join-Path $backupDir 'pre-moderation.sql')
+Get-Item -LiteralPath (Join-Path $backupDir 'pre-moderation.sql') | Select-Object Length, LastWriteTimeUtc
+Get-FileHash -LiteralPath (Join-Path $backupDir 'pre-moderation.sql') -Algorithm SHA256
 ```
 
-All 14 new feature files have a legitimate role; no disposable script among them was identified. Use explicit paths or patch staging, never an indiscriminate `git add -A` for this tree.
+**Go:** correct target, valid current recovery history/bookmark, protected export with successful disposable import, restore owner/permissions and accepted recovery/data-loss expectations. **Stop:** alpha storage, missing access/history, failed export/rehearsal, unexpected target/ledger or no recovery owner. Bookmarks expire; refresh readiness if delayed. Writes between bookmark/export mean they can represent different instants; record both, never claim identical snapshots without quiescing writes.
 
-## 7. Proposed logical commits — none created
+Disposable export import, after approval to create/read the protected export, from `server` (local commands only; do not use the production persist directory):
 
-1. **Shared protocol and server time-limited endings:** shared nickname rules/re-export, replay recorder/types/verifier, server changes, migration 0002 and time-limit/public-contract tests. Include the lowering-limit correction here if undertaken.
-2. **Ranked player experience:** client API/session/submission/storage/boards, scene integration, menu pages/widgets, nickname field/CSS/viewport, client tests and menu documentation. Include the mobile safeguard correction here.
-3. **Acceptance harness and release instructions:** ranked browser scripts/shared stack, menu expectation updates, package script, backend runbook and this report. Incorporate the concrete production setup/rollback corrections below before deployment.
+```powershell
+$recoveryLocal = Join-Path ([IO.Path]::GetTempPath()) ('orbital-export-recovery-' + [guid]::NewGuid())
+Invoke-Wrangler d1 execute asteroids-leaderboard --local --persist-to $recoveryLocal --file (Join-Path $backupDir 'pre-moderation.sql')
+Invoke-Wrangler d1 execute asteroids-leaderboard --local --persist-to $recoveryLocal --command "PRAGMA foreign_key_check; SELECT name FROM sqlite_master WHERE type='table'; SELECT (SELECT COUNT(*) FROM scores) AS scores, (SELECT COUNT(*) FROM runs) AS runs;"
+```
 
-Review the staged diff after each proposed group and keep every intermediate commit type-correct. Leave the unrelated `tmp/` state outside these commits.
+Compare every expected table's row counts and a protected representative sample, including reports/audit when present, to export-time evidence; verify schema and migration ledger too. Treat restored private data like production data and remove the isolated copy under the approved retention process. The automated synthetic rehearsal also exports/imports local D1; it cannot prove the real production export or Time Travel restore works.
 
-## 8. Verification evidence and minimal remaining plan
+Neither migration has a down migration. Schema rollback discards new moderation state and needs separately reviewed/rehearsed SQL. Code rollback leaves schema/data intact. Whole-DB restore rewinds schema/ledger/contents, removes later scores/runs/reports and undoes later moderation/erasure. Keep approved minimal erasure IDs outside DB and reconcile/reapply erasures before serving restored content. Current Worker cannot serve pre-0004 schema. This release supplies no selective per-score recovery.
 
-**Performed now:** `npm test -- --reporter=dot`: **55 files / 1,459 tests passed**, 13.93 seconds. `npm run build`: frontend typecheck + production browser/Node replay builds passed. Separate `node ../node_modules/typescript/bin/tsc --noEmit -p tsconfig.json` from `server/`: passed. One small actual-verifier configuration-change reproduction was run. Logs/build/reproduction modules are ignored under `scripts/.smoke-output/` and `dist/`.
+## Deployment sequence
 
-The first unit attempt failed before tests because sandbox subprocess creation returned EPERM; the permitted retry passed. No browser suite, benchmark sweep, background monitor or cloud command was run.
+Production commands below are **instructions for a separately approved operator rollout**. None ran except the recorded public health GET and local compilation. Execute stages separately, check native exit codes and save evidence. Do not paste this whole document as a script.
 
-**Previous evidence:** the supplied brief reports a working browser → Worker → D1 journey, incomplete menu/touch/gamepad verification, keyboard timing failure plus shutdown hang, smoke laser-cooldown failure, and baseline-reproduced music/pages audio failures. Available `verify*.log` files are older Oct 19 smoke/co-op evidence; Oct 22 screenshots are mixed-age artifacts, not complete final-layout pass logs. Neither proves final Phase 3 regression completion. The baseline audio comparison is reported by the user and was not independently repeated here.
+### 1. Pre-deployment
 
-Run the following independently on an idle machine, building once after any fixes. Commands are from `phaser-asteroids/`; retain a separate log for each. Budgets below are proposed stopping limits, not measured runtimes. Require exit code 0 **and** the final summary; a hanging process is incomplete even if preceding assertions passed.
+Use a clean reviewed checkout. Set `$approvedCommit` to its approved full SHA (local test/docs changes from this pass need inclusion/review).
 
-| Order | Check | Stop / acceptance rule |
-| --- | --- | --- |
-| 1 | Address mobile start safeguard; unit/type/build checks only for changed code | Stop on failure. Keep the time limit at 1,200 s or fix/test the limit defect before changing it. |
-| 2 | `node scripts/menu.mjs` | One run, 15-minute ceiling; require completed final-layout tour and summary. No rerun loop. |
-| 3 | `node scripts/touch.mjs` | One run, 15-minute ceiling; require touch-off recovery, controls, pause/rotation and final summary. Then do section 9 on the S25. |
-| 4 | `node scripts/gamepad.mjs` | One run, 10-minute ceiling; require navigation, assignment, disconnect/resume, ability edges and clean exit. |
-| 5 | Target the reported keyboard/laser behavior with a short manual check; if automated certification is required, run `node scripts/keyboard.mjs` then `node scripts/smoke.mjs`, separately | At most one run each, 5-minute ceiling each. On the same timing failure, preserve diagnostics and compare that assertion to the baseline once; do not modify gameplay to get green. Stop on another failure or hang and classify it. |
-| 6 | After the production API URL is wired into the candidate build, `node scripts/pages-check.mjs` | One run, 5-minute ceiling. Pages path/asset/start errors block publication. If only the known baseline audio assertion fails, document a specific disposition; the current deploy workflow still requires this job to pass. |
+```powershell
+git branch --show-current
+git rev-parse HEAD
+if ((git rev-parse HEAD) -ne $approvedCommit) { throw 'Wrong release commit' }
+if (git status --porcelain) { throw 'Release checkout must be clean' }
+# From phaser-asteroids:
+npm ci
+npm ci --prefix server
+npm test -- --maxWorkers=4
+npm run typecheck --prefix server
+npm run build
+npm run test:android-build
+node --test scripts/rules-guard.test.mjs scripts/production-health.test.mjs
+npm run test:release:migrations
+node server/scripts/worker-e2e.mjs
+node scripts/moderation-admin.mjs
+node scripts/ranked-ui.mjs
+node scripts/menu.mjs
+```
 
-Do not rerun the separate music suite merely to rediscover the reported baseline failure. Combat/co-op and the already working ranked journey do not need routine full reruns for this audit. After a ranked flow or verifier fix, rerun only its affected unit checks and the relevant ranked acceptance script once; the stock ranked UI script uses two local Workers and should be a separate task if needed.
+Check each exit before continuing; PowerShell does not automatically stop on native nonzero exits. Direct browser entries reuse built assets. Frontend/server have no configured lint script; Android lint is separate. From `server`, define `Invoke-Wrangler` above and inspect read-only targets:
 
-On timeout, stop and clean up only that run's owned process tree, verify its preview port is released, and record the incomplete result before starting anything else. No parallel browser runners or monitoring loops. Any unexplained functional failure holds release; a timing assertion is not automatically a gameplay bug or an automatic waiver.
+```powershell
+Invoke-Wrangler whoami
+Invoke-Wrangler deployments list --env production
+Invoke-Wrangler secret list --env production
+Invoke-Wrangler d1 info asteroids-leaderboard --env production
+Invoke-Wrangler d1 migrations list asteroids-leaderboard --env production --remote
+Invoke-Wrangler d1 execute asteroids-leaderboard --env production --remote --command "SELECT name, applied_at FROM d1_migrations ORDER BY id; PRAGMA foreign_key_check; SELECT (SELECT COUNT(*) FROM scores) AS scores, (SELECT COUNT(*) FROM runs) AS runs;"
+Invoke-Wrangler deploy --dry-run --env production --outdir .wrangler/release-dry-run
+```
 
-## 9. Manual Galaxy S25 checklist
+`secret list` lists names, never substitute a value dump. Save previous Worker version ID/source artifact and existing recovery credentials; avoid the initial-provisioning secret-initialization helper for routine releases.
 
-Use Chrome with Samsung Keyboard (and the user's usual keyboard if different), both normal and fullscreen landscape. Use the production HTTPS candidate or an explicitly configured LAN build. A LAN hostname ignores `?api=`: bake in a reachable API URL and allow the exact phone-page origin in the Worker; check secure-context-dependent fullscreen/haptics on HTTPS.
+**Go:** exact SHA/clean checkout, passing checks, identified account/DB/active version, 0001/0002 applied, expected pending set (0003/0004, or only 0004), backup stage complete, monitoring/operator available. **Stop:** missing historical migration, unexpected pending files or differing schema/ledger. If already applied, verify schema and skip; never rewrite ledger.
 
-- Fresh profile and saved preferences: PLAY / RANKED / HIGH SCORES readable and tappable, no safe-area or browser-toolbar clipping; Assisted Flight default and saved movement preference preserved.
-- Switch touch OFF via the existing confirmation, reload, and verify finger taps cannot start an uncontrollable casual or ranked run. Recover through TOUCH CONTROLS ON. External keyboard/controller can still start correctly.
-- Start ranked only after CONNECTING succeeds. Steer + FIRE + LASER + BOOST with multiple fingers; label/countdown do not cover play. Pause/resume, rotate upright/back, app-switch and lock/unlock without stuck inputs or unintended submission.
-- Result nickname: tap opens real keyboard; field remains visible; type/paste/edit, spaces/underscores, short/long/invalid names, blank Anonymous, Done, system Back, and tap outside. No typing triggers pause/mute/fire; no lost text on rotation or toolbar changes.
-- Submit once and double-tap: one accepted score, correct server score/name/ranks, YOU highlight and personal best after reload. SKIP writes no score and no remembered nickname; PLAY AGAIN gets a fresh challenge.
-- Airplane mode before submission: bounded retries, clear failure, manual RETRY after reconnection, exactly one stored score. API unavailable: casual PLAY remains usable. Test a locally shortened expiry/limit separately if needed; never shorten the production limit during active runs.
-- Board tabs, paging, back navigation, Android Back, fullscreen exit/re-entry and haptics behave as expected. Record browser/OS/keyboard versions and failures; emulation does not certify these checks.
+**Release trigger gate:** `.github/workflows/deploy-gh-pages.yml` deploys Worker then Pages on matching `main` pushes/manual main runs. It does not apply or check migrations; health cannot detect missing columns. Do not merge/push/trigger until both migrations are verified. PR/non-main validation does not deploy. No workflow/repository settings were changed here.
 
-## 10. Exact production prerequisites and runbook corrections
+### 2. Apply migrations with a verification pause
 
-Everything in this section is **for the owner to perform later; none was executed**. Existing `docs/leaderboard-backend.md` §14 covers the broad sequence, but needs the environment-specific and recovery details here.
+Pinned Wrangler applies **all** pending files; no per-file/target-version flag exists. Stage 0001-0003 first in a temporary directory/config preserving actual production bindings. From `server`, after target/backup approval:
 
-1. Have a Cloudflare account with **Workers Paid**, permission to create D1, deploy Workers and set secrets; a Workers subdomain or intended custom domain; and permission to set the GitHub Pages build configuration. Workers Paid currently has a $5 USD/month minimum; review usage charges. [Cloudflare pricing](https://developers.cloudflare.com/workers/platform/pricing/)
-2. Use the pinned lockfiles with Node 22.14+ compatible tooling. From `phaser-asteroids/`, `npm ci`; from `server/`, `npm ci`. Authenticate with `npx wrangler login` only when ready to configure the account. Do not copy test secrets into production.
-3. From `server/`, `npx wrangler d1 create asteroids-leaderboard`; put its returned ID in **`[[env.production.d1_databases]]`**, keeping `binding = "DB"` and `migrations_dir = "migrations"`. The top-level zero ID is only a local placeholder; it does not configure production.
-4. In `[env.production.vars]`, set exact HTTPS browser origins, comma-separated, without a path: `https://djblackett.github.io`, `https://spacearcade.davidandrea.ca` (the Android app; `server.hostname` in `phaser-asteroids/capacitor.config.ts`), plus any actual custom frontend origin. Keep local origins in the local configuration only. Leave `RANKED_TIME_LIMIT_SECONDS` unset (1,200 s), TTL default 3,600 s and the reviewed rate limits unless intentionally changed. Keep `cpu_ms = 5000` and the cleanup cron in production.
-5. Set a long random `IP_HASH_SALT` with `npx wrangler secret put IP_HASH_SALT --env production`. For usable moderation, also set a separate random `ADMIN_TOKEN` of at least 16 characters with `npx wrangler secret put ADMIN_TOKEN --env production`. Store these securely outside the frontend/repository; no Cloudflare API credential is needed in browser code.
-6. Inspect `npx wrangler d1 migrations list asteroids-leaderboard --env production --remote`, then apply with `npx wrangler d1 migrations apply asteroids-leaderboard --env production --remote`. Confirm **both 0001_init.sql and 0002_time_limit.sql** applied, including `runs.time_limit_ticks` and `scores.end_reason`. Apply schema **before** the new Worker. [D1 migrations](https://developers.cloudflare.com/d1/reference/migrations/)
-7. Deploy the Worker with the production environment only when authorized, then check health, allowed/denied-origin preflights and one controlled issued-challenge/accepted-score flow. Health is liveness/configuration only; it does not query D1, so it cannot prove migrations or the binding work.
-8. Wire the public HTTPS Worker base URL into the Pages **build step**, for example `env: { VITE_LEADERBOARD_API_URL: "${{ vars.VITE_LEADERBOARD_API_URL }}" }` plus the corresponding repository variable. Merely creating that repository variable does not export it to Vite; `.github/workflows/deploy-gh-pages.yml` currently contains no such mapping. Rebuild, validate the Pages base path and publish only after authorization. This value is public, never a secret.
-9. Moderation from a trusted operator terminal, with `ASTEROIDS_ADMIN_TOKEN` already supplied securely and the placeholders replaced:
+```powershell
+$rolloutDir = Join-Path ([IO.Path]::GetTempPath()) ('orbital-migration-stage-' + [guid]::NewGuid())
+$migrationStage = Join-Path $rolloutDir 'migrations'
+New-Item -ItemType Directory -Path $migrationStage | Out-Null
+$sourceConfig = Get-Content -LiteralPath .\wrangler.toml -Raw
+$workerEntry = (Join-Path $PWD 'src/worker.ts').Replace('\', '/')
+$migrationPath = $migrationStage.Replace('\', '/')
+$stagedConfig = $sourceConfig.Replace('main = "src/worker.ts"', ('main = "' + $workerEntry + '"')).Replace('migrations_dir = "migrations"', ('migrations_dir = "' + $migrationPath + '"'))
+$rolloutConfig = Join-Path $rolloutDir 'wrangler.toml'
+[IO.File]::WriteAllText($rolloutConfig, $stagedConfig)
+'0001_init.sql','0002_time_limit.sql','0003_reports.sql' | ForEach-Object {
+    Copy-Item -LiteralPath (Join-Path 'migrations' $_) -Destination $migrationStage
+}
+Get-ChildItem -LiteralPath $migrationStage | Get-FileHash -Algorithm SHA256
+Invoke-Wrangler d1 migrations list asteroids-leaderboard --env production --remote --config $rolloutConfig
+# Pending must be only 0003, or none if already applied:
+Invoke-Wrangler d1 migrations apply asteroids-leaderboard --env production --remote --config $rolloutConfig
+Invoke-Wrangler d1 execute asteroids-leaderboard --env production --remote --command "SELECT name FROM d1_migrations ORDER BY id; PRAGMA table_info(score_reports); PRAGMA foreign_key_list(score_reports); PRAGMA index_list(score_reports); PRAGMA foreign_key_check; SELECT COUNT(*) AS reports FROM score_reports;"
+```
 
-   ```powershell
-   Invoke-RestMethod -Method Post -Uri 'https://<worker>/api/v1/admin/scores/<score-id>/visibility' -Headers @{ Authorization = "Bearer $env:ASTEROIDS_ADMIN_TOKEN" } -ContentType 'application/json' -Body '{"visible":false,"reason":"offensive"}'
-   ```
+**Go after 0003:** successful exit/ledger entry, correct composite PK/CASCADE/index, empty FK errors, original scores/runs preserved except explained concurrent activity. If already applied, preserve reports. **Stop:** failure/mismatch; keep old Worker, investigate on disposable state and retry intact migration only after cause resolved.
 
-   Confirm the score disappears from both boards and its public detail returns 404 after the public cache's five-second lifetime. Use `{"visible":true}` to unhide. The existing direct-D1 fallback command at `docs/leaderboard-backend.md:296` needs **`--env production`** added; otherwise it selects the top-level binding/placeholder. Do not run moderation from the frontend or put tokens into URLs/logs.
-10. Monitor Worker Metrics CPU and Memory Usage percentiles, request/errors and invocation statuses, especially **Exceeded CPU Time Limits / Exceeded Memory**; compare verification traffic with the 5,000 ms cap and **128 MB isolate limit**. Watch D1 query errors/latency and the existing structured rejection/internal-error events with `npx wrangler tail --env production`. Persisted Workers Logs must be explicitly enabled if required; this Wrangler file has no observability configuration. Use controlled representative uploads and local profiling for memory investigation; local latency is not production CPU measurement. [Metrics](https://developers.cloudflare.com/workers/observability/metrics-and-analytics/), [limits](https://developers.cloudflare.com/workers/platform/limits/), [Workers Logs](https://developers.cloudflare.com/workers/observability/logs/workers-logs/)
-11. Recovery: keep the previous frontend artifact and Worker version ID. A previous Worker can be restored with `npx wrangler rollback <version-id> --env production`; migrations are not undone. A Phase 2 Worker does not issue `timeLimitTicks`, so the new frontend will refuse its challenges: restore a compatible frontend too, or disable ranked by removing the API URL and **rebuilding/republishing** the frontend. On the first deployment there may be no previous Worker version; frontend disablement is the immediate fallback. For data loss/corruption, inspect the restore point and use `npx wrangler d1 time-travel restore asteroids-leaderboard --env production --timestamp=<RFC3339>` only after explicit operator review; it restores the whole database, including scores after that point. [Worker rollback](https://developers.cloudflare.com/workers/wrangler/commands/), [D1 Time Travel](https://developers.cloudflare.com/d1/reference/time-travel/)
+```powershell
+Copy-Item -LiteralPath .\migrations\0004_moderation_workflow.sql -Destination $migrationStage
+Invoke-Wrangler d1 migrations list asteroids-leaderboard --env production --remote --config $rolloutConfig
+# Pending must be only 0004:
+Invoke-Wrangler d1 migrations apply asteroids-leaderboard --env production --remote --config $rolloutConfig
+Invoke-Wrangler d1 migrations list asteroids-leaderboard --env production --remote
+Invoke-Wrangler d1 execute asteroids-leaderboard --env production --remote --command "SELECT name FROM d1_migrations ORDER BY id; PRAGMA table_info(scores); PRAGMA table_info(score_reports); PRAGMA foreign_key_list(score_reports); PRAGMA foreign_key_list(moderation_audit); PRAGMA index_list(score_reports); PRAGMA index_list(moderation_audit); PRAGMA foreign_key_check; SELECT (SELECT COUNT(*) FROM scores) AS scores, (SELECT COUNT(*) FROM runs) AS runs, (SELECT COUNT(*) FROM score_reports) AS reports, (SELECT COUNT(*) FROM moderation_audit) AS audits;"
+```
 
-The existing deployment page also describes the game as having no backend (`phaser-asteroids/docs/deployment.md:3`); clarify that the static casual game remains standalone while ranked uses this optional Worker. Add migration 0002 and frontend/Worker compatibility to the rollback text. No cloud account access was needed to identify these gaps.
+**Go after 0004:** both ledger entries/no pending migrations, three score fields/defaults, report status, expected indexes/FKs, preserved representative preexisting records and no FK errors. Compare protected aggregate evidence/selected IDs without logging names/hashes/tokens. Explain count changes during traffic; equality needs separately approved write pause. **Stop:** data/schema mismatch or old-Worker errors. Do not remove columns/reports to recover. Temporary config is for migrations only; deploy using canonical config.
+
+### 3. Deploy Worker and verify
+
+Choose one coordinated path: authorized main CI release, or manual fallback below; do not race both. No new secret required.
+
+```powershell
+# From server, after migration go criteria and explicit deployment approval:
+Invoke-Wrangler deploy --env production
+Invoke-Wrangler deployments list --env production
+# From phaser-asteroids:
+node scripts/production-health.mjs
+```
+
+Record deployed version ID and correlate time/CI SHA to approved source. Health lacks build identity. Check both public boards with paging, required fields/detail, allowed/denied CORS, no-store and no forced caching. From `server`, `npx wrangler tail --env production` plus dashboard CPU/request/error/D1 metrics support observation; do not capture tokens/bodies.
+
+Run full submission/moderation in the isolated suites or separately provisioned test backend first. Production canaries require explicit approval of harmless new entries/reports/erasure. Never modify legitimate entries. Verify old/new client, Anonymous/correction, verification/retry, reports, auth refusal, console hide/restore/rename/restore-name/resolve/reopen/stale revision/audit. Confirm deployed cron and next successful event; do not invoke production cleanup solely for evidence.
+
+**Go:** approved version identity, public headers/contracts healthy, isolated flows pass, live same-origin auth/console works, no new submission/D1 failures, old-device evidence before app rollout. **Stop/hold app:** errors, dropped fields/rules, stale fresh reads, unauthorized admin access or rejection spike. Keep prior artifact/version throughout operator-selected observation; no new retention period is asserted.
+
+### 4. Android and Play
+
+Use the [existing build/signing procedure](../phaser-asteroids/docs/google-play-release.md). Rebuild/sync after approved text edits; Gradle alone does not rebuild the game. Verify package `ca.davidandrea.spacearcade`, native `1.0` / code `1`, frozen rules `1.2.0` / schema `1`, release registry and `.env.android` HTTPS endpoint. Determine next unused code from Console, preserve distributed records, record final AAB hash/certificate. No ID/branding/version changed here.
+
+Prioritized remaining blockers:
+
+1. **Blocked / human policy:** `[PUBLIC EMAIL PENDING]`, approved public policy URL/text, provider/correspondence retention, moderation coverage/appeals/erasure process, audience/rating and interpretation of name-based blocking/submit acceptance. Reporting/local blocking source does not establish Play compliance. No accounts: account-deletion UI is **Not applicable**; operational data-removal contact remains required.
+2. **Requires manual verification / Cloudflare:** backup, actual pending migrations and authorized backend deployment, cache/CORS/admin/cron/logging/incident owner. Backend before app: suspicious_score requires updated Worker.
+3. **Requires manual verification / signing/devices:** upload certificate, unused code, signed AAB inspection, existing-install compatibility, physical gameplay/audio/lifecycle/safe areas/keyboard, ranked submission/retry, privacy/rules/report/block and 16 KB device/emulator. Unsigned builds/no `.so` do not prove delivered splits/WebView behavior.
+4. **Requires manual verification / Play Console:** App Signing, Data safety/account-data declarations, listing/rights/artwork, audience/rating, internal testing and Play-delivered install/update, prelaunch/page-size results. Production-access testing requirement is account-dependent. No upload/publication authorized here.
+
+The [Google Play UGC policy](https://support.google.com/googleplay/android-developer/answer/9876937?hl=en) and [Data safety guidance](https://support.google.com/googleplay/android-developer/answer/10787469?hl=en) were rechecked on 2026-11-04. UGC acceptance, ongoing moderation and reporting/blocking remain review gates; Data safety includes controlled WebView and provider processing. The internal-only Data safety form exemption does not certify the app's privacy or UGC behavior.
+
+**Go to separately authorized internal upload:** all external gates recorded, signed inspected artifact, devices/backend accepted. **Stop:** placeholders, unverified signing/code, backend gaps or device failures. Internal testing is not production approval.
+
+## Recovery
+
+| Incident | Action / stop-go |
+| --- | --- |
+| Migration fails | Stop new Worker. Capture error/ledger/schema/counts; verify earlier successful migration remains. Local rollback evidence is not proof of remote state. Rehearse cause/fix locally, retry intact file; manual partial schema/ledger mismatch requires reviewed repair. |
+| Deployment fails | Hold app/Pages. Inspect active version; old code may still serve. Keep additive schema, verify existing API/submissions before retry. |
+| Submissions fail / old client incompatible | Hold release; inspect D1/rules/origin/error evidence and preserve runs. Prefer known compatible Worker rollback on expanded schema if no corruption; do not force installed-client updates as recovery. |
+| Moderation incorrect | Hold new app/operator writes; investigate auth/revision/audit/reads with safe test rows. Rollback loses new reports/admin UI/name overrides/no-store; account for those regressions and review handling. Emergency settings/secret changes need separate approval. |
+| DB restore necessary | Obtain explicit restore/traffic-control approval. Quiesce writes/reads with an agreed method, save current bookmark/evidence, choose validated point, restore, select schema-compatible Worker, reconcile erasures and lost later scores, validate ledger/FKs/boards/isolated submission then reopen. Repo has no tested production write-pause mechanism; disabling frontend cannot stop installed apps. |
+
+Exact commands from `server`, **only after explicit approval**, using recorded IDs:
+
+```powershell
+# Code rollback leaves schema/data intact:
+Invoke-Wrangler rollback $previousWorkerVersion --env production
+Invoke-Wrangler deployments list --env production
+# Whole database recovery overwrites post-bookmark contents/schema/ledger:
+Invoke-Wrangler d1 time-travel info asteroids-leaderboard --env production --json
+Invoke-Wrangler d1 time-travel restore asteroids-leaderboard --env production --bookmark $bookmark
+```
+
+Retain the restore operation's previous bookmark for undo within provider eligibility. If Time Travel unavailable, never import blindly over production: validate export in empty isolated DB and separately approve a replacement/rebind or exact restore plan. Worker rollback, schema rollback and whole-content recovery are distinct operations. [Worker rollback](https://developers.cloudflare.com/workers/wrangler/commands/), [D1 recovery](https://developers.cloudflare.com/d1/reference/time-travel/).
