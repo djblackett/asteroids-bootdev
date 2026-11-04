@@ -13,7 +13,7 @@ export function moderationPage(model: ScoresModel, blocks: NicknameBlocks, nav: 
   let reason = 0;
   let status = '';
   let sending = false;
-  const reasons: ReportReason[] = ['offensive', 'personal_info', 'other'];
+  const reasons: ReportReason[] = ['offensive', 'personal_info', 'suspicious_score', 'other'];
   return (kit: PageKit) => {
     const entries = model.page?.entries ?? [];
     index = Math.min(index, Math.max(0, entries.length - 1));
@@ -28,7 +28,7 @@ export function moderationPage(model: ScoresModel, blocks: NicknameBlocks, nav: 
     const choose = (step: number): void => { index += step; status = ''; };
     new MenuButton(kit, { id: 'entry-prev', rect: { x: 220, y: 194, w: 400, h: MIN_TARGET }, label: '< ENTRY', enabled: () => index > 0 && !sending, onTap: () => choose(-1), size: 28 });
     new MenuButton(kit, { id: 'entry-next', rect: { x: 660, y: 194, w: 400, h: MIN_TARGET }, label: 'ENTRY >', enabled: () => index < entries.length - 1 && !sending, onTap: () => choose(1), size: 28 });
-    new MenuChoice(kit, { id: 'reason', label: 'REASON', y: 310, frame: { x: 120, y: 310, w: 1040, h: MIN_TARGET }, options: ['OFFENSIVE / ABUSIVE', 'PERSONAL INFO', 'OTHER'], selected: () => reason, onSelect: (i) => { reason = i; }, size: 24 });
+    new MenuChoice(kit, { id: 'reason', label: 'REASON', y: 310, frame: { x: 120, y: 310, w: 1040, h: MIN_TARGET }, options: ['OFFENSIVE / ABUSIVE', 'PERSONAL INFO', 'SUSPECTED CHEATING', 'OTHER'], selected: () => reason, onSelect: (i) => { reason = i; }, size: 24 });
     new MenuButton(kit, { id: 'report-send', rect: { x: 120, y: 426, w: 500, h: MIN_TARGET }, label: sending ? 'SENDING...' : 'SEND REPORT', enabled: () => !!entry && !!getApiBase() && !sending,
       onTap: () => {
         if (!entry || sending) return;

@@ -5,7 +5,8 @@ import { ENGINES, engineFor } from './engines';
 import { ApiError } from './errors';
 import { getLeaderboard, getScoreDetail, type Scope } from './leaderboard';
 import { hitRateLimit } from './ratelimit';
-import { deleteScore, reportScore } from './moderation';
+import { adminAudit, adminHistory, adminScores, deleteScore, moderateScore, reportScore } from './moderation';
+import { adminPage } from './adminUi';
 import { createRun, setScoreVisibility, submitRun, type ServiceDeps } from './runs';
 
 const API = '/api/v1';
@@ -20,11 +21,16 @@ const API = '/api/v1';
  *   GET  /api/v1/leaderboard/all-time|weekly       ?limit=&offset=
  *   GET  /api/v1/scores/:id                        one entry with its ranks
  *   POST /api/v1/admin/scores/:id/visibility       hide / unhide (Bearer ADMIN_TOKEN; absent unless configured)
+ *   POST /api/v1/scores/:id/report                bounded private complaint, fixed reasons only
+ *   GET  /admin                                  same-origin operator console (no private data in shell)
+ *   GET  /api/v1/admin/scores|audit               private paged queue / audit
+ *   GET  /api/v1/admin/scores/:id/history         private report aggregates / recent history
+ *   POST /api/v1/admin/scores/:id/moderate|delete audited decisions / irreversible erasure
  */
 export async function handleRequest(request: Request, deps: ServiceDeps): Promise<Response> {
   const origin = request.headers.get('origin');
   const url = new URL(request.url);
-  const isAdmin = url.pathname.startsWith(`${API}/admin/`);
+  const isAdmin = url.pathname === '/admin' || url.pathname.startsWith('/admin/') || url.pathname === `${API}/admin` || url.pathname.startsWith(`${API}/admin/`);
   const cors = isAdmin ? {} : corsHeaders(origin, deps);
 
   try {
@@ -47,6 +53,34 @@ async function route(request: Request, url: URL, origin: string | null, deps: Se
   const { settings } = deps;
   const path = url.pathname.replace(/\/+$/, '');
   const method = request.method;
+
+  // One gate for the entire administrative API, including unknown routes and reads.
+  if (path === `${API}/admin` || path.startsWith(`${API}/admin/`)) {
+    if (!settings.adminToken) throw new ApiError(404, 'not_found', 'No such route');
+    if (origin && origin !== url.origin) throw new ApiError(403, 'origin_not_allowed', 'Use the same-origin admin console');
+    await requireAdmin(request, deps);
+  }
+  if (path === '/admin' && settings.adminToken) { only(method, 'GET'); return adminPage(); }
+  if (path === `${API}/admin/audit`) {
+    only(method, 'GET');
+    const before = url.searchParams.has('before') ? intParam(url, 'before', 0, 1, Number.MAX_SAFE_INTEGER) : null;
+    return json(await adminAudit(deps.db, before), 200, { 'Cache-Control': 'no-store' });
+  }
+  if (path === `${API}/admin/scores`) {
+    only(method, 'GET');
+    const before = url.searchParams.has('before') ? intParam(url, 'before', 0, 1, Number.MAX_SAFE_INTEGER) : null;
+    return json(await adminScores(deps.db, url.searchParams.get('filter') ?? 'queue', before, url.searchParams.get('id')), 200, { 'Cache-Control': 'no-store' });
+  }
+  const adminAction = /^\/api\/v1\/admin\/scores\/([0-9a-f-]{36})\/(moderate|history)$/.exec(path);
+  if (adminAction) {
+    if (adminAction[2] === 'history') {
+      only(method, 'GET');
+      return json(await adminHistory(deps.db, adminAction[1]!), 200, { 'Cache-Control': 'no-store' });
+    }
+    only(method, 'POST');
+    await moderateScore(deps.db, adminAction[1]!, await readJsonObject(request), deps.now());
+    return json({ status: 'saved' }, 200, { 'Cache-Control': 'no-store' });
+  }
 
   if (path === `${API}/health`) {
     only(method, 'GET');
@@ -98,7 +132,7 @@ async function route(request: Request, url: URL, origin: string | null, deps: Se
     const limit = intParam(url, 'limit', settings.page.defaultLimit, 1, settings.page.maxLimit);
     const offset = intParam(url, 'offset', 0, 0, settings.page.maxOffset);
     const page = await getLeaderboard(deps.db, settings, deps.now(), board[1] as Scope, limit, offset);
-    return json(page, 200, { 'Cache-Control': 'public, max-age=5' });
+    return json(page, 200, { 'Cache-Control': 'no-store' });
   }
 
   const report = /^\/api\/v1\/scores\/([0-9a-f-]{36})\/report$/.exec(path);
@@ -116,8 +150,7 @@ async function route(request: Request, url: URL, origin: string | null, deps: Se
   const deletion = /^\/api\/v1\/admin\/scores\/([0-9a-f-]{36})\/delete$/.exec(path);
   if (deletion && settings.adminToken) {
     only(method, 'POST');
-    await requireAdmin(request, deps);
-    if (!await deleteScore(deps.db, deletion[1]!)) throw new ApiError(404, 'score_not_found', 'No such score');
+    if (!await deleteScore(deps.db, deletion[1]!, deps.now())) throw new ApiError(404, 'score_not_found', 'No such score');
     return json({ status: 'deleted' }, 200, { 'Cache-Control': 'no-store' });
   }
 
@@ -126,13 +159,12 @@ async function route(request: Request, url: URL, origin: string | null, deps: Se
     only(method, 'GET');
     const detail = await getScoreDetail(deps.db, settings, deps.now(), score[1]!);
     if (!detail) throw new ApiError(404, 'score_not_found', 'No such score');
-    return json(detail, 200, { 'Cache-Control': 'public, max-age=5' });
+    return json(detail, 200, { 'Cache-Control': 'no-store' });
   }
 
   const visibility = /^\/api\/v1\/admin\/scores\/([^/]+)\/visibility$/.exec(path);
   if (visibility && settings.adminToken) {
     only(method, 'POST');
-    await requireAdmin(request, deps);
     const body = await readJsonObject(request);
     if (typeof body.visible !== 'boolean') throw new ApiError(400, 'invalid_request', '"visible" must be true or false');
     const reason = typeof body.reason === 'string' ? body.reason : null;

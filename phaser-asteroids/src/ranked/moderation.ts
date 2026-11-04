@@ -1,7 +1,7 @@
 import { browserStorage } from '../audio/audioSettings';
 import type { StorageLike } from './localScores';
 
-export type ReportReason = 'offensive' | 'personal_info' | 'other';
+export type ReportReason = 'offensive' | 'personal_info' | 'other' | 'suspicious_score';
 export const BLOCKED_NAMES_KEY = 'asteroids.blockedNicknames';
 
 /** No player accounts exist: a block covers this nickname, including other people who use it. */

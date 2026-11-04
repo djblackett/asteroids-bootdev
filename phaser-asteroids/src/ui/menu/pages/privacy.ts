@@ -44,7 +44,7 @@ export const PRIVACY_PAGES = [
     'By submitting a score you accept these rules and public display.',
     'Do not post hateful, sexual, threatening or harassing nicknames,',
     'impersonate others, or expose anyone\'s personal information.',
-    'Administrators may hide or remove entries that violate these rules.',
+    'Administrators may replace names, hide or remove rule-breaking entries.',
     'Reports go privately to the operator for review; they do not auto-hide scores.',
     'Block hides all entries with that name on this device. Names are shared;',
     'there are no accounts, so this cannot block a person who changes names.',

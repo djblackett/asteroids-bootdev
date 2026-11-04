@@ -17,7 +17,7 @@ Layout: `src/` portable service (+ `worker.ts`/`d1.ts` Cloudflare glue), `migrat
 Local secrets go in `.dev.vars` (git-ignored); copy `.dev.vars.example`.
 
 Production is deployed at **https://asteroids-leaderboard.davejandrea.workers.dev** using the existing account and the
-separate `env.production.DB` binding in `wrangler.toml`. Both migrations and production secrets are configured.
+separate `env.production.DB` binding in `wrangler.toml`. Production secrets are configured. Apply pending migrations before deploying code; this checkout does not establish which migrations are applied remotely.
 The [coordinated release workflow](../docs/deployment.md) validates both services, deploys this Worker, checks health
 and shared replay versions, then publishes Pages from the same commit. Configure the scoped `CLOUDFLARE_API_TOKEN`
 repository secret before merging/enabling it. CI never runs production migrations or reuploads backend secrets.
@@ -27,3 +27,5 @@ On Windows, `./scripts/production-secrets.ps1 -Action Check` validates the encry
 do not use it for ordinary CI releases or rotate secrets accidentally. Never put backend secrets in Vite or GitHub variables.
 
 Physical Android ranked testing: [`../../docs/android-lan-testing.md`](../../docs/android-lan-testing.md). Opt-in `migrate:lan` / `dev:lan` use separate local D1 state, loopback port 8788 and disabled admin routes. The frontend LAN proxy is the only phone-facing listener.
+
+Moderation: see the [audit and operator guide](../../docs/leaderboard-moderation.md). The same-origin `/admin` console uses the existing admin secret in tab memory. Migrations 0003 and 0004 are prerequisites. `npm run test:moderation:admin` from `phaser-asteroids` exercises the workflow in Chromium against disposable local D1.

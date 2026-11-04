@@ -16,7 +16,7 @@ Cloudflare hosts our API and D1 database and processes network requests, includi
 
 Accepted leaderboard entries and linked run records have no automatic deletion date, including entries hidden by moderators. Daily cleanup deletes abandoned challenges more than one day after their expiry, rejected runs more than 30 days after rejection, and request counters whose hourly window started more than two hours ago. Expiry of a challenge (normally one hour) limits submission; it is not immediate deletion. Cleanup depends on the scheduled job running successfully.
 
-Reports contain the reported score identifier, a selected reason, a salted IP hash and a timestamp. They are private to the operator and used for moderation. Reports are deleted after 30 days by daily cleanup, or when the associated score is erased. **Provider-retention review pending:** D1 recovery history and Cloudflare logs can retain information separately from the live database. Confirm the account's actual settings, recovery period, exports and other provider retention before publishing this paragraph. Do not promise immediate removal from backups.
+Reports contain the reported score identifier, a selected reason, a salted IP hash, a timestamp and review status. They are private to the operator and used for moderation. Reports are deleted after 30 days by daily cleanup, or when the associated score is erased. Moderation decisions retain a fixed action/category, time, score link and prior moderation state without copying names or reporter identifiers. These records have no automatic expiry; erasure removes their link to the deleted score. **Provider-retention review pending:** D1 recovery history and Cloudflare logs can retain information separately from the live database. Confirm the account's actual settings, recovery period, exports and other provider retention before publishing this paragraph. Do not promise immediate removal from backups.
 
 The game stores audio, input, movement and vibration preferences, the last accepted nickname, up to 20 accepted scores with identifiers, and blocked nicknames locally on your device. There is no timed expiry. Clear the app's storage in Android settings (or site data in a browser) to remove this local data. This does not remove server records. Android backup is disabled in the manifest; device-transfer behavior may depend on the device vendor.
 
@@ -28,7 +28,7 @@ App-to-service traffic uses HTTPS. Administration requires a secret credential. 
 
 ## Leaderboard rules
 
-By submitting, you accept public display and these rules. Do not use hateful, sexual, threatening or harassing nicknames, impersonate others, or expose personal information. We may hide or remove entries that violate these rules. Reports are reviewed by the operator; submitting a report does not automatically remove an entry.
+By submitting, you accept public display and these rules. Do not use hateful, sexual, threatening or harassing nicknames, impersonate others, or expose personal information. We may replace displayed nicknames, hide or remove entries that violate these rules. A replacement keeps the verified score intact; the original name remains private until the entry is erased. Reports are reviewed by the operator; submitting a report does not automatically remove an entry.
 
 ## Hosting proposal (not deployed)
 

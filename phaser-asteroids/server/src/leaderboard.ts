@@ -5,7 +5,7 @@ import { weekWindow, type WeekWindow } from './week';
 
 /**
  * What the public API exposes about an entry. Deliberately small: no run id, no control metadata, no moderation fields.
- * `nickname` is plain text restricted to letters, numbers, space and `_ . ! -`; clients should still render it as text.
+ * `nickname` is the current display name, using the shared Unicode/arcade-symbol character rules; render it as text.
  */
 export interface PublicScore {
   id: string;
@@ -92,7 +92,7 @@ export async function getLeaderboard(
   const f = boardFilter(scope, settings.rulesVersion, window);
 
   const rows = await db.all<ScoreRow>(
-    `SELECT id, nickname, score, completed_at, duration_ms, rules_version, end_reason FROM scores
+    `SELECT id, COALESCE(display_name, nickname) AS nickname, score, completed_at, duration_ms, rules_version, end_reason FROM scores
      WHERE ${f.sql} ORDER BY ${ORDER} LIMIT ? OFFSET ?`,
     [...f.params, limit, offset],
   );
@@ -129,7 +129,7 @@ export interface ScoreDetail {
 }
 
 export async function getScoreRow(db: Db, id: string): Promise<(ScoreRow & { visibility: string }) | null> {
-  return db.first(`SELECT id, nickname, score, completed_at, duration_ms, rules_version, end_reason, visibility FROM scores WHERE id = ?`, [id]);
+  return db.first(`SELECT id, COALESCE(display_name, nickname) AS nickname, score, completed_at, duration_ms, rules_version, end_reason, visibility FROM scores WHERE id = ?`, [id]);
 }
 
 /** A single entry with its all-time and current-week ranks. Hidden entries are indistinguishable from unknown ones. */

@@ -2,7 +2,29 @@
 
 Prepared on `dev`, base HEAD `c1871a92c6f2a99bbac6f8dc8885691804826737`, plus the uncommitted privacy/release changes. No push, merge, deployment, production data mutation, key generation, signing or Play publication. Pre-existing Android Studio `.idea` changes and inaccessible tracked `tmp/` deletions were left alone. The Gradle settings typo seen initially was already corrected in the working tree before this task's Android edits.
 
-## Evidence
+## Moderation follow-up — 2026-11-04
+
+Audited existing implementation at `91c349c` on `dev` and extended it in the working tree. No commit, push, production migration/deployment, credential change or production score write. Existing root `tmp/` deletions remain untouched. This section supersedes the earlier moderation/API-scope statements below; older Android artifact hashes remain historical and were not regenerated.
+
+| Check | Result |
+| --- | --- |
+| Full Vitest, four workers | 67 files / 1,667 tests passed, including 35 new moderation workflow tests |
+| Worker TypeScript and frontend TypeScript/production browser+SSR build | Passed |
+| Android build guard tests | 8/8 passed |
+| Frozen-rules guard and production-health unit tests | 19/19 passed (health responses mocked; no production mutation) |
+| Existing real workerd/D1 integration | 33/33 passed |
+| Admin console, Chromium + disposable local D1 | 28/28 passed, including a new report invalidating a stale review in real D1; desktop and phone screenshots inspected |
+| Existing menu browser regressions | 127/127 passed across phone/desktop layouts |
+| Scoped diff hygiene and relative documentation links | Passed |
+| Existing ranked UI browser regressions | 99/99 passed, including reporting/blocking, gamepad, retry, expiry, time limits and touch submissions |
+
+The tests cover the existing data-preserving migration path, authorization across all admin routes, disabled administration, failed-auth throttling, cross-origin rejection, report deduplication/rate limits/retention, concurrent/stale decisions, name replacement and restoration on every score response, impossible-score bounds, audit pagination and transactional failure rollback. A real-D1 test exposed the previous exact-one-change erasure response bug: D1 counts FK cascades; deletion now succeeds for any positive primary-key delete change count. Erasure uses the actual score-to-run FK and retains only anonymous decision metadata.
+
+First sandboxed Worker launches failed because Wrangler could not access its config/log directory and parent-directory bundle resolution. Tests were rerun with local tool access, using `--local` and disposable databases only. Concurrent final browser reruns timed out during initial navigation; the menu completed, and both moderation (28/28) and ranked UI (99/99) passed when rerun sequentially. No security checks or production settings were weakened. Test logs/screenshots are ignored under `phaser-asteroids/scripts/.smoke-output/moderation-*`.
+
+See [the operator guide and adversarial assessment](leaderboard-moderation.md) for the finished contract and remaining release configuration. Pending migrations 0003/0004 must precede the Worker release; the backend must precede the new suspicious-score report option in Android. Verify Cloudflare cache overrides, cron, logging/backups and admin access. Establish review coverage, public contact, policy and backup erasure procedure. Google Play interpretation of nickname-only blocking and submit-as-acceptance remains unresolved; no compliance certification is claimed. Native Gradle/signing/device testing was not repeated in this server/UI follow-up; rebuild/sync and validate the eventual release artifact.
+
+## Earlier 2026-11-03 evidence
 
 | Check | Result |
 | --- | --- |

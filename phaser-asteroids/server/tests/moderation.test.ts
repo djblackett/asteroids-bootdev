@@ -64,7 +64,8 @@ describe('private leaderboard moderation and erasure', () => {
     expect((await h.call('POST', `${route}/visibility`, { token, json: { visible: false } })).status).toBe(200);
     expect((await h.call('GET', `/api/v1/scores/${id}`)).status).toBe(404);
     expect((await h.call('POST', `${route}/visibility`, { token, json: { visible: true } })).status).toBe(200);
-    const deleted = await h.call('POST', `${route}/delete`, { token, headers: { Origin: 'https://game.test' } });
+    expect((await h.call('POST', `${route}/delete`, { token, headers: { Origin: 'https://game.test' } })).status).toBe(403);
+    const deleted = await h.call('POST', `${route}/delete`, { token, headers: { Origin: 'https://api.test' } });
     expect(deleted.status).toBe(200);
     expect(deleted.headers.get('Access-Control-Allow-Origin')).toBeNull();
     expect(await count(h.db, 'scores')).toBe(1);
