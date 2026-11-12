@@ -2,6 +2,10 @@
 
 Prepared on `dev`, base HEAD `c1871a92c6f2a99bbac6f8dc8885691804826737`, plus the uncommitted privacy/release changes. No push, merge, deployment, production data mutation, key generation, signing or Play publication. Pre-existing Android Studio `.idea` changes and inaccessible tracked `tmp/` deletions were left alone. The Gradle settings typo seen initially was already corrected in the working tree before this task's Android edits.
 
+## Backend release — 2026-11-04 (Stage 2)
+
+The moderation Worker is live: merge `8569834` (tree identical to `549729f`), Actions run 41887905781, Cloudflare version `c2aef78f-ec27-4118-bd2c-a13f59b7313b` at 100% on D1 0001-0004. Pre-deploy local results at `549729f` matched the table below (1,667 unit, 40/40 migrations/historical client, 33/33 worker-e2e, 28/28 admin, 99/99 ranked UI, 127/127 menu). Live public (31/31) and admin read-only (19/19) checks passed. Details and remaining gates: [Stage 2 record](release-preflight.md#stage-2-production-worker-deployment-2026-11-04). Android old-device testing is still outstanding (0 ADB devices).
+
 ## Production preparation verification — 2026-11-04
 
 Audited `dev` at `f540cafb2da864d3d3da52619910f062acfff9c3`. The moderation implementation is committed (`91c349c`, then `f540caf`); this pass adds local tests/docs. No commit/push/merge, production backup/export/restore/migration/deployment, credentials changes, score writes or Play upload. Five existing root `tmp/` deletions were preserved. See the [current release preflight](release-preflight.md) for readiness, compatibility findings, configuration uncertainties and exact approval-only production commands. Earlier sections below are historical snapshots.
