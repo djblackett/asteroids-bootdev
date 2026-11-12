@@ -165,6 +165,15 @@ try {
   check('actual linked run deleted and unrelated run preserved', query(`SELECT * FROM runs WHERE id='run-${target}'`).length === 0 && JSON.stringify(query(`SELECT * FROM runs WHERE id='run-${ids[2]}'`)) === JSON.stringify(otherRun));
   check('final foreign-key integrity and complete migration ledger', query('PRAGMA foreign_key_check').length === 0 && query('SELECT name FROM d1_migrations').length === 4);
   await stop();
+  // 0005 (moderation digest ledger) is additive: stage it alone on the used 0004 database; no existing row may change.
+  const tables0004 = () => JSON.stringify(['scores', 'runs', 'score_reports', 'moderation_audit', 'rate_limits'].map(t => query(`SELECT * FROM ${t} ORDER BY 1, 2`)));
+  const before0005 = tables0004();
+  stage('0005_moderation_digest.sql');
+  check('additive 0005 applies after 0004 and changes no existing row', migrate().ok && tables0004() === before0005 && query('SELECT COUNT(*) AS n FROM moderation_digests')[0].n === 0);
+  check('ledger records exactly 0001-0005 with valid foreign keys', query('PRAGMA foreign_key_check').length === 0 && JSON.stringify(query('SELECT name FROM d1_migrations ORDER BY id').map(r => r.name.slice(0, 4))) === '["0001","0002","0003","0004","0005"]');
+  await start(old);
+  check('historical Worker still serves boards on the 0005 schema', (await client.fetchLeaderboard(base, 'all-time', { limit: 10, offset: 0 }, legacyFetch)).total >= 1);
+  await stop();
   const exportFile = path.join(temp, 'recovery.sql');
   const exported = cli(current, ['d1', 'export', 'asteroids-leaderboard', '--local', '--output', exportFile]);
   assert.ok(exported.ok, exported.output);
