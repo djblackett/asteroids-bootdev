@@ -62,7 +62,7 @@ describe('Android app configuration', () => {
     const listed = [...(inspector.match(/\$draftPolicyMarkers = @\(([^)]*)\)/)?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1]);
     expect(listed.length).toBeGreaterThan(0);
     // Read as text: importing the menu page would pull in Phaser. Every quoted literal with an upper-case review marker counts.
-    const draftLines = [...read('src/ui/menu/pages/privacy.ts').matchAll(/'((?:[^'\\\n]|\\.)*)'/g)].map((m) => m[1]).filter((line) => /PENDING|DRAFT/.test(line));
+    const draftLines = [...read('src/ui/menu/pages/privacy.ts').matchAll(/'((?:[^'\\\n]|\\.)*)'/g)].map((m) => m[1]!).filter((line) => /PENDING|DRAFT/.test(line));
     for (const line of draftLines) expect(listed, `inspector does not refuse "${line}"`).toContain(line);
   });
 
