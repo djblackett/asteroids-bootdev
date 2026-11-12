@@ -228,6 +228,24 @@ async function checkMount(mount) {
       check(`${label} ?keydebug loads and shows its panel, with no errors`, panel && problems.length === 0, problems.join(' | '));
       await page.close();
     }
+    // 4. The static privacy policy (public/privacy/index.html) is served under the mount, loads without errors or off-site requests, and its
+    // "back to the game" link resolves to the game at the same mount.
+    {
+      const { page, problems, ok } = await open();
+      const external = [];
+      page.on('request', (r) => { if (!r.url().startsWith(origin) && !r.url().startsWith('data:')) external.push(r.url()); });
+      const res = await page.goto(url('privacy/'));
+      const heading = await page.locator('h1').textContent();
+      const contact = await page.locator('main a[href="mailto:privacy@davidandrea.ca"]').count();
+      const back = await page.locator('a', { hasText: 'Back to the game' }).evaluate((a) => a.href);
+      check(`${label} /privacy/ is served (200) with its heading and the privacy contact`, res?.status() === 200 && heading === 'Hull & Havoc — Privacy Policy' && contact > 0, `${res?.status()} ${heading} ${contact}`);
+      check(`${label} /privacy/ loads its favicon from the base path, with no errors and no off-site requests`, ok.has(`${mount}favicon.png`) && problems.length === 0 && external.length === 0, [...problems, ...external].join(' | '));
+      check(`${label} /privacy/ links back to the game at the same mount`, back === url(''), back);
+      await page.setViewportSize({ width: 360, height: 640 });
+      const phoneOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+      check(`${label} /privacy/ does not scroll sideways at phone width (360px)`, !phoneOverflow);
+      await page.close();
+    }
     check(`${label} nothing was requested outside the base path`, stray.length === 0, [...new Set(stray)].join(', '));
     const redirect = mount === '/' ? null : await fetch(`${origin}${mount.slice(0, -1)}`, { redirect: 'manual' });
     if (redirect) check(`${label} the path without a trailing slash redirects to it`, redirect.status === 301 && redirect.headers.get('location') === mount, `${redirect.status} ${redirect.headers.get('location')}`);

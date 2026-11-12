@@ -1,4 +1,4 @@
-# Asteroids privacy policy — review draft
+# Hull & Havoc privacy policy — review draft
 
 **Not approved for publication or distribution.** Public contact, provider retention and final game name require review. Package: `ca.davidandrea.spacearcade`. Proposed effective date: set on approval.
 
@@ -34,6 +34,6 @@ By submitting, you accept public display and these rules. Do not use hateful, se
 
 ## Hosting proposal (not deployed)
 
-After review, publish an HTML policy at an operator-controlled, stable HTTPS URL such as `https://davidandrea.ca/spacearcade/privacy/` (proposed path only; ownership and hosting not verified). A separately reviewed static page on the existing GitHub Pages site is an alternative. The URL must work without login, geo restrictions or downloading a PDF. Keep the operator/contact and app identity consistent with Play Console. Do not place the draft in `public/` or a deployment workflow: normal web builds must not accidentally publish it.
+**Decision (2026-11-12):** host the policy on the existing GitHub Pages site at `https://djblackett.github.io/asteroids-bootdev/privacy/`. The page is prepared, unpublished, at `phaser-asteroids/public/privacy/index.html`; its facts, open questions and the publish steps are in [privacy-policy-publication.md](privacy-policy-publication.md). Final name: **Hull & Havoc** (Android package ID unchanged). The URL must work without login, geo restrictions or downloading a PDF. Keep the operator/contact and app identity consistent with Play Console. The page now lives in `public/`, so merging it to `main` publishes it on the next release run: merge only after approval.
 
 The game now includes an offline, paginated PRIVACY menu plus Privacy / Leaderboard Rules before score submission. Before distribution, replace review placeholders and keep its text synchronized with the approved public policy. A remote policy link can be added after its URL is approved; offline access remains useful on phones.

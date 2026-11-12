@@ -3,26 +3,27 @@ import type { PageBuilder } from '../menuView';
 import { MenuButton, MIN_TARGET } from '../widgets';
 import { CENTER_X, pageTitle } from './common';
 
-// Review copy, bundled offline. Operator confirmed 2026-11-04. Public contact
-// intentionally deferred by David; replace the contact and review status before distribution.
-export const PRIVACY_CONTACT = '[PRIVACY CONTACT PENDING]';
+// Review copy, bundled offline. Operator confirmed 2026-11-04; public contact confirmed 2026-11-12. The policy text is still
+// awaiting approval: keep the DRAFT marker (the signed-release inspector refuses it) until docs/privacy-policy-draft.md is approved.
+export const PRIVACY_CONTACT = 'privacy@davidandrea.ca';
 export const PRIVACY_PAGES = [
   [
     'DRAFT PRIVACY POLICY - REVIEW PENDING',
-    'Asteroids / ca.davidandrea.spacearcade',
+    'Hull & Havoc / ca.davidandrea.spacearcade',
     'Operator: David Andrea. No accounts, ads or analytics SDKs.',
     'Ranked play sends game inputs, versions, timing and control type',
     'to Cloudflare to verify scores and prevent abuse.',
     'Submitting publishes your nickname, score, date, duration and rules version.',
     'Use a nickname without personal information. Submission is optional.',
     'Practice does not upload gameplay. Menus may fetch public scores.',
+    'Full policy: https://djblackett.github.io/asteroids-bootdev/privacy/',
   ],
   [
     'STORAGE AND RETENTION',
     'Cloudflare processes requests, including your IP and request metadata.',
     'We store a salted IP hash for abuse prevention, not the raw IP.',
     'Full replays are processed in memory; only their submission hash is kept.',
-    'Accepted scores and linked run data have no automatic expiry, even if hidden.',
+    'Verified scores and linked run data have no automatic expiry, even if hidden.',
     'Daily cleanup removes abandoned runs 1 day after expiry and',
     'rejected runs after 30 days; old hourly counters after 2 hours.',
     'Reports (entry, reason, IP hash) expire after 30 days at daily cleanup.',
@@ -33,7 +34,7 @@ export const PRIVACY_PAGES = [
     'Settings, last nickname, up to 20 accepted scores and blocked names',
     'stay in local storage. Clear app storage to remove them from this device.',
     'This does not remove server entries. No sale of data or ad tracking.',
-    'For removal, privacy or security requests, contact:',
+    'For removal, appeal, privacy or security requests, email:',
     PRIVACY_CONTACT,
     'Include the score ID, nickname, score and date. Do not send passwords.',
     'We may ask for context to prevent removal of someone else\'s score.',
