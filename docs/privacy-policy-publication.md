@@ -1,6 +1,6 @@
 # Hull & Havoc privacy policy: publication record
 
-Prepared 2026-11-12 on branch `feature/privacy-policy-page`. **Not published. Not approved.** Nothing was pushed, merged, deployed or uploaded.
+Prepared 2026-11-12 on branch `feature/privacy-policy-page`; integrated into `release/hull-and-havoc-rc` the same day. **Not published. Not approved.** Nothing was pushed, merged, deployed or uploaded.
 
 - Public page source: `phaser-asteroids/public/privacy/index.html` (standalone, no scripts or third-party resources; Vite copies `public/` unchanged to `dist/privacy/index.html`).
 - Proposed URL: `https://djblackett.github.io/asteroids-bootdev/privacy/`
@@ -22,7 +22,7 @@ Prepared 2026-11-12 on branch `feature/privacy-policy-page`. **Not published. No
 | Moderation actions, audit without names | migration 0004, `moderation.ts` |
 | Moderation features live in production | Stage 2 record in `release-preflight.md` (Worker `c2aef78f`, 2026-11-04) |
 
-**Deliberately not in the page:** the daily moderation digest. It is uncommitted work on `feature/moderation-digest`, not deployed (`MODERATION_DIGEST_FROM` and the Resend key are unset), so it is not described as operating. It sends the operator counts only, no player data; add a line only if you want to name the email provider.
+**Deliberately not in the page:** the daily moderation digest. It is on the release candidate but not deployed (`MODERATION_DIGEST_FROM` and the Resend key are unset), so it is not described as operating. It sends the operator counts only, no player data; add a line only if you want to name the email provider.
 
 ## Unresolved: need your decision before publishing
 
@@ -35,7 +35,14 @@ Prepared 2026-11-12 on branch `feature/privacy-policy-page`. **Not published. No
 
 ## Merge notes
 
-`docs/privacy-policy-draft.md`, `privacy.ts` and `google-play-release.md` also have uncommitted edits in the main worktree (`feature/moderation-digest`). `privacy.ts` here already contains the same contact/wording edits, so they should merge cleanly. Merge the digest branch first, then this one.
+Merged into `release/hull-and-havoc-rc` after the digest commits, without conflicts. The offline screen's retention line about provider logs was aligned with the page ("Cloudflare logs and backups follow their own retention periods"); the DRAFT marker is unchanged.
+
+## Additional wording for your review (release-candidate check, 2026-11-12)
+
+7. **Review commitment.** The page says reports "are reviewed by the operator", and the offline rules say reports "go privately to the operator for review". Your confirmed position is automated screening, player reporting and *human review of exceptional cases*. Since reports can still expire unreviewed after 30 days, consider "Reports are private and go to the operator, who reviews them as needed" or a stated review target.
+8. **"Kept indefinitely by default."** It matches your decision. If you serve EU/UK players, GDPR's storage-limitation principle usually expects a justification for indefinite retention; the page gives one implicitly (public leaderboard history). Decide whether to state it.
+9. **Rules acceptance.** "By submitting a score you accept public display of the entry and these rules" relies on the submit action as acceptance; the rules are one tap away on the result page, not shown inline. See the Play section of the release record for whether that is enough.
+10. **Operator identity.** The page names "David Andrea" as operator and gives no postal address. Play does not require an address in the policy, but Play's developer account may display one; keep the names consistent.
 
 ## Publishing (after your explicit approval)
 

@@ -82,13 +82,13 @@ Before a separately authorized production release (status as of 2026-11-12 in br
 
 ## Daily moderation digest
 
-Implemented 2026-11-12 on local branch `feature/moderation-digest`; **not deployed, not configured, no live email sent.** Code: `server/src/digest.ts` (queue summary, email text, Resend adapter, daily claim) and `server/src/scheduled.ts` (cron order). Migration `0005_moderation_digest.sql` adds one table.
+Implemented 2026-11-12 on `feature/moderation-digest`, integrated (with the expiry carry-forward below) on `release/hull-and-havoc-rc`; **not deployed, not configured, no live email sent.** Code: `server/src/digest.ts` (queue summary, email text, Resend adapter, daily claim) and `server/src/scheduled.ts` (cron order). Migration `0005_moderation_digest.sql` adds one table.
 
 **Behaviour.** The existing daily cron (`17 7 * * *`, 03:17/04:17 Halifax) first runs the unchanged cleanup, then the digest. The digest counts the console's **Needs review** view (the same SQL), so the total matches what `/admin` shows:
 
 - Empty queue and nothing expired: no email.
-- Otherwise one email, subject `Orbital Impact — N moderation items awaiting review` (N = entries in Needs review), containing open reports by reason, entries with reports, unreviewed integrity flags, open reports within 7 days of the 30-day limit, open reports the cleanup just deleted unreviewed, and the console link.
-- If the queue is empty but open reports expired that day, the subject is `Orbital Impact — N unreviewed reports expired`.
+- Otherwise one email, subject `Hull & Havoc — N moderation items awaiting review` (N = entries in Needs review), containing open reports by reason, entries with reports, unreviewed integrity flags, open reports within 7 days of the 30-day limit, open reports the cleanup just deleted unreviewed, and the console link.
+- If the queue is empty but open reports expired that day, the subject is `Hull & Havoc — N unreviewed reports expired`.
 - It repeats once per UTC day while anything stays open and stops when the queue is clear.
 
 It contains **no nicknames, score IDs, reporter or IP hashes, tokens or replay data**, and it never hides, renames, resolves, deletes or bans anything.
@@ -96,16 +96,18 @@ It contains **no nicknames, score IDs, reporter or IP hashes, tokens or replay d
 **Duplicates and failures.**
 
 - *One email per day.* One `moderation_digests` row per UTC day of the cron's `scheduledTime` is claimed atomically. Cloudflare retries, duplicate invocations and manual triggers on the same day are skipped (verified in Vitest and real workerd/D1).
-- *Identical retries.* The day's text is stored on first claim, and every attempt resends it with `Idempotency-Key: orbital-impact-moderation-digest-YYYY-MM-DD`. Resend keeps keys for 24 hours, so a timeout whose request actually succeeded cannot produce a second email.
-- *Retry limits.* Transient errors (timeout after 10 s, network, 408/429/5xx, concurrent-idempotency 409) get one immediate retry. A later invocation the same day can retry, up to 3 claims per day; a send abandoned mid-flight is taken over after 10 minutes. Permanent errors (401/403/422, payload-mismatch 409) are not retried that day. Either way the next day's run tries again if items remain, so an outage costs at most 6 API calls a day and never more than one delivered email.
-- *Isolation.* Digest errors are caught and logged as `{"evt":"moderation_digest","status":...}` with a status/provider error name only; the API key is redacted from any error text. They never stop the cleanup, and the digest does not run on request paths, so gameplay is unaffected. A cleanup failure still lets the digest run, then fails the invocation as before. Ledger rows (counts only) are deleted after 30 days.
+- *Identical retries.* The day's text is stored on first claim, and every attempt resends it with `Idempotency-Key: hull-and-havoc-moderation-digest-YYYY-MM-DD`. Resend keeps keys for 24 hours, which covers every attempt of one UTC day, so a timeout whose request the provider actually accepted is deduplicated rather than sent twice.
+- *Not exactly-once.* The D1 row is the reliable local guard; the provider key is the second layer. If every attempt of a day ends ambiguously (timeout, Worker killed mid-send), whether that day's email arrived is unknown. The digest never resends that day under a new key.
+- *Outages across days.* An undelivered day (failed, or `sending` past its 10-minute lease) is not retried after its day ends. The next day's digest is composed from the live queue, and it **carries the undelivered days' expired-report counts** (column `expired`), because those reports are already deleted. The earlier rows become `superseded`, so nothing stays pending. An expiry notice is therefore repeated rather than lost when an earlier email did arrive after all.
+- *Retry limits.* Transient errors (timeout after 10 s, network, 408/429/5xx, concurrent-idempotency 409) get one immediate retry. A later invocation the same day can retry, up to 3 claims per day; a send abandoned mid-flight is taken over after 10 minutes. Permanent errors (401/403/422, payload-mismatch 409) are not retried that day. Either way the next day's run tries again if items remain, so an outage costs at most 6 API calls a day, and the provider key prevents a second delivery within a day.
+- *Isolation.* Digest errors are caught and logged as `{"evt":"moderation_digest","status":...}` with a status/provider error name only; the API key is redacted from any error text. They never stop the cleanup, and the digest does not run on request paths, so gameplay is unaffected. A cleanup failure still lets the digest run, then fails the invocation as before. Ledger rows (counts only) are deleted after 30 days. In the unusual case of a second invocation on a day whose first cleanup had failed, reports deleted after that day's email was sent are logged as `expiredNotAnnounced` rather than emailed.
 
 **Configuration** (all four required; any missing means `disabled`, which touches no digest table):
 
 | Name | Kind | Value |
 | --- | --- | --- |
 | `RESEND_API_KEY` | secret | Resend API key, *sending access* restricted to the sender domain. Never in Git, `wrangler.toml`, Vite or CI variables. Not added to `secrets.required`, so deploys still work without it. |
-| `MODERATION_DIGEST_FROM` | var | Sender on a Resend-verified domain, e.g. `Orbital Impact <moderation@SUBDOMAIN.davidandrea.ca>`. **Not yet chosen**; commented out in `wrangler.toml`. |
+| `MODERATION_DIGEST_FROM` | var | Sender on a Resend-verified domain, e.g. `Hull & Havoc <moderation@SUBDOMAIN.davidandrea.ca>`. **Not yet chosen**; commented out in `wrangler.toml`. |
 | `MODERATION_DIGEST_TO` | var | `privacy@davidandrea.ca` (set in `[env.production.vars]`). |
 | `MODERATION_DASHBOARD_URL` | var | `https://asteroids-leaderboard.davejandrea.workers.dev/admin` (set). |
 
@@ -113,18 +115,11 @@ It contains **no nicknames, score IDs, reporter or IP hashes, tokens or replay d
 
 **Why Resend.** `davidandrea.ca` uses Cloudflare DNS but Google Workspace MX (public DNS, checked 2026-11-12), so Cloudflare Email Routing's `send_email` binding is not available without moving mail routing. A plain HTTPS API call needs no SDK. No Resend account, domain or key exists in this repository or was verified.
 
-**Activation (owner, each step separately approved):**
-
-1. Confirm `privacy@davidandrea.ca` exists in Google Workspace (mailbox, alias or group) and is monitored.
-2. In Resend, add a sending subdomain (recommended, so the root SPF/DMARC used by Google Workspace stays untouched) and add the DNS records Resend shows in the Cloudflare DNS dashboard. Wait for verification. Create a sending-only API key for that domain.
-3. Back up/bookmark production D1 as in the [release runbook](release-preflight.md), then apply **0005** with the runbook's staged-migration procedure (stage only 0005; first confirm with a read-only `SELECT name FROM d1_migrations` that 0001-0004 are recorded and nothing else is pending). It is additive and the current Worker ignores the table. Confirm the ledger lists 0001-0005.
-4. Set `MODERATION_DIGEST_FROM` in `[env.production.vars]`, commit, and release through the normal `main` workflow. Without the key the digest logs `disabled` (verify the next cron log).
-5. `npx wrangler secret put RESEND_API_KEY --env production` and paste the key at the prompt (never as an argument). This creates a new Worker version with the same code. The next cron with pending items sends the first digest.
-6. Optional live check, only if you authorize it: send a test from the Resend dashboard to the recipient, or wait for a real item. Do not create production reports for testing.
+**Activation:** follow the ordered [digest activation runbook](digest-activation-runbook.md) (D1 backup, staged 0005, Resend subdomain DNS, sending-only key, Worker configuration, authorized delivery test, verification, rollback). Every production step there needs separate authorization.
 
 Deploying the code before 0005 is safe: it stays disabled until configured, and if enabled without the table it logs `error` and cleanup continues. Rollback: delete the secret (`wrangler secret delete RESEND_API_KEY --env production`) or roll the Worker back; the table can stay.
 
-**Not covered by tests:** real Resend delivery, domain verification, Cloudflare's production cron retry behaviour, and mailbox delivery/spam filtering. Tests use an in-process mock sender and a loopback mock HTTP provider under real workerd.
+**Not covered by tests:** real Resend delivery and its idempotency behaviour, domain verification, Cloudflare's production cron retry behaviour, and mailbox delivery/spam filtering. Tests use an in-process mock sender and a loopback mock HTTP provider under real workerd. Regression tests pin the cleanup-then-digest ordering (a report expiring in the same run's cleanup, empty remaining queue) and the cross-day carry-forward.
 
 ## Report retention and review policy
 
@@ -141,7 +136,7 @@ The 30-day limit, the deletion of resolved reports, and the reporter data kept a
 **Residual gaps:**
 
 - Until the digest is configured, expiry is as silent as before.
-- A delivery failure lasting the whole 30 days, or one on the expiry day itself, loses that day's expiry notice. The count stays in the Worker log for the provider's log retention.
+- A delivery failure on the expiry day no longer loses the notice: the count is carried to the next day's digest. It is lost only if the digest cannot claim a ledger row at all for 30 days (ledger rows are pruned after 30 days), or in the `expiredNotAnnounced` edge case above. Workers Logs are not enabled for this Worker, so the cron log is visible only live (`wrangler tail`).
 - The expiry notice gives counts, not which entries (by design). The entries themselves remain public and reviewable in **All entries**.
 - If the cleanup cron fails, reports outlive 30 days until it next succeeds (already disclosed as dependent on the job).
 

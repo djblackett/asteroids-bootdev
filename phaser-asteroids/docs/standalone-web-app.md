@@ -22,7 +22,7 @@ Reports to verify before relying on them (they could not be checked here, and br
    - `<meta name="apple-mobile-web-app-capable" content="yes">` and `<meta name="mobile-web-app-capable" content="yes">` (web-app capable).
    - `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">` so the page draws under the status bar. The game already uses `viewport-fit=cover`
      and `env(safe-area-inset-*)`, so the controls and canvas container are already inset; this would be the setting that makes those insets non-zero in standalone mode.
-   - `<meta name="theme-color" content="#000000">`, `<meta name="apple-mobile-web-app-title" content="Asteroids">`.
+   - `<meta name="theme-color" content="#000000">`, `<meta name="apple-mobile-web-app-title" content="Hull &amp; Havoc">`.
    - `<link rel="apple-touch-icon" href="./apple-touch-icon.png">` (180 x 180; there is a favicon but no touch icon today).
 2. **A web app manifest** (`manifest.webmanifest`, `<link rel="manifest">`): `name`, `short_name`, `start_url`, `scope`, `display` (`standalone`, or `fullscreen` to also hide the status bar on
    Android), `background_color`, `theme_color`, `orientation: "landscape"` (honoured by installed Android apps; iOS ignores it, so the "Rotate your phone" prompt stays), and icons

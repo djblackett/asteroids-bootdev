@@ -1,10 +1,12 @@
-# Orbital Impact production release preflight and runbook
+# Hull & Havoc production release preflight and runbook
+
+The game was called *Orbital Impact* in records before 2026-11-12; the name changed to **Hull & Havoc** on `release/hull-and-havoc-rc`. Infrastructure names (repository, package `ca.davidandrea.spacearcade`, Worker and D1 `asteroids-leaderboard`, URLs) are unchanged.
 
 Audit: 2026-11-04. **Backend released; Android/Play still blocked pending external gates.** [Stage 1](#stage-1-production-result-2026-11-04) (production D1 backup + migrations 0003/0004) executed 2026-11-04 18:04-18:06 UTC. [Stage 2](#stage-2-production-worker-deployment-2026-11-04) (moderation Worker via main CI) executed 2026-11-04 18:30-18:33 UTC and verified. No restore, credentials change, production moderation write or Play upload was performed. **Present requirements are in [Current status](#current-status-2026-11-12) below.** Every later section is a dated record: where it describes Stage 1/2, migrations or the Worker deployment as pending, that is the pre-execution plan, kept for reference and for future migrations. This replaces the historical 2026-10-22 preflight. See [operator workflow](leaderboard-moderation.md), [test evidence](play-release-validation.md), [data inventory](play-data-inventory.md), [policy draft](privacy-policy-draft.md) and [Android signing/build/Play instructions](../phaser-asteroids/docs/google-play-release.md).
 
 ## Current status (2026-11-12)
 
-Branch `release/android-device-prep` (from `dev` after merging `main`'s Stage 2 merge `8569834` back into `dev`; that merge changed no files). Nothing was pushed, deployed or uploaded.
+Release candidate branch **`release/hull-and-havoc-rc`**: `release/android-device-prep` → `feature/moderation-digest` → merge of `feature/privacy-policy-page` → branding and digest fixes. Its verification is recorded in [play-release-validation.md](play-release-validation.md#release-candidate-hull--havoc-2026-11-12). Nothing was pushed, deployed or uploaded. Merging it to `main` deploys the Worker **and publishes the privacy page on GitHub Pages**, so it waits for policy approval.
 
 ### Satisfied or verified
 
@@ -15,15 +17,15 @@ Branch `release/android-device-prep` (from `dev` after merging `main`'s Stage 2 
 
 ### Confirmed blockers for internal testing
 
-1. **Privacy policy:** the contact is now **privacy@davidandrea.ca** (confirmed 2026-11-12; draft and bundled text updated on `feature/moderation-digest`, not yet built or deployed, so GitHub Pages still shows the placeholder). The text is still a draft and the bundled screen keeps its `DRAFT PRIVACY POLICY - REVIEW PENDING` marker. An approved hosted policy URL is needed for Play Console. Approval remains an owner decision.
+1. **Privacy policy:** contact **privacy@davidandrea.ca** (confirmed). A public page is prepared at `phaser-asteroids/public/privacy/index.html` for the proposed URL `https://djblackett.github.io/asteroids-bootdev/privacy/` (not published; GitHub Pages still shows the old placeholder build). The bundled screen keeps its `DRAFT PRIVACY POLICY - REVIEW PENDING` marker, so the signed-release inspector still refuses it. Open wording questions are in [privacy-policy-publication.md](privacy-policy-publication.md#unresolved-need-your-decision-before-publishing). Approval remains an owner decision.
 2. **Signing:** no upload key exists in this environment; Play App Signing is not enrolled; no signed AAB exists. Confirm in Console that version code 1 is unused.
 3. **Physical device:** not yet tested. A sideload build and [checklist](../phaser-asteroids/docs/phone-test-checklist.md) are ready. ADB saw a Samsung SM-S901E only briefly over a local bridge (then `offline`), so nothing was installed or queried.
-4. **Play Console setup:** app record, app name (launcher still `phaser-asteroids`), icon/splash/listing assets, and the declarations Console lists as outstanding (privacy policy URL, ads, content rating, target audience, app access). Data safety is exempt for internal-only testing.
+4. **Play Console setup:** app record, app name (launcher now **Hull & Havoc** on the RC branch), icon/splash/listing assets, and the declarations Console lists as outstanding (privacy policy URL, ads, content rating, target audience, app access). Data safety is exempt for internal-only testing.
 
 ### Requires manual verification or an owner decision
 
 - Moderation coverage: the initial review of existing names ([workflow step 2](leaderboard-moderation.md#daily-solo-administrator-workflow)) is still to do. Decide whether nickname-only blocking and submit-as-acceptance satisfy Play UGC for an accountless app ([readiness assessment](leaderboard-moderation.md#google-play-ugc-readiness-rechecked-2026-11-12)).
-- **Daily moderation digest** (implemented and tested locally on `feature/moderation-digest`, 2026-11-12): needs migration **0005** applied to production D1 (additive, staged like 0003/0004), a Resend-verified sender (`MODERATION_DIGEST_FROM`) and the `RESEND_API_KEY` secret. Disabled and harmless until then; deploying the code before 0005 is safe. See [activation](leaderboard-moderation.md#daily-moderation-digest). Report-retention options A-D await an owner decision ([policy](leaderboard-moderation.md#report-retention-and-review-policy)).
+- **Daily moderation digest** (on the RC branch, tested locally): needs migration **0005** applied to production D1 (additive), a Resend-verified sender (`MODERATION_DIGEST_FROM`) and the `RESEND_API_KEY` secret. Disabled and harmless until then; deploying the code before 0005 is safe. Ordered steps: [digest activation runbook](digest-activation-runbook.md). Report-retention options A-D await an owner decision ([policy](leaderboard-moderation.md#report-retention-and-review-policy)).
 - Provider retention (Workers logs/observability, Time Travel window, export copies) for the privacy text.
 - A 16 KB-page device or emulator, a Play-delivered install/update, and a tablet/large screen.
 - Existing installs: no build has been distributed (`distributed: null`), so the only possible prior installs are developer builds signed with the same local debug key. See checklist section 9.

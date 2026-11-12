@@ -27,7 +27,7 @@ export const PRIVACY_PAGES = [
     'Daily cleanup removes abandoned runs 1 day after expiry and',
     'rejected runs after 30 days; old hourly counters after 2 hours.',
     'Reports (entry, reason, IP hash) expire after 30 days at daily cleanup.',
-    'Provider logs and backups have separate retention; review is pending.',
+    'Cloudflare logs and backups follow their own retention periods.',
   ],
   [
     'YOUR CHOICES AND CONTACT',
