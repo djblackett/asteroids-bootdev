@@ -8,9 +8,9 @@ cannot be uploaded to Play. Record results in the "Result" column and keep notes
 
 | | |
 | --- | --- |
-| **Install this** | `phaser-asteroids/android/app/build/outputs/apk/sideload/orbital-impact-1.0-sideload-debugkey.apk` |
+| **Install this** | `phaser-asteroids/android/app/build/outputs/apk/sideload/hull-and-havoc-1.0-sideload-debugkey.apk` |
 | SHA-256 | `11FEB5AB4A3B7BDCD84FF291D7A22FE96A1B0AAA664FA5F95B2AD298692FE592` |
-| What it is | The **release** build type (not debuggable, WebView debugging off) from the unsigned `app-release-unsigned.apk` (SHA-256 `284F84C1…FBD01C`, byte-identical to the 2026-11-04 audit APK), re-signed with `~/.android/debug.keystore` (`CN=Android Debug`, cert SHA-256 `884e8e7b…442f74`). v2+v3 signatures, 16 KB zip alignment verified. |
+| What it is | The **release** build type (not debuggable, WebView debugging off) from the unsigned `app-release-unsigned.apk` (rebuilt 2026-11-12 on `release/hull-and-havoc-rc` with the Hull & Havoc label, SHA-256 `ED631C99…EF8F14`; sideload copy SHA-256 `08348538…C35E24`), re-signed with `~/.android/debug.keystore` (`CN=Android Debug`, cert SHA-256 `884e8e7b…442f74`). v2+v3 signatures, 16 KB zip alignment verified. |
 | Identity | `ca.davidandrea.spacearcade`, versionName `1.0`, versionCode `1`, min SDK 24, target 36. Permissions: INTERNET, VIBRATE, AndroidX dynamic-receiver (signature-only). |
 | Gameplay | Frozen rules `1.2.0`, replay schema `1` (recorded in `server/rules/released.json`); production health reports supported `[1.2.0]`. |
 | Backend | Production Worker `https://asteroids-leaderboard.davejandrea.workers.dev` (version `c2aef78f`). There is no test backend in this build. |
@@ -27,7 +27,7 @@ $bt = "$env:LOCALAPPDATA\Android\Sdk\build-tools\36.1.0"
 New-Item -ItemType Directory -Force android\app\build\outputs\apk\sideload | Out-Null
 # Debug keystore's public default password; this is not the upload key and must never sign a Play artifact.
 & "$bt\apksigner.bat" sign --ks "$env:USERPROFILE\.android\debug.keystore" --ks-pass pass:android --ks-key-alias androiddebugkey --key-pass pass:android `
-  --out android\app\build\outputs\apk\sideload\orbital-impact-1.0-sideload-debugkey.apk android\app\build\outputs\apk\release\app-release-unsigned.apk
+  --out android\app\build\outputs\apk\sideload\hull-and-havoc-1.0-sideload-debugkey.apk android\app\build\outputs\apk\release\app-release-unsigned.apk
 ```
 
 The signed-release inspector (no `-Unsigned`) refuses this APK: debug key, plus draft privacy text. That is intended.
@@ -46,7 +46,7 @@ The signed-release inspector (no `-Unsigned`) refuses this APK: debug key, plus 
 2. Connect by **USB cable** and accept the RSA prompt. `adb devices -l` must show the phone as `device` (not `offline`/`unauthorized`).
 3. Check for an existing install first:
    `adb shell dumpsys package ca.davidandrea.spacearcade | findstr /i "versionCode versionName lastUpdateTime"`
-4. Install: `adb install -r "C:\Users\davej\dev\asteroids-bootdev\phaser-asteroids\android\app\build\outputs\apk\sideload\orbital-impact-1.0-sideload-debugkey.apk"`
+4. Install: `adb install -r "C:\Users\davej\dev\asteroids-bootdev\phaser-asteroids\android\app\build\outputs\apk\sideload\hull-and-havoc-1.0-sideload-debugkey.apk"`
    - `INSTALL_FAILED_UPDATE_INCOMPATIBLE` means an install signed with a different key exists. Note its version, then decide whether
      to uninstall (loses its local data). Do not uninstall just to get past the error if you want section 9's evidence.
 5. If several devices are attached, add `-s <serial>` from `adb devices`. Useful while testing: `adb logcat -v time *:E chromium:I Capacitor:V`.

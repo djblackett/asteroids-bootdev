@@ -2,6 +2,43 @@
 
 Prepared on `dev`, base HEAD `c1871a92c6f2a99bbac6f8dc8885691804826737`, plus the uncommitted privacy/release changes. No push, merge, deployment, production data mutation, key generation, signing or Play publication. Pre-existing Android Studio `.idea` changes and inaccessible tracked `tmp/` deletions were left alone. The Gradle settings typo seen initially was already corrected in the working tree before this task's Android edits.
 
+## Release candidate: Hull & Havoc (2026-11-12)
+
+Branch `release/hull-and-havoc-rc` (local only; nothing pushed, deployed, migrated or emailed). Mocked/loopback email only.
+
+| Check | Result |
+| --- | --- |
+| Vitest (full) | **71 files / 1,705 tests passed** (incl. digest 25, delivery-test script 3, branding 3, privacy page 5, Android release guards) |
+| Typecheck | frontend `tsc --noEmit` and server `tsc -p server/tsconfig.json`: pass |
+| Production build | `npm run build`: pass; `dist/privacy/index.html` emitted; no Resend/digest strings in the client bundle |
+| Android build guards | `node --test scripts/build-android.test.mjs`: 8/8 |
+| Frozen rules | `rules-guard.mjs main`: 0 changes under `server/rules`; guard tests 4/4. No diff under `src/core`, `src/replay`, `src/game`, `src/scenes` vs `main` |
+| Real Worker + D1 (workerd) | `server/scripts/worker-e2e.mjs`: **39/39**, incl. one digest for two same-day crons, key `hull-and-havoc-moderation-digest-YYYY-MM-DD` |
+| D1 migration rehearsal | `test:release:migrations`: **43/43**, incl. additive 0005 after 0004 and the historical Worker on the 0005 schema |
+| Runbook D1 blocks | [digest-activation-runbook.md](digest-activation-runbook.md) setup and steps 4-8 run verbatim against a local stand-in (only `--env production --remote` rewritten; account calls stubbed; invalid API token); all OK; step 4 correctly STOPs once 0005 is applied |
+| Moderation dashboard (Chromium) | `test:moderation:admin`: **28/28** |
+| Menus incl. privacy pages | `scripts/menu.mjs`: **127/127**; `HULL & HAVOC` title fits at every tested size |
+| GitHub Pages subpath | `scripts/pages-check.mjs`: **35/35**, incl. `/asteroids-bootdev/privacy/` (200, heading, contact, favicon, no off-site requests, back link, no sideways scroll at 360 px) |
+| Worker production dry-run | `wrangler deploy --env production --dry-run`: 151.57 KiB; bindings `DB`, `ALLOWED_ORIGINS`, `MODERATION_DIGEST_TO`, `MODERATION_DASHBOARD_URL`; no sender or key (digest stays disabled) |
+| Android unsigned release | `bundleRelease assembleRelease lintRelease -PallowUnsignedRelease=true`: success. Inspector `-Unsigned`: PASS (no `.so`, no server verifier, package/SDK/debuggable/permissions), WARN draft privacy text (expected). `aapt2`: package `ca.davidandrea.spacearcade` 1.0 (1), label **Hull & Havoc**. APK `ED631C99…EF8F14`, AAB `87A2C243…EF272` |
+| Sideload copy (local debug key) | `hull-and-havoc-1.0-sideload-debugkey.apk`, `08348538…C35E24`, v2/v3 verified, 16 KB aligned. Not uploadable |
+
+**Not run:** gameplay browser suites (`ranked-ui`, `ranked`, `touch`, `keyboard`, `combat`, `coop`, `gamepad`, `replay:browser`), because no gameplay code changed. No signed build, no device install, no real Resend delivery, no production read or write.
+
+### Google Play: focused check of this candidate
+
+Established by inspection or test:
+- Package `ca.davidandrea.spacearcade`, version 1.0 (1), rules 1.2.0 frozen; launcher label Hull & Havoc; permissions INTERNET and VIBRATE only (the digest added none).
+- Privacy URL `https://djblackett.github.io/asteroids-bootdev/privacy/` is used consistently in the page, the offline screens and the Play guide. It is **not live** until a release to `main`.
+- Draft gate intact: the offline screen keeps `DRAFT PRIVACY POLICY - REVIEW PENDING`, and the signed-mode inspector refuses it. Upload-key procedure (`ASTEROIDS_UPLOAD_*`, signed-mode inspector) unchanged.
+- Reporting, blocking and the `/admin` workflow pass their suites. Gameplay requests do not depend on email.
+
+Unresolved interpretation (not established; see [UGC readiness](leaderboard-moderation.md#google-play-ugc-readiness-rechecked-2026-11-12)):
+- **Rules acceptance:** submit-as-acceptance with the rules one tap away. Play asks users to accept terms before creating UGC; whether an implicit "by submitting" suffices is a reviewer judgment. The conservative option is an explicit "Accept rules & submit" label (client-only change, not made here).
+- **Blocking without accounts:** name-based device-local blocking; names are shared and changeable.
+- **Ongoing moderation:** depends on activating the digest and on your actual response time, not on code.
+- **Data safety:** the inventory supports the rows (name, app activity, IP-derived identifier, deletion by email). Internal-only testing is exempt; answers must be final before closed/open/production tracks.
+
 ## Device-test preparation — 2026-11-12
 
 Branch `release/android-device-prep`; packaged sources unchanged from `f1a031a` (`dev` after a no-file-change merge of `main`). No push, deploy, production write, key generation or Play upload. Production access was SELECT-only D1 (`rows_written: 0`) plus Cloudflare analytics and deployment-status reads.
