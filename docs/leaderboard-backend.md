@@ -190,7 +190,7 @@ Migrations `server/migrations/0001_init.sql` and `0002_time_limit.sql` (applied 
 
 **`rate_limits`** — `(bucket, window_start)` PK, `count`.
 
-Indexes: partial board index `(rules_version, score DESC, completed_at ASC, id ASC) WHERE visibility='visible' AND score>0` (serves every leaderboard read) and `(rules_version, completed_at)` for weekly ranges. **Replays are not stored.** Only `replay_hash` is kept. Housekeeping (daily cron): abandoned runs a day past expiry, rejected runs after 30 days, stale rate-limit rows. Accepted runs are kept.
+Indexes: partial board index `(rules_version, score DESC, completed_at ASC, id ASC) WHERE visibility='visible' AND score>0` (serves every leaderboard read) and `(rules_version, completed_at)` for weekly ranges. **Replays are not stored.** Only `replay_hash` is kept. Housekeeping (daily cron): abandoned runs a day past expiry, rejected runs after 30 days, stale rate-limit rows, reports after 30 days. Accepted runs are kept. The same cron then sends the optional [moderation digest](leaderboard-moderation.md#daily-moderation-digest) (migration 0005; disabled unless configured).
 
 ## 6. API contracts
 

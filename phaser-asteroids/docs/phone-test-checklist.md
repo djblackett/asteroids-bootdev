@@ -118,7 +118,7 @@ The signed-release inspector (no `-Unsigned`) refuses this APK: debug key, plus 
 
 | # | Check | Expected | Result |
 | --- | --- | --- | --- |
-| 8.1 | PRIVACY menu: all 4 pages, NEXT/BACK | Readable at phone size; shows the **draft** marker and `[PRIVACY CONTACT PENDING]` (expected until the policy is approved) | |
+| 8.1 | PRIVACY menu: all 4 pages, NEXT/BACK | Readable at phone size; shows the **draft** marker (expected until the policy is approved) and the contact `privacy@davidandrea.ca` | |
 | 8.2 | HIGH SCORES > REPORT / BLOCK > Report your own test entry (writes a private report) | Success message (note what a second report of the same entry shows; the server keeps one report per entry and network); the entry appears in `/admin` Needs review | |
 | 8.3 | Block that nickname | Entries with that name replaced on this device; survives app restart | |
 | 8.4 | Unblock | Entries return | |

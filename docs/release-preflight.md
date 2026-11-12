@@ -15,14 +15,15 @@ Branch `release/android-device-prep` (from `dev` after merging `main`'s Stage 2 
 
 ### Confirmed blockers for internal testing
 
-1. **Privacy policy and contact:** `[PUBLIC EMAIL PENDING]` / `[PRIVACY CONTACT PENDING]` remain in the draft and the bundled app text, which is marked as a draft (and public on GitHub Pages). An approved hosted policy URL is needed for Play Console. Owner decision; nothing has been chosen or approved.
+1. **Privacy policy:** the contact is now **privacy@davidandrea.ca** (confirmed 2026-11-12; draft and bundled text updated on `feature/moderation-digest`, not yet built or deployed, so GitHub Pages still shows the placeholder). The text is still a draft and the bundled screen keeps its `DRAFT PRIVACY POLICY - REVIEW PENDING` marker. An approved hosted policy URL is needed for Play Console. Approval remains an owner decision.
 2. **Signing:** no upload key exists in this environment; Play App Signing is not enrolled; no signed AAB exists. Confirm in Console that version code 1 is unused.
 3. **Physical device:** not yet tested. A sideload build and [checklist](../phaser-asteroids/docs/phone-test-checklist.md) are ready. ADB saw a Samsung SM-S901E only briefly over a local bridge (then `offline`), so nothing was installed or queried.
 4. **Play Console setup:** app record, app name (launcher still `phaser-asteroids`), icon/splash/listing assets, and the declarations Console lists as outstanding (privacy policy URL, ads, content rating, target audience, app access). Data safety is exempt for internal-only testing.
 
 ### Requires manual verification or an owner decision
 
-- Moderation coverage: the initial review of existing names ([workflow step 2](leaderboard-moderation.md#daily-solo-administrator-workflow)) is still to do. Decide whether nickname-only blocking and submit-as-acceptance satisfy Play UGC for an accountless app.
+- Moderation coverage: the initial review of existing names ([workflow step 2](leaderboard-moderation.md#daily-solo-administrator-workflow)) is still to do. Decide whether nickname-only blocking and submit-as-acceptance satisfy Play UGC for an accountless app ([readiness assessment](leaderboard-moderation.md#google-play-ugc-readiness-rechecked-2026-11-12)).
+- **Daily moderation digest** (implemented and tested locally on `feature/moderation-digest`, 2026-11-12): needs migration **0005** applied to production D1 (additive, staged like 0003/0004), a Resend-verified sender (`MODERATION_DIGEST_FROM`) and the `RESEND_API_KEY` secret. Disabled and harmless until then; deploying the code before 0005 is safe. See [activation](leaderboard-moderation.md#daily-moderation-digest). Report-retention options A-D await an owner decision ([policy](leaderboard-moderation.md#report-retention-and-review-policy)).
 - Provider retention (Workers logs/observability, Time Travel window, export copies) for the privacy text.
 - A 16 KB-page device or emulator, a Play-delivered install/update, and a tablet/large screen.
 - Existing installs: no build has been distributed (`distributed: null`), so the only possible prior installs are developer builds signed with the same local debug key. See checklist section 9.
