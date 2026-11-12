@@ -9,13 +9,14 @@ export const PRIVACY_CONTACT = 'privacy@davidandrea.ca';
 export const PRIVACY_PAGES = [
   [
     'DRAFT PRIVACY POLICY - REVIEW PENDING',
-    'Asteroids / ca.davidandrea.spacearcade',
+    'Hull & Havoc / ca.davidandrea.spacearcade',
     'Operator: David Andrea. No accounts, ads or analytics SDKs.',
     'Ranked play sends game inputs, versions, timing and control type',
     'to Cloudflare to verify scores and prevent abuse.',
     'Submitting publishes your nickname, score, date, duration and rules version.',
     'Use a nickname without personal information. Submission is optional.',
     'Practice does not upload gameplay. Menus may fetch public scores.',
+    'Full policy: https://djblackett.github.io/asteroids-bootdev/privacy/',
   ],
   [
     'STORAGE AND RETENTION',
