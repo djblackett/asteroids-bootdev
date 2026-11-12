@@ -1,6 +1,6 @@
 # Android privacy inventory and proposed Data safety answers
 
-Audit date: 2026-11-03; moderation follow-up 2026-11-04. Branch: `dev`. Scope: Capacitor Android application, browser code shared with it, Cloudflare Worker and D1 schema. Root Python game's scores/logging are not packaged in the Android game. No cloud account settings or production data were read or modified. Reporting, erasure and the extended moderation workflow below are implemented locally, not deployed. See [moderation audit and operator guide](leaderboard-moderation.md).
+Audit date: 2026-11-03; moderation follow-up 2026-11-04. Branch: `dev`. Scope: Capacitor Android application, browser code shared with it, Cloudflare Worker and D1 schema. Root Python game's scores/logging are not packaged in the Android game. No cloud account settings or production data were read or modified. Reporting, erasure and the extended moderation workflow below were implemented locally at audit time and **have been live in production since 2026-11-04** (Worker `c2aef78f`, D1 migrations 0001-0004; see the [Stage 2 record](release-preflight.md#stage-2-production-worker-deployment-2026-11-04)). The proposed answers below are still unconfirmed against provider settings. See [moderation audit and operator guide](leaderboard-moderation.md).
 
 ## Confirmed data flows
 

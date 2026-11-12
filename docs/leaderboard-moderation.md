@@ -1,5 +1,7 @@
 # Leaderboard moderation: audit and operator guide
 
+**Current status (2026-11-12):** live in production since 2026-11-04 (see [Verification](#verification)). The deployment checklist under [Erasure, cache consistency and release configuration](#erasure-cache-consistency-and-release-configuration) is complete except where marked open. The remaining operator tasks are the initial review of existing names, review coverage, and the public removal contact. The rest of this page records the implementation pass as written at the time.
+
 Audited and extended on 2026-11-04 on `dev`, starting at `91c349c` (`add moderation tooling`). Local implementation and tests only. No production deployment, production data changes, credentials changes, commits or pushes were performed. Existing inaccessible root `tmp/` deletions were left alone.
 
 ## Assessment of the previous implementation
@@ -70,10 +72,10 @@ After approving a request, use **Erase score and linked records**, typing the fu
 
 Public boards/details and admin responses now send `Cache-Control: no-store`; current frontend reads also bypass browser HTTP caching. No Cache API is used. Existing old-client caches may remain fresh for their former five-second lifetime during rollout. Already displayed screens, offline local records, downloaded copies and screenshots cannot be recalled. Refresh/reopen fetches current server state; there is no push removal from an already open screen.
 
-Before a separately authorized production release:
+Before a separately authorized production release (status as of 2026-11-12 in brackets):
 
-- Back up/rehearse the migration against a disposable copy and review provider restore/retention practices. Apply pending 0003 **and 0004** to the correct `env.production` D1 before deploying this Worker. Do not deploy the code against an unmigrated database. This task ran migrations only with `--local`.
-- Preserve existing `ADMIN_TOKEN`, `IP_HASH_SALT`, origin allowlist and frozen engines. No new secret/service/dependency is needed. Verify administration is enabled, the 07:17 UTC cleanup cron runs, and report review is assigned. Confirm HTTPS to the actual Worker origin. Protect that origin and D1 access through existing account controls.
+- [**Done 2026-11-04**: backup verified, 0003/0004 applied before the Worker.] Back up/rehearse the migration against a disposable copy and review provider restore/retention practices. Apply pending 0003 **and 0004** to the correct `env.production` D1 before deploying this Worker. Do not deploy the code against an unmigrated database. This task ran migrations only with `--local`. [Provider retention review still open.]
+- [**Done**: secrets and origins preserved, administration enabled, cron verified indirectly 2026-11-12. **Open**: report review assignment.] Preserve existing `ADMIN_TOKEN`, `IP_HASH_SALT`, origin allowlist and frozen engines. No new secret/service/dependency is needed. Verify administration is enabled, the 07:17 UTC cleanup cron runs, and report review is assigned. Confirm HTTPS to the actual Worker origin. Protect that origin and D1 access through existing account controls.
 - Verify Cloudflare Cache Rules do not override `no-store` for `/api/v1/*` or `/admin`. Purge any previously forced edge caches at deployment if such a rule existed; this source checkout cannot verify dashboard rules. Do not promise instant removal from old copies.
 - Review Cloudflare observability, logs, D1 Time Travel and exports separately. SQL erasure does not erase provider backups/logs. Reapply approved erasures before serving a restored database.
 - Deploy backend before the updated app (new report reason requires it). Rebuild/sync Android assets and test a Play-delivered build. Old challenge/submission/board/detail shapes, default rules and frozen verifier remain unchanged; old report reasons and legacy admin APIs remain supported.

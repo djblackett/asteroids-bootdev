@@ -310,7 +310,7 @@ One-use run ids; CSPRNG tokens and seeds; expiry; atomic state transitions; per-
 
 Minimal logging (no IPs, nicknames or tokens): `run_rejected`, `verifier_threw`, `submit_failed`, `unhandled`, `prune`.
 
-Moderation: use the Worker-origin `/admin` console or the authenticated APIs in the [moderation operator guide](leaderboard-moderation.md). Pending migrations 0003/0004 add private reports, reversible display names and transactional audit records. Avoid direct SQL moderation: it bypasses revision guards and audit history. Public boards/details now use `Cache-Control: no-store`.
+Moderation: use the Worker-origin `/admin` console or the authenticated APIs in the [moderation operator guide](leaderboard-moderation.md). Migrations 0003/0004 (applied in production 2026-11-04) add private reports, reversible display names and transactional audit records. Avoid direct SQL moderation: it bypasses revision guards and audit history. Public boards/details now use `Cache-Control: no-store`.
 
 ## 11. What an attacker can and cannot do
 

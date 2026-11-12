@@ -2,6 +2,27 @@
 
 Prepared on `dev`, base HEAD `c1871a92c6f2a99bbac6f8dc8885691804826737`, plus the uncommitted privacy/release changes. No push, merge, deployment, production data mutation, key generation, signing or Play publication. Pre-existing Android Studio `.idea` changes and inaccessible tracked `tmp/` deletions were left alone. The Gradle settings typo seen initially was already corrected in the working tree before this task's Android edits.
 
+## Device-test preparation — 2026-11-12
+
+Branch `release/android-device-prep`; packaged sources unchanged from `f1a031a` (`dev` after a no-file-change merge of `main`). No push, deploy, production write, key generation or Play upload. Production access was SELECT-only D1 (`rows_written: 0`) plus Cloudflare analytics and deployment-status reads.
+
+| Check (from phaser-asteroids, PowerShell, JDK 21.0.5) | Result |
+| --- | --- |
+| `npx vitest run --maxWorkers=4` | **Passed:** 67 files / 1,669 tests (1,667 + 2 new inspector/draft-marker tests) |
+| `npm run typecheck --prefix server`, `npm run test:android-build`, rules-guard/production-health tests, `node scripts/rules-guard.mjs main` | **Passed:** typecheck; 8/8; 19/19; 0 released-rules changes |
+| `npm run android:sync` | **Passed:** 1.0 (1) plays frozen rules 1.2.0/schema 1; production HTTPS origin baked in |
+| `gradlew :app:bundleRelease :app:assembleRelease :app:lintRelease -PallowUnsignedRelease=true` | **Passed:** BUILD SUCCESSFUL; lint 0 errors / 14 warnings (same categories as before) |
+| `inspect-android-release.ps1 -Unsigned` | **Passed**, with WARN for the bundled draft privacy text. AAB `8CC0A4F8…EFB2`, APK `284F84C1…D01C`: byte-identical to 2026-11-04 |
+| Inspector refusals (new) | **Verified:** signed mode on the debug-key APK + unsigned AAB lists debug key, unsigned AAB and 4 draft-marker findings; debug APK refused as debuggable; missing `app-release.apk` refused |
+| Sideload APK (release APK re-signed with local debug key) | **Built:** `apk/sideload/orbital-impact-1.0-sideload-debugkey.apk`, SHA-256 `11FEB5AB…E592`, v2/v3 verified, 16 KB zip-aligned. Not uploadable |
+| `gradlew :app:assembleDebug` | **Passed:** `apk/debug/app-debug.apk` `E49AC998…6093` (diagnostic only) |
+| Production cron (read-only) | **Verified indirectly:** daily 07:00 UTC invocation 8/8 days, 0 errors since deploy; prune effects visible in D1. See [current status](release-preflight.md#current-status-2026-11-12) |
+| ADB devices | **Not stable:** Samsung SM-S901E appeared once via a local bridge, then `offline`. Nothing installed |
+| Browser suites (ranked UI, menu, worker-e2e, moderation admin, migrations) | **Not re-run:** no change to their inputs since the 2026-11-04 passes at `549729f` |
+| Physical device, 16 KB runtime, signed AAB, Play-delivered install | **Not run:** require a device, an upload key and Console access |
+
+Tooling note: from the Bash tool, whose working directory had a lowercase drive letter (`c:\`), every Vitest file failed with `Cannot read properties of undefined (reading 'config')`. Running from a `C:\` working directory passed. This was an environment artifact, not a test failure.
+
 ## Backend release — 2026-11-04 (Stage 2)
 
 The moderation Worker is live: merge `8569834` (tree identical to `549729f`), Actions run 41887905781, Cloudflare version `c2aef78f-ec27-4118-bd2c-a13f59b7313b` at 100% on D1 0001-0004. Pre-deploy local results at `549729f` matched the table below (1,667 unit, 40/40 migrations/historical client, 33/33 worker-e2e, 28/28 admin, 99/99 ranked UI, 127/127 menu). Live public (31/31) and admin read-only (19/19) checks passed. Details and remaining gates: [Stage 2 record](release-preflight.md#stage-2-production-worker-deployment-2026-11-04). Android old-device testing is still outstanding (0 ADB devices).
@@ -104,6 +125,6 @@ Toolchain: Node 26.13.0, npm 11.20.0, JDK 21.0.5, Gradle 8.14.3, AGP 8.13.0. Ins
 1. Operator confirmed as David Andrea on 2026-11-04. Public privacy/security/removal/moderation mailbox intentionally deferred at David's request; return to this before distribution. Choose the address and mailbox handling/retention, final game name and effective date. Replace bundled contact placeholders and approve the public policy before distribution. Hosting proposal is in [the draft](privacy-policy-draft.md); nothing is hosted by this task.
 2. Verify Cloudflare logging, request fields/location processing, security logs, backup/recovery/export retention, processing role and regions. Finalize [Data safety answers](play-data-inventory.md) using those facts. Accepted/hidden scores currently have no automatic expiry; do not promise otherwise.
 3. Assign moderation coverage and review [nickname-blocking limitations](leaderboard-moderation.md) against Play's user-blocking requirement. No account or stable user identity was added.
-4. Separately authorize/report the Worker migration and deployment before enabling reports for testers; implement the removal mailbox process. The new erasure route exists locally and is tested, but is not live in production.
+4. ~~Separately authorize/report the Worker migration and deployment before enabling reports for testers.~~ **Done 2026-11-04** (Stage 1/2): reporting, moderation and the erasure route are live in production. Still open: implement the removal mailbox process (depends on item 1).
 5. Human creates/protects the upload key or supplies an existing one; build and inspect signed artifacts and verify certificate fingerprints. Confirm Play has not already consumed version code 1; increment and append the release registry record if needed.
 6. Test a Play-delivered build on a 16 KB emulator/device and Samsung/representative devices, including tablet/window behavior and backup/device transfer. No `.so` files makes ELF alignment inapplicable to the bundled app; it does not replace runtime testing. Complete the [internal-testing procedure](../phaser-asteroids/docs/google-play-release.md), target ages/content rating and branding pass before promotion.

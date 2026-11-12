@@ -1,6 +1,8 @@
 # Asteroids privacy policy — review draft
 
-**Not approved for publication or distribution.** Public contact, provider retention and final game name require review. Package: `ca.davidandrea.spacearcade`. Proposed effective date: set on approval. The draft describes the changes in this checkout; reporting and erasure are not yet deployed.
+**Not approved for publication or distribution.** Public contact, provider retention and final game name require review. Package: `ca.davidandrea.spacearcade`. Proposed effective date: set on approval.
+
+**Deployment status (2026-11-12):** the reporting, operator moderation (name replacement, hide/restore, report resolution, audit history) and erasure functions this draft describes have been live in the production leaderboard service since 2026-11-04 (Worker version `c2aef78f`; [Stage 2 record](release-preflight.md#stage-2-production-worker-deployment-2026-11-04)). The policy text itself is **still an unapproved draft**: the public web build and any test APK show the bundled Privacy screen marked `DRAFT PRIVACY POLICY - REVIEW PENDING` with `[PRIVACY CONTACT PENDING]`. Deployment of these features does not approve this text, the contact, or the retention statements below.
 
 Operator: **David Andrea** (confirmed 2026-11-04). Privacy, security and removal contact: **[PUBLIC EMAIL PENDING]**.
 

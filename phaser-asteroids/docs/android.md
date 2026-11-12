@@ -4,7 +4,8 @@ The Android app is the unchanged web game inside Capacitor 8. All native behavio
 Browsers and GitHub Pages never take any of these paths.
 
 Status: implemented and unit/browser tested on the desktop. **Not yet tried on a phone**: see the
-[device checklist](#device-checklist). Nothing has been deployed or published.
+[phone test checklist](phone-test-checklist.md). The leaderboard backend it uses is deployed (Worker `c2aef78f`, 2026-11-04); the app
+itself has not been published.
 
 ## Building
 
@@ -33,15 +34,16 @@ cd android && ./gradlew assembleDebug   # Set JAVA_HOME to JDK 21 first
 At runtime, [`resolveApiBase`](../src/ranked/api.ts) ignores `?api=` and the `wrangler dev` fallback whenever the page runs inside
 the app. So an installed app can only reach the configured production Worker, or report "not available".
 
-Release items not done yet: the app name (still `phaser-asteroids`), `versionCode` / `versionName`, release signing, an AAB build,
-and the launcher icon and splash artwork.
+Release items not done yet: the app name (still `phaser-asteroids`), the launcher icon and splash artwork, an upload key and a signed
+AAB. Version `1.0` / code `1`, the signing configuration and unsigned AAB/APK builds exist; see
+[google-play-release.md](google-play-release.md).
 
 ## How each concern is handled
 
 | Concern | Where | What |
 |---|---|---|
 | App origin | [`capacitor.config.ts`](../capacitor.config.ts) | `server.hostname = spacearcade.davidandrea.ca`, `androidScheme = https`. The page origin (and the `Origin` header the Worker sees) is `https://spacearcade.davidandrea.ca`. Nothing is fetched from that domain: Capacitor serves the bundled files under that name. It is not `localhost`, so development-only rules never apply. **Do not change it after release**: `localStorage` (settings, nickname, local scores) belongs to the origin. |
-| CORS | [`server/wrangler.toml`](../server/wrangler.toml) | Production `ALLOWED_ORIGINS` now also lists `https://spacearcade.davidandrea.ca`. **This only takes effect after the Worker is deployed.** Merging to `main` deploys it through CI. Until then ranked play and the boards in the app fail with `origin_not_allowed`, and practice still works. |
+| CORS | [`server/wrangler.toml`](../server/wrangler.toml) | Production `ALLOWED_ORIGINS` now also lists `https://spacearcade.davidandrea.ca`. Deployed: production echoes this origin (verified 2026-11-04). If it were ever removed, ranked play and the boards in the app would fail with `origin_not_allowed`, and practice would still work. |
 | Android Back | [`src/platform/nativeBack.ts`](../src/platform/nativeBack.ts), [`nativeApp.ts`](../src/platform/nativeApp.ts) | `@capacitor/app`'s `backButton` event goes to the handler the current scene registered, which uses the same logic as Escape. **Title menu:** `MenuController.back()` closes the open page; on the root page the app is minimized. **A run:** `GameScene.goBack()` pauses, closes a pause page, resumes, or leaves a finished run. Back never leaves the app from a run in progress, and never throws away an unsubmitted ranked score. |
 | Pause / resume | `nativeApp.ts` | The app's `pause` / `resume` events are replayed as window `blur` / `focus`, which the existing listeners already handle. The run auto-pauses, music falls silent, held keys and touches are released, controllers go neutral, and vibration stops. WebView usually fires these itself; the native events are a backup. On resume the system bars are hidden again. |
 | Fullscreen | `capacitor.config.ts` (`SystemBars.hidden`), [`MainActivity.java`](../android/app/src/main/java/ca/davidandrea/spacearcade/MainActivity.java), [`fullscreen.ts`](../src/input/fullscreen.ts) | Capacitor 8's built-in SystemBars plugin hides the status and navigation bars. One native line sets "transient bars by swipe", which SystemBars has no option for: an edge swipe shows the bars over the game for a moment instead of bringing them back for good. The in-game FULLSCREEN button is hidden in the app, because Capacitor's WebView immediately ends Fullscreen API requests. |
@@ -114,19 +116,5 @@ player installs an update from the store. That can mean days of review, or never
 
 ## Device checklist
 
-Use a phone, plus a tablet or foldable for orientation. Use `chrome://inspect` on the PC for the WebView console and network.
-
-| # | Check | Expected |
-|---|---|---|
-| 1 | Cold start | Landscape, no status or navigation bar, no FULLSCREEN button on the title or pause screens, music starts. |
-| 2 | Swipe from a screen edge mid-run | The bars appear over the game and hide again by themselves; the playfield does not resize. With gesture navigation, check how many swipes a Back gesture takes. |
-| 3 | Back: playing → pause page → pause root → game over → title sub-page → title root | Pause, close page, resume, title, close page, app goes to the background. Back during a ranked run's result page never discards the score. |
-| 4 | Home, recent apps, a phone call, the screen turned off mid-run | The game is paused on return, music is silent while away, no stuck controls, bars still hidden. |
-| 5 | Notch or punch-hole camera, in both landscape directions | Touch controls and HUD clear the cutout; the band is black. The playfield stays in the same place, centred on the screen, when the phone is turned 180°. |
-| 6 | Portrait on a large screen (orientation lock ignored) | Rotate prompt, run paused. |
-| 7 | HAPTICS ON → TEST VIBRATION, then boost / laser / damage in a run | Felt. Also try with Samsung Silent mode. |
-| 8 | Ranked end to end (after the Worker with the new `ALLOWED_ORIGINS` is deployed) | Challenge issued, run verified, rank shown. Turn on airplane mode during upload: retry works with the same submission. |
-| 9 | Airplane mode from a cold start | Practice plays; RANKED and SCORES say unavailable, without a crash. |
-| 10 | Nickname entry on the result page | The keyboard does not cover the field; Back with the keyboard open only closes the keyboard. |
-| 11 | Bluetooth controller and keyboard | Work as in the browser. |
-| 12 | 10-minute session | Smooth at 90/120 Hz, no unusual battery drain or heat. |
+Moved to [phone-test-checklist.md](phone-test-checklist.md) (2026-11-12), which merges the twelve checks that were here with
+install steps, ranked/retry/reporting checks and existing-install compatibility.

@@ -1,6 +1,31 @@
 # Orbital Impact production release preflight and runbook
 
-Audit: 2026-11-04. **Backend released; Android/Play still blocked pending external gates.** [Stage 1](#stage-1-production-result-2026-11-04) (production D1 backup + migrations 0003/0004) executed 2026-11-04 18:04-18:06 UTC. [Stage 2](#stage-2-production-worker-deployment-2026-11-04) (moderation Worker via main CI) executed 2026-11-04 18:30-18:33 UTC and verified. No restore, credentials change, production moderation write or Play upload was performed. Sections below that describe Stage 1/2 as pending are the pre-execution plan, kept for reference. This replaces the historical 2026-10-22 preflight. See [operator workflow](leaderboard-moderation.md), [test evidence](play-release-validation.md), [data inventory](play-data-inventory.md), [policy draft](privacy-policy-draft.md) and [Android signing/build/Play instructions](../phaser-asteroids/docs/google-play-release.md).
+Audit: 2026-11-04. **Backend released; Android/Play still blocked pending external gates.** [Stage 1](#stage-1-production-result-2026-11-04) (production D1 backup + migrations 0003/0004) executed 2026-11-04 18:04-18:06 UTC. [Stage 2](#stage-2-production-worker-deployment-2026-11-04) (moderation Worker via main CI) executed 2026-11-04 18:30-18:33 UTC and verified. No restore, credentials change, production moderation write or Play upload was performed. **Present requirements are in [Current status](#current-status-2026-11-12) below.** Every later section is a dated record: where it describes Stage 1/2, migrations or the Worker deployment as pending, that is the pre-execution plan, kept for reference and for future migrations. This replaces the historical 2026-10-22 preflight. See [operator workflow](leaderboard-moderation.md), [test evidence](play-release-validation.md), [data inventory](play-data-inventory.md), [policy draft](privacy-policy-draft.md) and [Android signing/build/Play instructions](../phaser-asteroids/docs/google-play-release.md).
+
+## Current status (2026-11-12)
+
+Branch `release/android-device-prep` (from `dev` after merging `main`'s Stage 2 merge `8569834` back into `dev`; that merge changed no files). Nothing was pushed, deployed or uploaded.
+
+### Satisfied or verified
+
+- **Backend:** D1 ledger 0001-0004 and Worker `c2aef78f` (100%, sole version since 2026-11-04 18:32 UTC). Re-checked read-only on 2026-11-12 (`rows_written: 0`): 43 scores (0 hidden; 2 new accepted scores since Stage 2), 43 runs (all accepted), 0 reports, 0 audit rows.
+- **Daily cron:** previously unobserved; **now verified indirectly.** Cloudflare request analytics show exactly one invocation of `c2aef78f` in the 07:00 UTC hour on each day from 2026-11-05 through 2026-11-12 (8/8), all `success`, and **0 errors on any invocation since deployment**. D1 shows the cleanup's effects: the 3 issued runs and the `admin-fail` counter present after Stage 2 are gone, and only the scheduled handler deletes such rows (erasure removes accepted runs only; the audit log is empty). Limits: the dedicated `workersInvocationsScheduled` dataset returned no rows, so the cron trigger name is inferred from timing; report pruning ran over 0 reports, so it deleted nothing observable.
+- **Android identity and build:** package `ca.davidandrea.spacearcade`, `1.0`/code `1`, rules `1.2.0`/schema `1` recorded in `server/rules/released.json`, target/compile 36, min 24. Permissions INTERNET, VIBRATE and the signature-only AndroidX receiver; backup and cleartext disabled; release not debuggable; no `.so` files. Unsigned release AAB/APK rebuilt on 2026-11-12 are **byte-identical** to the 2026-11-04 audit artifacts (`8CC0A4F8…`, `284F84C1…`). Release tasks still refuse to run without upload signing unless the audit flag is set. No ads/analytics SDKs; no accounts, so account deletion is not applicable.
+- **Guards added 2026-11-12:** without `-Unsigned`, `scripts/inspect-android-release.ps1` refuses debug-key or unsigned artifacts and bundled draft privacy text; both modes refuse debuggable APKs. Covered by `tests/androidRelease.test.ts`.
+
+### Confirmed blockers for internal testing
+
+1. **Privacy policy and contact:** `[PUBLIC EMAIL PENDING]` / `[PRIVACY CONTACT PENDING]` remain in the draft and the bundled app text, which is marked as a draft (and public on GitHub Pages). An approved hosted policy URL is needed for Play Console. Owner decision; nothing has been chosen or approved.
+2. **Signing:** no upload key exists in this environment; Play App Signing is not enrolled; no signed AAB exists. Confirm in Console that version code 1 is unused.
+3. **Physical device:** not yet tested. A sideload build and [checklist](../phaser-asteroids/docs/phone-test-checklist.md) are ready. ADB saw a Samsung SM-S901E only briefly over a local bridge (then `offline`), so nothing was installed or queried.
+4. **Play Console setup:** app record, app name (launcher still `phaser-asteroids`), icon/splash/listing assets, and the declarations Console lists as outstanding (privacy policy URL, ads, content rating, target audience, app access). Data safety is exempt for internal-only testing.
+
+### Requires manual verification or an owner decision
+
+- Moderation coverage: the initial review of existing names ([workflow step 2](leaderboard-moderation.md#daily-solo-administrator-workflow)) is still to do. Decide whether nickname-only blocking and submit-as-acceptance satisfy Play UGC for an accountless app.
+- Provider retention (Workers logs/observability, Time Travel window, export copies) for the privacy text.
+- A 16 KB-page device or emulator, a Play-delivered install/update, and a tablet/large screen.
+- Existing installs: no build has been distributed (`distributed: null`), so the only possible prior installs are developer builds signed with the same local debug key. See checklist section 9.
 
 ## Release identity and assessment
 
@@ -79,7 +104,7 @@ Neither migration has a down migration. Schema rollback discards new moderation 
 
 ## Stage 1: production D1 backup and migrations
 
-**Status: prepared and rehearsed locally on 2026-11-04 ([evidence](#stage-1-local-rehearsal-evidence)). Not executed. Requires explicit operator authorization.** Stage 1 writes only to the production D1 (0003, then 0004) and to a protected local directory. It never deploys, rolls back or reconfigures the Worker. The deployed Worker `004624cd` serves throughout. Deploying the updated Worker is Stage 2, a separate approval.
+**Executed 2026-11-04 ([result](#stage-1-production-result-2026-11-04)).** The status line that follows is the pre-execution record: *prepared and rehearsed locally on 2026-11-04 ([evidence](#stage-1-local-rehearsal-evidence)). Not executed. Requires explicit operator authorization.* Stage 1 writes only to the production D1 (0003, then 0004) and to a protected local directory. It never deploys, rolls back or reconfigures the Worker. The deployed Worker `004624cd` serves throughout. Deploying the updated Worker is Stage 2, a separate approval.
 
 ### Before you start
 
@@ -492,7 +517,7 @@ Remaining after Stage 2: confirm the first cron run with reports pruning (check 
 
 ## Deployment sequence
 
-Production commands below are **instructions for a separately approved operator rollout**. None ran except the recorded public health GET and local compilation. Execute stages separately, check native exit codes and save evidence. Do not paste this whole document as a script.
+Production commands below are **instructions for a separately approved operator rollout**. For this release, steps 1-3 were carried out on 2026-11-04 through Stage 1 and Stage 2 (records above). The sequence stays as the template for future backend releases. Execute stages separately, check native exit codes and save evidence. Do not paste this whole document as a script.
 
 ### 1. Pre-deployment
 
@@ -561,7 +586,7 @@ Run full submission/moderation in the isolated suites or separately provisioned 
 
 Use the [existing build/signing procedure](../phaser-asteroids/docs/google-play-release.md). Rebuild/sync after approved text edits; Gradle alone does not rebuild the game. Verify package `ca.davidandrea.spacearcade`, native `1.0` / code `1`, frozen rules `1.2.0` / schema `1`, release registry and `.env.android` HTTPS endpoint. Determine next unused code from Console, preserve distributed records, record final AAB hash/certificate. No ID/branding/version changed here.
 
-Prioritized remaining blockers:
+Prioritized remaining blockers (as of 2026-11-04 before Stage 1; superseded by [Current status](#current-status-2026-11-12), where item 2's backup, migrations, deployment and cron are resolved):
 
 1. **Blocked / human policy:** `[PUBLIC EMAIL PENDING]`, approved public policy URL/text, provider/correspondence retention, moderation coverage/appeals/erasure process, audience/rating and interpretation of name-based blocking/submit acceptance. Reporting/local blocking source does not establish Play compliance. No accounts: account-deletion UI is **Not applicable**; operational data-removal contact remains required.
 2. **Requires manual verification / Cloudflare:** backup, actual pending migrations and authorized backend deployment, cache/CORS/admin/cron/logging/incident owner. Backend before app: suspicious_score requires updated Worker.
