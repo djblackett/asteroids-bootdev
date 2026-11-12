@@ -64,7 +64,7 @@
       <h2 id="summary-h">The short version</h2>
       <ul>
         <li>Hull &amp; Havoc has no accounts, no advertising and no analytics or tracking libraries.</li>
-        <li>You can play Practice without uploading anything. Ranked play and the online leaderboard are optional.</li>
+        <li>You can play Practice without uploading gameplay or submitting a score. Ranked play and the online leaderboard are optional.</li>
         <li>If you submit a ranked score, your nickname and score become public on the leaderboard.</li>
         <li>To check that a score is genuine, the game sends the server a record of your controls for that run. The server keeps the result, not the full recording.</li>
         <li>We keep a scrambled (hashed) version of your IP address to limit abuse. We do not store the raw address in our own database.</li>
@@ -110,7 +110,7 @@
           <tr><th scope="col">Information</th><th scope="col">How long</th></tr>
         </thead>
         <tbody>
-          <tr><th scope="row">Verified leaderboard entries and their linked run records</th><td>Kept indefinitely by default, including entries that moderators have hidden. They have no automatic deletion date. An entry can be removed through moderation or on request, and we may adopt a different storage period in a later version of this policy.</td></tr>
+          <tr><th scope="row">Verified leaderboard entries and their linked run records</th><td>Kept indefinitely by default, including entries that moderators have hidden. They have no automatic deletion date. We keep verified scores and the run records linked to them to preserve the leaderboard&rsquo;s history and integrity, and so that results can be checked again later. An entry can be removed through moderation or on request, and we may adopt a different storage period in a later version of this policy.</td></tr>
           <tr><th scope="row">Unfinished ranked challenges</th><td>A challenge normally expires after one hour. A daily cleanup deletes unfinished challenges more than one day after they expire.</td></tr>
           <tr><th scope="row">Rejected submissions</th><td>Deleted by the daily cleanup more than 30 days after rejection.</td></tr>
           <tr><th scope="row">Request counters used for rate limiting</th><td>Deleted by the daily cleanup once their hourly window began more than two hours earlier.</td></tr>
@@ -123,16 +123,25 @@
     <p><strong>Backups and logs.</strong> Cloudflare may keep logs and database recovery history for its own periods, separately from the live database. Removing something from the live database does not instantly remove it from those provider records, and we do not control how long they are kept. When we erase a leaderboard entry we do not promise immediate removal from backups or logs.</p>
 
     <h2 id="moderation">Nicknames, reports and moderation</h2>
-    <p>Nicknames are screened automatically against a short list of unacceptable English words. This is a first-pass filter only, not a guarantee that every unsuitable name is caught.</p>
-    <p>From the High Scores menu, choose <strong>Report / Block</strong> to report a nickname or score. A report records the reported entry, a reason you choose from a fixed list, a salted hash of your IP address, the time, and whether it has been reviewed. You cannot type free text into a report. Reports are private and are reviewed by the operator. Sending a report does not automatically hide or remove anything.</p>
+    <p>Nicknames are screened automatically, before a score is accepted, against a short list of unacceptable English words. This is a first-pass filter only, not a guarantee that every unsuitable name is caught.</p>
+    <p>From the High Scores menu, choose <strong>Report / Block</strong> to report a nickname or score. A report records the reported entry, a reason you choose from a fixed list, a salted hash of your IP address, the time, and whether it has been reviewed. You cannot type free text into a report. Reports are private and go only to the operator.</p>
+    <p>A person (the operator) reviews reports and flagged scores when they need attention. The leaderboard is not monitored continuously or in real time, so there can be a delay before anything is reviewed, and a report can reach its 30-day retention limit before it has been looked at. Sending a report does not automatically hide or remove anything; only the operator can change an entry.</p>
     <p>The operator can replace a displayed nickname, hide or restore an entry, or remove it if it breaks the rules below. When a name is replaced, the verified score stays and the original name remains private until the entry is erased. Scores with unusual patterns may also be flagged for human review. Decisions are recorded as a fixed action and category, a time and a link to the entry, without copying names or reporter details.</p>
     <p><strong>Blocking</strong> only works on your own device: it hides entries that use that nickname for you. Nicknames are not accounts, so blocking also hides other people who use the same name and cannot follow someone who changes names.</p>
 
     <h3 id="rules">Leaderboard rules</h3>
-    <p>By submitting a score you accept public display of the entry and these rules. Do not use hateful, sexual, threatening or harassing nicknames, impersonate other people, or reveal personal information about anyone. We may replace names, and hide or remove entries that break these rules.</p>
+    <p>Before a score is submitted, the game shows a summary of these rules with a link to the full text, and you submit by choosing <strong>Accept rules &amp; submit</strong>. Doing so means you accept public display of the entry and these rules. You can always skip submitting instead. Do not use hateful, sexual, threatening or harassing nicknames, impersonate other people, or reveal personal information about anyone. We may replace names, and hide or remove entries that break these rules.</p>
 
-    <h2 id="requests">Removal requests, appeals and questions</h2>
-    <p>There are no accounts, so there is nothing to log into or delete. To have a leaderboard entry or its run data removed, to appeal a moderation decision, or to ask anything about privacy or security, email <a href="mailto:privacy@davidandrea.ca">privacy@davidandrea.ca</a>. Please include the score identifier if you have it, plus the nickname, score and approximate date. We may ask for more context so that we do not remove someone else&rsquo;s entry. Hiding an entry is not the same as erasing it, and removal is done by the operator.</p>
+    <h2 id="requests">Your requests: removal, access, correction and questions</h2>
+    <p>There are no accounts, so there is nothing to log into or delete. Email <a href="mailto:privacy@davidandrea.ca">privacy@davidandrea.ca</a> to:</p>
+    <ul>
+      <li>ask for a leaderboard entry or its run data to be removed;</li>
+      <li>ask what information we hold about your submissions, or for a copy of it;</li>
+      <li>ask for information to be corrected where it is inaccurate and correction applies (for example, a nickname that was replaced by mistake);</li>
+      <li>appeal a moderation decision;</li>
+      <li>ask how long information is kept or how it is used, or anything else about privacy or security.</li>
+    </ul>
+    <p>Please include the score identifier if you have it, plus the nickname, score and approximate date. Because there are no accounts and nicknames are not unique, we can only find entries from the details you give us, and we may not be able to confirm that an entry is yours. We may ask for more context before acting, so that we do not disclose, change or remove someone else&rsquo;s entry, and we may be unable to complete a request if we cannot reasonably identify the information. Hiding an entry is not the same as erasing it, and removal is done by the operator.</p>
     <p>Please send only the information needed for your request, and never a password. Your email address and anything you write are visible to us, and your message stays in the mailbox of our email provider. We have not set a fixed deletion period for correspondence and will keep it only as long as needed to handle your request and any follow-up.</p>
 
     <h2 id="security">Security</h2>
