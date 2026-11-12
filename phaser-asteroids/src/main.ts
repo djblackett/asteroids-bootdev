@@ -7,7 +7,7 @@ import { StartScene } from './scenes/StartScene';
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
-  title: 'Asteroids',
+  title: 'Hull & Havoc',
   parent: 'game',
   backgroundColor: '#000000',
   scale: {

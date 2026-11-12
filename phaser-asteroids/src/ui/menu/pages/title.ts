@@ -47,7 +47,7 @@ export function buildTitlePage(kit: PageKit, ctx: MenuContext, nav: PageNav, pla
   const count = setup.game.playerCount;
   const g = kit.graphics();
 
-  kit.text(CENTER_X, HEADER_Y, 'ASTEROIDS', { size: 64, originX: 0.5, originY: 0.5 });
+  kit.text(CENTER_X, HEADER_Y, 'HULL & HAVOC', { size: 64, originX: 0.5, originY: 0.5 });
 
   // A device that can touch but is in keyboard mode: the way back is up in the corner, large and green, on the first screen.
   const recover = !touch && ctx.inputMode.canToggle;

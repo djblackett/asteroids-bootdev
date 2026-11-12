@@ -101,7 +101,7 @@ export class TouchOverlay implements TouchView {
     const phone = make(doc, this.rotate, 'tc-phone');
     make(doc, phone, 'tc-phone-screen');
     make(doc, this.rotate, 'tc-rotate-text', 'Rotate your phone to play.');
-    make(doc, this.rotate, 'tc-rotate-sub', 'Asteroids plays in landscape.');
+    make(doc, this.rotate, 'tc-rotate-sub', 'Hull & Havoc plays in landscape.');
     this.swallowTouches(this.rotate);
   }
 

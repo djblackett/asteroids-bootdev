@@ -6,7 +6,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
  */
 const config: CapacitorConfig = {
   appId: 'ca.davidandrea.spacearcade',
-  appName: 'phaser-asteroids',
+  appName: 'Hull & Havoc',
   webDir: 'dist-android',
   server: {
     // The app's page is https://spacearcade.davidandrea.ca/ (served from the APK, never fetched from the internet). This is the Origin the
