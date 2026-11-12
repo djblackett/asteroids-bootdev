@@ -158,7 +158,7 @@ The [current Play UGC policy](https://support.google.com/googleplay/android-deve
 | | Item | Status |
 | --- | --- | --- |
 | 1. Implemented | Prohibited-content rules | In-game LEADERBOARD RULES page and the draft policy's rules section |
-| | Acceptance before submission | Rules/disclosure beside Submit; "By submitting a score you accept these rules". Submit-as-acceptance, no separate control or server receipt |
+| | Acceptance before submission | **Explicit (2026-11-12, `feature/privacy-play-ux`):** the only submit control is **ACCEPT RULES & SUBMIT** (Enter on a keyboard is its labelled shortcut; the phone keyboard's Done key no longer submits), with a one-line rules summary and a LEADERBOARD RULES button beside it. Asked on every submission; client-only, no stored consent or server receipt |
 | | Automatic nickname screening | Server, before a run is claimed; narrow English whole-token denylist; not comprehensive |
 | | In-app reporting | HIGH SCORES > REPORT / BLOCK, fixed reasons, rate-limited, never auto-hides |
 | | Blocking | Device-local nickname block/unblock (no accounts) |
@@ -166,11 +166,11 @@ The [current Play UGC policy](https://support.google.com/googleplay/android-deve
 | | Removal and appeals | Contact `privacy@davidandrea.ca` in-game and in the draft; erasure procedure above |
 | | Operational response | Daily digest **implemented but not active**; becomes the response trigger once configured |
 | 2. Small engineering changes | Activate the digest | Configuration only (above) |
-| | Explicit acceptance | An "Accept rules & submit" label or a one-time checkbox before the first ranked submission; client-only, no server change |
+| | Explicit acceptance | Done (see above) |
 | | Appeal wording | Done: the contact line now says "removal, appeal, privacy or security" |
 | 3. Owner policy decisions | Review commitment | E.g. queue cleared within 2-3 days of a digest, with cover while away |
 | | Report retention | Option A-D above |
-| | Acceptance | Whether submit-as-acceptance is enough, or add the explicit control |
+| | Acceptance | Whether the explicit, per-submission ACCEPT RULES & SUBMIT control is sufficient without a stored record of acceptance |
 | | Mailbox | Handling and retention of removal/appeal correspondence |
 | | Audience and rating | Target ages and content-rating answers (the questionnaire asks about user interaction/UGC) |
 | | Policy approval | Approve and host the policy; the contact being filled in does not approve it |
