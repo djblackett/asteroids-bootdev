@@ -55,6 +55,24 @@ describe('Android app configuration', () => {
     expect(read('index.html')).toMatch(/<meta name="viewport" content="[^"]*viewport-fit=cover/);
   });
 
+  it('the signed-release inspector recognises every draft marker the bundled privacy copy still carries', () => {
+    // scripts/inspect-android-release.ps1 refuses signed artifacts that contain the review copy. If the draft wording changes while it
+    // is still a draft, the inspector's list must change with it, or a draft could pass as approved.
+    const inspector = read('scripts/inspect-android-release.ps1');
+    const listed = [...(inspector.match(/\$draftPolicyMarkers = @\(([^)]*)\)/)?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    expect(listed.length).toBeGreaterThan(0);
+    // Read as text: importing the menu page would pull in Phaser. Every quoted literal with an upper-case review marker counts.
+    const draftLines = [...read('src/ui/menu/pages/privacy.ts').matchAll(/'((?:[^'\\\n]|\\.)*)'/g)].map((m) => m[1]).filter((line) => /PENDING|DRAFT/.test(line));
+    for (const line of draftLines) expect(listed, `inspector does not refuse "${line}"`).toContain(line);
+  });
+
+  it('the release inspector refuses debuggable output and checks signatures outside -Unsigned', () => {
+    const inspector = read('scripts/inspect-android-release.ps1');
+    expect(inspector).toContain("'^application-debuggable'");
+    expect(inspector).toContain('apksigner.bat');
+    expect(inspector).toContain('CN=Android Debug');
+  });
+
   it('the manifest locks landscape and allows vibration', () => {
     const manifest = read('android/app/src/main/AndroidManifest.xml');
     expect(manifest).toContain('android:screenOrientation="sensorLandscape"');

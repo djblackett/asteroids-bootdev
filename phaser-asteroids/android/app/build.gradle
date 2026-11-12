@@ -74,11 +74,6 @@ tasks.configureEach { task ->
     if (task.name in ['preReleaseBuild', 'validateSigningRelease']) {
         task.doFirst {
             if (!hasUploadSigning && providers.gradleProperty('allowUnsignedRelease').orNull != 'true') {
-
-
-
-
-
                 throw new GradleException('Release signing is missing. Set ASTEROIDS_UPLOAD_* or use -PallowUnsignedRelease=true for audit-only unsigned output.')
             }
         }
