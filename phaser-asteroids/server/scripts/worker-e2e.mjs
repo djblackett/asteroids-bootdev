@@ -51,7 +51,7 @@ const mailServer = http.createServer((req, res) => {
 });
 await new Promise((resolve) => mailServer.listen(MAIL_PORT, '127.0.0.1', resolve));
 const DIGEST_VARS = [
-  'RESEND_API_KEY:re_e2e_local_only', 'MODERATION_DIGEST_FROM:Orbital Impact <moderation@digest.test>', 'MODERATION_DIGEST_TO:operator@digest.test',
+  'RESEND_API_KEY:re_e2e_local_only', 'MODERATION_DIGEST_FROM:Hull & Havoc <moderation@digest.test>', 'MODERATION_DIGEST_TO:operator@digest.test',
   `MODERATION_DASHBOARD_URL:${BASE}/admin`, `RESEND_API_URL:http://127.0.0.1:${MAIL_PORT}/emails`,
 ].flatMap((v) => ['--var', v]);
 
@@ -229,8 +229,8 @@ try {
   const digest = mail[0] ? JSON.parse(mail[0].body) : {};
   check('digest request: bearer key, daily idempotency key, recipient and short aggregate text',
     mail[0]?.method === 'POST' && mail[0].url === '/emails' && mail[0].headers.authorization === 'Bearer re_e2e_local_only'
-      && /^orbital-impact-moderation-digest-\d{4}-\d{2}-\d{2}$/.test(mail[0].headers['idempotency-key'] ?? '')
-      && JSON.stringify(digest.to) === '["operator@digest.test"]' && digest.subject === 'Orbital Impact — 1 moderation item awaiting review'
+      && /^hull-and-havoc-moderation-digest-\d{4}-\d{2}-\d{2}$/.test(mail[0].headers['idempotency-key'] ?? '')
+      && JSON.stringify(digest.to) === '["operator@digest.test"]' && digest.subject === 'Hull & Havoc — 1 moderation item awaiting review'
       && digest.text?.includes('Offensive name: 1') && digest.text.includes(`Review: ${BASE}/admin`),
     JSON.stringify({ subject: digest.subject, key: mail[0]?.headers['idempotency-key'] }));
   check('digest contains no nickname, score ID or credential', !!digest.text && !/E2E Pilot|Hide Me/.test(digest.text) && !digest.text.includes(reportedId) && !mail[0].body.includes(ADMIN));

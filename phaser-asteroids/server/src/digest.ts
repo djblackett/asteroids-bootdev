@@ -11,13 +11,19 @@ import { QUEUE_SQL, REPORT_RETENTION_MS, SUSPICIOUS_SQL } from './moderation';
  *
  * Duplicates: `moderation_digests` (migration 0005) holds one row per UTC day of the cron's scheduled time. A day is claimed
  * atomically, at most MAX_ATTEMPTS_PER_DAY times, and every attempt resends the stored text under the same Idempotency-Key, so
- * a cron retry, a duplicate invocation or an ambiguous timeout cannot produce a second email (Resend keeps keys for 24 hours).
- * A failure is retried by the next day's run if items remain, so an outage costs at most a few API calls per day.
+ * a cron retry, a duplicate invocation or a timeout whose request the provider did accept is deduplicated (Resend keeps keys for
+ * 24 hours; one UTC day of attempts fits inside that). This is duplicate suppression, not exactly-once delivery: if every attempt
+ * of a day ends ambiguously (timeout, Worker killed mid-send), the operator may or may not have received that day's email.
+ *
+ * Failures and outages: a day that is not confirmed delivered (failed, or a send abandoned past its lease) is never retried with
+ * a new key. The next day's digest is composed afresh from the live queue and also carries that day's expired-report count, so
+ * an expiry notice is not lost to an outage (it may be repeated if the earlier email did in fact arrive). The earlier row is then
+ * marked 'superseded', so nothing stays pending. An outage therefore costs at most a few API calls per day.
  */
 export interface DigestEnv {
   /** Resend API key (secret: `wrangler secret put RESEND_API_KEY --env production`). Unset: the digest is disabled. */
   RESEND_API_KEY?: string;
-  /** Sender on a domain verified in Resend, e.g. `Orbital Impact <moderation@example.com>`. */
+  /** Sender on a domain verified in Resend, e.g. `Hull & Havoc <moderation@example.com>`. */
   MODERATION_DIGEST_FROM?: string;
   /** Recipient (one address). */
   MODERATION_DIGEST_TO?: string;
@@ -122,14 +128,21 @@ export async function queueSummary(db: Db, now: number): Promise<QueueSummary> {
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
-/** Aggregate counts and the console link only. Returns null when nothing needs attention (no email). */
-export function composeDigest(day: string, s: QueueSummary, expiredUnresolved: number, dashboardUrl: string): { subject: string; text: string } | null {
+export const GAME_NAME = 'Hull & Havoc';
+/** Prefix of the per-day Idempotency-Key. Never reuse a key for a different payload: Resend rejects that (409). */
+export const IDEMPOTENCY_PREFIX = 'hull-and-havoc-moderation-digest-';
+
+/**
+ * Aggregate counts and the console link only. Returns null when nothing needs attention (no email). `expiredUnresolved` includes
+ * `carried`: expired reports first announced by an earlier day's digest that was not confirmed delivered.
+ */
+export function composeDigest(day: string, s: QueueSummary, expiredUnresolved: number, dashboardUrl: string, carried = 0): { subject: string; text: string } | null {
   if (s.entries === 0 && expiredUnresolved === 0) return null;
   const subject = s.entries > 0
-    ? `Orbital Impact — ${plural(s.entries, 'moderation item', 'moderation items')} awaiting review`
-    : `Orbital Impact — ${plural(expiredUnresolved, 'unreviewed report', 'unreviewed reports')} expired`;
+    ? `${GAME_NAME} — ${plural(s.entries, 'moderation item', 'moderation items')} awaiting review`
+    : `${GAME_NAME} — ${plural(expiredUnresolved, 'unreviewed report', 'unreviewed reports')} expired`;
   const totalReports = Object.values(s.openReports).reduce((a, b) => a + b, 0);
-  const lines = [`Orbital Impact moderation digest for ${day} (UTC)`, '', `Needs review: ${plural(s.entries, 'entry', 'entries')}`];
+  const lines = [`${GAME_NAME} moderation digest for ${day} (UTC)`, '', `Needs review: ${plural(s.entries, 'entry', 'entries')}`];
   if (totalReports) {
     lines.push(`- Open player reports: ${totalReports} on ${plural(s.reportedEntries, 'entry', 'entries')}`);
     for (const [reason, label] of REPORT_REASON_LABELS) if (s.openReports[reason]) lines.push(`    ${label}: ${s.openReports[reason]}`);
@@ -139,7 +152,10 @@ export function composeDigest(day: string, s: QueueSummary, expiredUnresolved: n
   }
   if (s.flaggedEntries) lines.push(`- Unreviewed integrity flags: ${s.flaggedEntries}`);
   if (s.expiringSoon) lines.push('', `Expiring: ${plural(s.expiringSoon, 'open report reaches', 'open reports reach')} the 30-day retention limit within 7 days and will then be deleted unreviewed.`);
-  if (expiredUnresolved) lines.push('', `Expired: ${plural(expiredUnresolved, 'open report', 'open reports')} reached the 30-day limit and ${expiredUnresolved === 1 ? 'was' : 'were'} deleted without review. The entries themselves are unchanged.`);
+  if (expiredUnresolved) {
+    const earlier = carried > 0 ? ` (${carried} of them on earlier days whose digest was not confirmed delivered)` : '';
+    lines.push('', `Expired: ${plural(expiredUnresolved, 'open report', 'open reports')} reached the 30-day limit and ${expiredUnresolved === 1 ? 'was' : 'were'} deleted without review${earlier}. The entries themselves are unchanged.`);
+  }
   lines.push('', `Review: ${dashboardUrl}`, '', 'Nothing was hidden, renamed or deleted automatically. This digest is sent at most once a day while items remain open.');
   return { subject, text: lines.join('\n') + '\n' };
 }
@@ -158,7 +174,7 @@ export function resendSender(config: DigestConfig, fetchImpl: typeof fetch = fet
           Authorization: `Bearer ${config.apiKey}`,
           'Content-Type': 'application/json',
           'Idempotency-Key': idempotencyKey,
-          'User-Agent': 'orbital-impact-moderation-digest',
+          'User-Agent': 'hull-and-havoc-moderation-digest',
         },
         body: JSON.stringify({ from: config.from, to: [config.to], subject: message.subject, text: message.text }),
         signal: AbortSignal.timeout(timeoutMs),
@@ -181,7 +197,7 @@ export function resendSender(config: DigestConfig, fetchImpl: typeof fetch = fet
 export type DigestOutcome =
   | { status: 'disabled'; reason: string }
   | { status: 'empty' }
-  | { status: 'skipped'; day: string }
+  | { status: 'skipped'; day: string; expiredNotAnnounced?: number }
   | { status: 'sent'; day: string; entries: number; attempt: number }
   | { status: 'failed'; day: string; entries: number; attempt: number; error: string; retryable: boolean }
   | { status: 'error'; error: string };
@@ -219,26 +235,41 @@ async function digest({ db, env, now, scheduledTime, expiredUnresolved, ...opts 
   const today = day(scheduledTime);
   await db.run('DELETE FROM moderation_digests WHERE day < ?', [day(now - DIGEST_ROW_RETENTION_MS)]);
 
+  // Earlier days whose digest was never confirmed delivered: failed, or a send abandoned past its lease. Their expired-report
+  // counts are announced again today, because those reports are already deleted and no later query could recover them.
+  const leaseCutoff = now - SEND_LEASE_MS;
+  const UNDELIVERED = "day < ? AND (status = 'failed' OR (status = 'sending' AND claimed_at < ?))";
+  const carried = (await db.first<{ n: number }>(`SELECT COALESCE(SUM(expired), 0) AS n FROM moderation_digests WHERE ${UNDELIVERED}`, [today, leaseCutoff]))?.n ?? 0;
+  const expired = expiredUnresolved + carried;
+
   const summary = await queueSummary(db, now);
-  const message = composeDigest(today, summary, expiredUnresolved, config.dashboardUrl);
+  const message = composeDigest(today, summary, expired, config.dashboardUrl, carried);
   if (!message) return { status: 'empty' };
 
   // Claim the day. A conflicting row is taken over only after a failure or an abandoned send, and never beyond the daily cap.
-  // The stored subject/body are kept, so every attempt for a day sends an identical payload under one idempotency key.
+  // The stored subject/body/expired are kept, so every attempt for a day sends an identical payload under one idempotency key.
   const claim = await db.first<{ subject: string; body: string; attempts: number }>(
-    `INSERT INTO moderation_digests (day, status, attempts, claimed_at, subject, body, updated_at) VALUES (?, 'sending', 1, ?, ?, ?, ?)
+    `INSERT INTO moderation_digests (day, status, attempts, claimed_at, subject, body, expired, updated_at) VALUES (?, 'sending', 1, ?, ?, ?, ?, ?)
      ON CONFLICT (day) DO UPDATE SET status = 'sending', attempts = moderation_digests.attempts + 1, claimed_at = excluded.claimed_at,
        updated_at = excluded.updated_at, error = NULL
      WHERE (moderation_digests.status = 'failed' OR (moderation_digests.status = 'sending' AND moderation_digests.claimed_at < ?))
        AND moderation_digests.attempts < ?
      RETURNING subject, body, attempts`,
-    [today, now, message.subject, message.text, now, now - SEND_LEASE_MS, MAX_ATTEMPTS_PER_DAY],
+    [today, now, message.subject, message.text, expired, now, leaseCutoff, MAX_ATTEMPTS_PER_DAY],
   );
-  if (!claim) return { status: 'skipped', day: today };
+  // Only a second invocation on a day whose cleanup had failed earlier can delete reports after the day's text was fixed; say so
+  // in the log rather than drop it silently. (Normal cron retries find nothing left to delete.)
+  if (!claim) return expiredUnresolved > 0 ? { status: 'skipped', day: today, expiredNotAnnounced: expiredUnresolved } : { status: 'skipped', day: today };
+  // The first claim's stored text accounts for every undelivered earlier day, so they are resolved; if today also fails, today's
+  // row carries the total on. A takeover resends that stored text and supersedes nothing: should the Worker have died between the
+  // first claim and this update, those earlier counts are announced again tomorrow (repeated, never lost).
+  if (claim.attempts === 1) {
+    await db.run(`UPDATE moderation_digests SET status = 'superseded', updated_at = ? WHERE ${UNDELIVERED}`, [now, today, leaseCutoff]);
+  }
 
   const send = opts.send ?? resendSender(config, opts.fetch);
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
-  const key = `orbital-impact-moderation-digest-${today}`;
+  const key = `${IDEMPOTENCY_PREFIX}${today}`;
   const payload = { subject: claim.subject, text: claim.body };
   let result = await send(payload, key);
   if (!result.ok && result.retryable) {

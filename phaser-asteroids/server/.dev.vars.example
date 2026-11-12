@@ -6,6 +6,6 @@ IP_HASH_SALT=change-me-too
 # Optional daily moderation digest (see ../../docs/leaderboard-moderation.md#daily-moderation-digest). Leave unset locally:
 # it is disabled unless all four are present. Never use a real recipient or production key in local testing.
 # RESEND_API_KEY=
-# MODERATION_DIGEST_FROM=Orbital Impact <moderation@example.test>
+# MODERATION_DIGEST_FROM=Hull & Havoc <moderation@example.test>
 # MODERATION_DIGEST_TO=operator@example.test
 # MODERATION_DASHBOARD_URL=http://127.0.0.1:8787/admin

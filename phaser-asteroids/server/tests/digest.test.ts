@@ -4,6 +4,7 @@ import {
   type DigestConfig, type SendResult, type Sender,
 } from '../src/digest';
 import type { Db } from '../src/db';
+import { REPORT_RETENTION_MS } from '../src/moderation';
 import { runScheduled } from '../src/scheduled';
 import { faultyDb } from '../testing/sqliteDb';
 import { count, insertScore, makeHarness, type Harness } from './harness';
@@ -13,7 +14,7 @@ const DAY = 86_400_000;
 const API_KEY = 're_test_DO_NOT_LEAK_0123456789';
 const ENV = {
   RESEND_API_KEY: API_KEY,
-  MODERATION_DIGEST_FROM: 'Orbital Impact <moderation@digest.test>',
+  MODERATION_DIGEST_FROM: 'Hull & Havoc <moderation@digest.test>',
   MODERATION_DIGEST_TO: 'operator@digest.test',
   MODERATION_DASHBOARD_URL: 'https://worker.test/admin',
   IP_HASH_SALT: 'test-salt',
@@ -72,14 +73,14 @@ describe('daily moderation digest', () => {
     expect(await run(mail.send)).toMatchObject({ status: 'sent', day: '2026-10-22', entries: 1, attempt: 1 });
     expect(mail.sent).toHaveLength(1);
     const [email] = mail.sent;
-    expect(email!.subject).toBe('Orbital Impact — 1 moderation item awaiting review');
+    expect(email!.subject).toBe('Hull & Havoc — 1 moderation item awaiting review');
     expect(email!.text).toContain('Needs review: 1 entry');
     expect(email!.text).toContain('Open player reports: 1 on 1 entry');
     expect(email!.text).toContain('Offensive name: 1');
     expect(email!.text).toContain('Review: https://worker.test/admin');
     expect(email!.text).toContain('Nothing was hidden, renamed or deleted automatically.');
     expect(email!.text.split('\n').length).toBeLessThan(15);
-    expect(email!.key).toBe('orbital-impact-moderation-digest-2026-10-22');
+    expect(email!.key).toBe('hull-and-havoc-moderation-digest-2026-10-22');
     expect(await h.db.first('SELECT status, attempts, provider_id FROM moderation_digests')).toEqual({ status: 'sent', attempts: 1, provider_id: 'msg-1' });
   });
 
@@ -94,7 +95,7 @@ describe('daily moderation digest', () => {
     const mail = mockSender();
     await run(mail.send);
     expect(mail.sent).toHaveLength(1);
-    expect(mail.sent[0]!.subject).toBe('Orbital Impact — 2 moderation items awaiting review');
+    expect(mail.sent[0]!.subject).toBe('Hull & Havoc — 2 moderation items awaiting review');
     const text = mail.sent[0]!.text;
     expect(text).toContain('Needs review: 2 entries');
     expect(text).toContain('Open player reports: 4 on 2 entries');
@@ -111,7 +112,7 @@ describe('daily moderation digest', () => {
     await report(both, 'suspicious_score');
     const mail = mockSender();
     await run(mail.send);
-    expect(mail.sent[0]!.subject).toBe('Orbital Impact — 2 moderation items awaiting review');
+    expect(mail.sent[0]!.subject).toBe('Hull & Havoc — 2 moderation items awaiting review');
     expect(mail.sent[0]!.text).toContain('Unreviewed integrity flags: 2');
     expect(mail.sent[0]!.text).toContain('Suspected cheating: 1');
     await resolve(flagged);
@@ -146,12 +147,12 @@ describe('daily moderation digest', () => {
     h.clock.advance(DAY);
     await run(mail.send);
     expect(mail.sent).toHaveLength(2);
-    expect(mail.sent[1]!.subject).toBe('Orbital Impact — 2 moderation items awaiting review');
+    expect(mail.sent[1]!.subject).toBe('Hull & Havoc — 2 moderation items awaiting review');
     expect(mail.sent[1]!.text).toContain('Personal information: 1');
     await resolve(first);
     h.clock.advance(DAY);
     await run(mail.send);
-    expect(mail.sent[2]!.subject).toBe('Orbital Impact — 1 moderation item awaiting review');
+    expect(mail.sent[2]!.subject).toBe('Hull & Havoc — 1 moderation item awaiting review');
     expect(mail.sent[2]!.text).not.toContain('Offensive name');
     await resolve(second);
     h.clock.advance(DAY);
@@ -175,7 +176,7 @@ describe('daily moderation digest', () => {
     // The next day's run starts fresh with current counts once the provider recovers.
     h.clock.advance(DAY);
     expect(await run(mail.send)).toMatchObject({ status: 'sent', day: '2026-10-23' });
-    expect(mail.sent.at(-1)!.subject).toBe('Orbital Impact — 2 moderation items awaiting review');
+    expect(mail.sent.at(-1)!.subject).toBe('Hull & Havoc — 2 moderation items awaiting review');
   });
 
   it('does not retry a permanent provider error the same day, and tries again the next day', async () => {
@@ -196,7 +197,7 @@ describe('daily moderation digest', () => {
     expect((await run(mail.send)).status).toBe('skipped');
     h.clock.advance(SEND_LEASE_MS + 1);
     expect(await run(mail.send)).toMatchObject({ status: 'sent', attempt: 2 });
-    expect(mail.sent).toEqual([{ subject: 'stored subject', text: 'stored body', key: 'orbital-impact-moderation-digest-2026-10-22' }]);
+    expect(mail.sent).toEqual([{ subject: 'stored subject', text: 'stored body', key: 'hull-and-havoc-moderation-digest-2026-10-22' }]);
   });
 
   it('cleanup still runs when delivery throws or the digest ledger is unusable', async () => {
@@ -237,7 +238,7 @@ describe('daily moderation digest', () => {
     h.clock.advance(7 * DAY);
     expect(await run(mail.send)).toMatchObject({ status: 'sent' });
     expect(logs.at(-2)).toMatchObject({ evt: 'prune', reportRows: 2, unresolvedReportRows: 1 });
-    expect(mail.sent[1]!.subject).toBe('Orbital Impact — 1 unreviewed report expired');
+    expect(mail.sent[1]!.subject).toBe('Hull & Havoc — 1 unreviewed report expired');
     expect(mail.sent[1]!.text).toContain('Expired: 1 open report reached the 30-day limit and was deleted without review.');
     expect(mail.sent[1]!.text).toContain('Needs review: 0 entries');
     // Retention itself is unchanged: both reports are gone, and the following day is quiet.
@@ -253,6 +254,102 @@ describe('daily moderation digest', () => {
     h.clock.advance(31 * DAY);
     const mail = mockSender();
     expect(await run(mail.send)).toEqual({ status: 'empty' });
+  });
+
+  // Regression (cleanup runs before the digest): the only open report expires in the cleanup of the very run that composes the
+  // digest, so the remaining queue the digest reads is empty. The expiry must still be announced, from a fresh ledger.
+  it('announces a report that expires during the same run\'s cleanup when the remaining queue is empty', async () => {
+    const id = await cleanScore();
+    await report(id, 'offensive');
+    const reportedAt = h.clock.now();
+    const mail = mockSender();
+    // Exactly at the limit the report is kept (strict cutoff) and is still a queue item, not an expiry.
+    h.clock.advance(REPORT_RETENTION_MS);
+    expect(await run(mail.send)).toMatchObject({ status: 'sent', entries: 1 });
+    expect(mail.sent[0]!.subject).toBe('Hull & Havoc — 1 moderation item awaiting review');
+    expect(await count(h.db, 'score_reports')).toBe(1);
+    // The next day's run deletes it during cleanup; the digest that follows sees an empty queue.
+    h.clock.advance(86_400_000);
+    expect(h.clock.now() - reportedAt).toBeGreaterThan(REPORT_RETENTION_MS);
+    expect(await run(mail.send)).toMatchObject({ status: 'sent', entries: 0, attempt: 1 });
+    expect(logs.map((l) => l.evt)).toEqual(['prune', 'moderation_digest', 'prune', 'moderation_digest']);
+    expect(logs[2]).toMatchObject({ reportRows: 1, unresolvedReportRows: 1 });
+    expect(await count(h.db, 'score_reports')).toBe(0);
+    expect(mail.sent).toHaveLength(2);
+    expect(mail.sent[1]!.subject).toBe('Hull & Havoc — 1 unreviewed report expired');
+    expect(mail.sent[1]!.text).toContain('Needs review: 0 entries');
+    expect(mail.sent[1]!.text).toContain('Expired: 1 open report reached the 30-day limit and was deleted without review.');
+    expect(mail.sent[1]!.text).not.toContain('earlier days');
+    expect(await h.db.first(`SELECT status, expired FROM moderation_digests WHERE day = '${new Date(h.clock.now()).toISOString().slice(0, 10)}'`))
+      .toEqual({ status: 'sent', expired: 1 });
+    // The entry itself is untouched by expiry.
+    expect(await count(h.db, 'scores', `id = '${id}' AND visibility = 'visible'`)).toBe(1);
+  });
+
+  it('carries an expiry notice past a provider outage that crosses the day boundary', async () => {
+    await report(await cleanScore(), 'offensive');
+    h.clock.advance(REPORT_RETENTION_MS + 1);
+    const outage: SendResult = { ok: false, retryable: true, error: 'timeout' };
+    const mail = mockSender([outage, outage]);
+    // Day 1: the report expires in cleanup; both sends of the day time out (the provider may or may not have accepted them).
+    expect(await run(mail.send)).toMatchObject({ status: 'failed', entries: 0, retryable: true });
+    const day1 = new Date(h.clock.now()).toISOString().slice(0, 10);
+    expect(await h.db.first(`SELECT status, expired FROM moderation_digests WHERE day = '${day1}'`)).toEqual({ status: 'failed', expired: 1 });
+    // Day 2: nothing new expires and the queue is empty, but the undelivered notice is carried under a new day's key.
+    h.clock.advance(86_400_000);
+    expect(await run(mail.send)).toMatchObject({ status: 'sent', entries: 0, attempt: 1 });
+    const last = mail.sent.at(-1)!;
+    expect(last.subject).toBe('Hull & Havoc — 1 unreviewed report expired');
+    expect(last.text).toContain('(1 of them on earlier days whose digest was not confirmed delivered)');
+    expect(last.key).not.toBe(mail.sent[0]!.key);
+    expect(await h.db.all('SELECT status, expired FROM moderation_digests ORDER BY day')).toEqual([
+      { status: 'superseded', expired: 1 }, { status: 'sent', expired: 1 },
+    ]);
+    // Day 3: delivered, so quiet; nothing is pending.
+    h.clock.advance(86_400_000);
+    expect(await run(mail.send)).toEqual({ status: 'empty' });
+    expect(mail.sent).toHaveLength(3);
+  });
+
+  it('adds carried expiries to new ones and resolves an earlier send abandoned mid-flight', async () => {
+    await report(await cleanScore('Old'), 'offensive', '203.0.113.1');
+    h.clock.advance(REPORT_RETENTION_MS - 86_400_000 + 1); // expires tomorrow
+    await report(await cleanScore('Newer'), 'other', '203.0.113.2');
+    const yesterday = new Date(h.clock.now() - 86_400_000).toISOString().slice(0, 10);
+    // An earlier day's Worker died mid-send: its row is 'sending', so it is ambiguous whether that email arrived.
+    await h.db.run(`INSERT INTO moderation_digests (day, status, attempts, claimed_at, subject, body, expired, updated_at)
+      VALUES (?, 'sending', 1, ?, 's', 'b', 2, ?)`, [yesterday, h.clock.now() - 86_400_000, h.clock.now() - 86_400_000]);
+    h.clock.advance(86_400_000);
+    const mail = mockSender();
+    expect(await run(mail.send)).toMatchObject({ status: 'sent', entries: 1 });
+    expect(mail.sent[0]!.subject).toBe('Hull & Havoc — 1 moderation item awaiting review');
+    expect(mail.sent[0]!.text).toContain('Expired: 3 open reports reached the 30-day limit and were deleted without review (2 of them on earlier days');
+    expect(await h.db.first('SELECT status FROM moderation_digests WHERE day = ?', [yesterday])).toEqual({ status: 'superseded' });
+  });
+
+  it('a same-day takeover resends the stored text and does not supersede earlier days', async () => {
+    await report(await cleanScore(), 'offensive');
+    const today = new Date(h.clock.now()).toISOString().slice(0, 10);
+    // Earlier failure with an expiry count, and today's first claim already stored (the Worker died before resolving earlier rows).
+    await h.db.run(`INSERT INTO moderation_digests (day, status, attempts, claimed_at, subject, body, expired, updated_at)
+      VALUES ('2026-10-01', 'failed', 3, 0, 's', 'b', 4, 0), (?, 'sending', 1, ?, 'stored subject', 'stored body', 4, ?)`, [today, h.clock.now(), h.clock.now()]);
+    h.clock.advance(SEND_LEASE_MS + 1);
+    const mail = mockSender();
+    expect(await run(mail.send)).toMatchObject({ status: 'sent', attempt: 2 });
+    expect(mail.sent).toEqual([{ subject: 'stored subject', text: 'stored body', key: `hull-and-havoc-moderation-digest-${today}` }]);
+    // Left for tomorrow to carry again: a repeated notice is preferred to a lost one.
+    expect(await h.db.first("SELECT status FROM moderation_digests WHERE day = '2026-10-01'")).toEqual({ status: 'failed' });
+  });
+
+  it('logs, rather than silently drops, reports that expire after the day\'s digest was already sent', async () => {
+    await report(await cleanScore(), 'offensive');
+    const today = new Date(h.clock.now() + REPORT_RETENTION_MS + 1).toISOString().slice(0, 10);
+    await h.db.run(`INSERT INTO moderation_digests (day, status, attempts, claimed_at, subject, body, updated_at) VALUES (?, 'sent', 1, 0, 's', 'b', 0)`, [today]);
+    h.clock.advance(REPORT_RETENTION_MS + 1);
+    const mail = mockSender();
+    expect(await run(mail.send)).toEqual({ status: 'skipped', day: today, expiredNotAnnounced: 1 });
+    expect(logs.at(-1)).toMatchObject({ evt: 'moderation_digest', status: 'skipped', expiredNotAnnounced: 1 });
+    expect(mail.sent).toHaveLength(0);
   });
 
   it('puts no credentials, names, identifiers or reporter data in the email or logs', async () => {
@@ -353,7 +450,7 @@ describe('Resend delivery adapter', () => {
     expect(loadDigestConfig({ ...ENV, MODERATION_DIGEST_FROM: 'moderation@digest.test' }).ok).toBe(true);
     expect(loadDigestConfig({ ...ENV, RESEND_API_URL: 'http://127.0.0.1:9999/emails' }).ok).toBe(true);
     expect(loadDigestConfig({ ...ENV, RESEND_API_URL: 'http://mail.example/emails' })).toEqual({ ok: false, reason: 'invalid:RESEND_API_URL' });
-    expect(loadDigestConfig({ ...ENV, MODERATION_DIGEST_FROM: 'Orbital <not an address>' })).toEqual({ ok: false, reason: 'invalid:MODERATION_DIGEST_FROM' });
+    expect(loadDigestConfig({ ...ENV, MODERATION_DIGEST_FROM: 'Hull & Havoc <not an address>' })).toEqual({ ok: false, reason: 'invalid:MODERATION_DIGEST_FROM' });
     expect(loadDigestConfig({ ...ENV, RESEND_API_KEY: '  ' })).toEqual({ ok: false, reason: 'incomplete:RESEND_API_KEY' });
   });
 });

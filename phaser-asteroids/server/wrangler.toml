@@ -59,4 +59,4 @@ ALLOWED_ORIGINS = "https://djblackett.github.io,https://spacearcade.davidandrea.
 # `wrangler secret put RESEND_API_KEY --env production`. Do not add RESEND_API_KEY to the required secrets above.
 MODERATION_DIGEST_TO = "privacy@davidandrea.ca"
 MODERATION_DASHBOARD_URL = "https://asteroids-leaderboard.davejandrea.workers.dev/admin"
-# MODERATION_DIGEST_FROM = "Orbital Impact <...@your-verified-domain>"
+# MODERATION_DIGEST_FROM = "Hull & Havoc <...@your-verified-domain>"
