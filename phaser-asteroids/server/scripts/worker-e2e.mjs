@@ -8,6 +8,7 @@
 // It takes about a minute because ranked runs cannot be submitted before the time they took to play has really elapsed.
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -37,16 +38,33 @@ const migrate = spawnSync(process.execPath, [wranglerBin, 'd1', 'migrations', 'a
 check('D1 migrations apply cleanly (local)', migrate.status === 0, migrate.status === 0 ? '' : (migrate.stdout + migrate.stderr).slice(-400));
 if (migrate.status !== 0) process.exit(1);
 
-// 2. Start the Worker.
+// 2. A local stand-in for the email provider (Resend's POST /emails contract). The digest never leaves this machine.
+const MAIL_PORT = PORT + 1;
+const mail = [];
+const mailServer = http.createServer((req, res) => {
+  let raw = '';
+  req.on('data', (d) => (raw += d));
+  req.on('end', () => {
+    mail.push({ method: req.method, url: req.url, headers: req.headers, body: raw });
+    res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ id: `e2e-msg-${mail.length}` }));
+  });
+});
+await new Promise((resolve) => mailServer.listen(MAIL_PORT, '127.0.0.1', resolve));
+const DIGEST_VARS = [
+  'RESEND_API_KEY:re_e2e_local_only', 'MODERATION_DIGEST_FROM:Hull & Havoc <moderation@digest.test>', 'MODERATION_DIGEST_TO:operator@digest.test',
+  `MODERATION_DASHBOARD_URL:${BASE}/admin`, `RESEND_API_URL:http://127.0.0.1:${MAIL_PORT}/emails`,
+].flatMap((v) => ['--var', v]);
+
+// 3. Start the Worker.
 const worker = spawn(
   process.execPath,
-  [wranglerBin, 'dev', '--local', '--port', String(PORT), '--persist-to', persist, '--test-scheduled', '--var', `ADMIN_TOKEN:${ADMIN}`, '--var', 'IP_HASH_SALT:e2e-salt'],
+  [wranglerBin, 'dev', '--local', '--port', String(PORT), '--persist-to', persist, '--test-scheduled', '--var', `ADMIN_TOKEN:${ADMIN}`, '--var', 'IP_HASH_SALT:e2e-salt', ...DIGEST_VARS],
   { cwd: serverDir, env, stdio: ['ignore', 'pipe', 'pipe'] },
 );
 let log = '';
 worker.stdout.on('data', (d) => (log += d));
 worker.stderr.on('data', (d) => (log += d));
-const stop = () => worker.kill();
+const stop = () => { worker.kill(); mailServer.close(); };
 process.on('exit', stop);
 
 async function waitReady() {
@@ -198,8 +216,25 @@ try {
   check('CORS preflight allows the configured game origin', pre.status === 204 && pre.headers.get('access-control-allow-origin') === 'http://127.0.0.1:4410');
   const evil = await api('POST', '/api/v1/runs', { headers: { origin: 'https://evil.example' } });
   check('a browser origin that is not allow-listed is refused (403)', evil.status === 403);
+  // --- daily cron: cleanup + moderation digest (real D1 claim/upsert, real Worker fetch to the local mock provider) --------------
+  const reportedId = accepted[0].json.score.id;
+  const reported = await api('POST', `/api/v1/scores/${reportedId}/report`, { body: '{"reason":"offensive"}', headers: { 'content-type': 'application/json' } });
+  check('a player report is accepted', reported.status === 200, `status=${reported.status}`);
   const cron = await fetch(`${BASE}/__scheduled?cron=17+7+*+*+*`);
   check('scheduled cleanup handler runs', cron.status === 200, `status=${cron.status}`);
+  const cronAgain = await fetch(`${BASE}/__scheduled?cron=17+7+*+*+*`);
+  check('a repeated cron invocation on the same day also succeeds', cronAgain.status === 200, `status=${cronAgain.status}`);
+  for (let i = 0; i < 25 && !(log.includes('"status":"skipped"') && mail.length); i++) await sleep(200);
+  check('moderation digest: exactly one email for two cron runs on one day', mail.length === 1, `emails=${mail.length}`);
+  const digest = mail[0] ? JSON.parse(mail[0].body) : {};
+  check('digest request: bearer key, daily idempotency key, recipient and short aggregate text',
+    mail[0]?.method === 'POST' && mail[0].url === '/emails' && mail[0].headers.authorization === 'Bearer re_e2e_local_only'
+      && /^hull-and-havoc-moderation-digest-\d{4}-\d{2}-\d{2}$/.test(mail[0].headers['idempotency-key'] ?? '')
+      && JSON.stringify(digest.to) === '["operator@digest.test"]' && digest.subject === 'Hull & Havoc — 1 moderation item awaiting review'
+      && digest.text?.includes('Offensive name: 1') && digest.text.includes(`Review: ${BASE}/admin`),
+    JSON.stringify({ subject: digest.subject, key: mail[0]?.headers['idempotency-key'] }));
+  check('digest contains no nickname, score ID or credential', !!digest.text && !/E2E Pilot|Hide Me/.test(digest.text) && !digest.text.includes(reportedId) && !mail[0].body.includes(ADMIN));
+  check('worker logged sent, then skipped, and cleanup both times', log.includes('"evt":"moderation_digest","status":"sent"') && log.includes('"evt":"moderation_digest","status":"skipped"') && (log.match(/"evt":"prune"/g) ?? []).length >= 2);
 
   // --- rate limiting (last: it exhausts this client's start budget) ---------------------------------------------------------
   let limited = null;

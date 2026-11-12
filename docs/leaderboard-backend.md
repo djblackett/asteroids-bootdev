@@ -190,7 +190,7 @@ Migrations `server/migrations/0001_init.sql` and `0002_time_limit.sql` (applied 
 
 **`rate_limits`** — `(bucket, window_start)` PK, `count`.
 
-Indexes: partial board index `(rules_version, score DESC, completed_at ASC, id ASC) WHERE visibility='visible' AND score>0` (serves every leaderboard read) and `(rules_version, completed_at)` for weekly ranges. **Replays are not stored.** Only `replay_hash` is kept. Housekeeping (daily cron): abandoned runs a day past expiry, rejected runs after 30 days, stale rate-limit rows. Accepted runs are kept.
+Indexes: partial board index `(rules_version, score DESC, completed_at ASC, id ASC) WHERE visibility='visible' AND score>0` (serves every leaderboard read) and `(rules_version, completed_at)` for weekly ranges. **Replays are not stored.** Only `replay_hash` is kept. Housekeeping (daily cron): abandoned runs a day past expiry, rejected runs after 30 days, stale rate-limit rows, reports after 30 days. Accepted runs are kept. The same cron then sends the optional [moderation digest](leaderboard-moderation.md#daily-moderation-digest) (migration 0005; disabled unless configured).
 
 ## 6. API contracts
 
@@ -310,7 +310,7 @@ One-use run ids; CSPRNG tokens and seeds; expiry; atomic state transitions; per-
 
 Minimal logging (no IPs, nicknames or tokens): `run_rejected`, `verifier_threw`, `submit_failed`, `unhandled`, `prune`.
 
-Moderation: use the Worker-origin `/admin` console or the authenticated APIs in the [moderation operator guide](leaderboard-moderation.md). Pending migrations 0003/0004 add private reports, reversible display names and transactional audit records. Avoid direct SQL moderation: it bypasses revision guards and audit history. Public boards/details now use `Cache-Control: no-store`.
+Moderation: use the Worker-origin `/admin` console or the authenticated APIs in the [moderation operator guide](leaderboard-moderation.md). Migrations 0003/0004 (applied in production 2026-11-04) add private reports, reversible display names and transactional audit records. Avoid direct SQL moderation: it bypasses revision guards and audit history. Public boards/details now use `Cache-Control: no-store`.
 
 ## 11. What an attacker can and cannot do
 

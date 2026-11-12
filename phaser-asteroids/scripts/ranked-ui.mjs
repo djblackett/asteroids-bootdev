@@ -328,6 +328,24 @@ INSERT INTO scores (id, run_id, score, nickname, completed_at, rules_version, ti
     const ready = await menuItems(page, 'result');
     check('the result page has no overlapping or off-screen controls', layoutProblems(ready).length === 0, layoutProblems(ready).join('; '));
     await typeNickname(page, 'Resize Me');
+    {
+      const snap = await menuItems(page, 'result');
+      const label = (id) => snap.items.find((i) => i.id === id)?.label;
+      check('rules acceptance is explicit: the submit button reads ACCEPT RULES & SUBMIT, with ENTER as its keyboard hint, beside SKIP',
+        label('submit') === 'ACCEPT RULES & SUBMIT' && label('skip') === 'SKIP' && (await sceneTexts(page, 'GameScene')).includes('ENTER'), JSON.stringify(snap.items.map((i) => [i.id, i.label])));
+      const texts = await sceneTexts(page, 'GameScene');
+      check('the rules are summarised on the result page, beside the public-display notice', texts.some((t) => /^RULES: NO HATEFUL, SEXUAL, THREATENING OR HARASSING NAMES/.test(t)) && texts.includes('SUBMITTING MAKES YOUR NICKNAME AND SCORE PUBLIC.') && !texts.some((t) => /BY SUBMITTING YOU ACCEPT/.test(t)));
+      check('LEADERBOARD RULES and PRIVACY are separate buttons on the result page', label('rules') === 'LEADERBOARD RULES' && label('privacy') === 'PRIVACY');
+      await clickItem(page, 'rules', 'result');
+      await sleep(300);
+      const rulesPage = await menuItems(page, 'result');
+      const rulesTexts = await sceneTexts(page, 'GameScene');
+      check('LEADERBOARD RULES opens the full rules page directly (with VIEW FULL POLICY), and nothing is submitted', rulesPage.page === 'privacy-3' && rulesTexts.includes('LEADERBOARD RULES') && rulesPage.items.some((i) => i.id === 'privacy-full') && calls.length === 0, rulesPage.page);
+      await clickItem(page, 'back', 'result');
+      await sleep(300);
+      const back = await menuItems(page, 'result');
+      check('BACK returns to the result page with the typed name kept, still unsubmitted', back.page === 'result' && (await page.evaluate(() => document.querySelector('.nick-input').value)) === 'Resize Me' && (await rankedState(page)).phase !== 'accepted' && calls.length === 0);
+    }
     const rectOf = () => page.evaluate(() => { const r = document.querySelector('.nick-input').getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
     const fieldCss = async () => {
       const f = (await menuItems(page, 'result')).items.find((i) => i.id === 'nickname');
@@ -528,6 +546,19 @@ INSERT INTO scores (id, run_id, score, nickname, completed_at, rules_version, ti
     await page.setViewportSize({ width: 844, height: 390 });
     await sleep(500);
     check('rotating back restores the field with the same name', (await page.evaluate(() => ({ v: document.querySelector('.nick-input').value, s: getComputedStyle(document.querySelector('.nick-input')).visibility }))).v === 'Phone Pilot');
+    {
+      const posts = [];
+      const onRequest = (r) => /\/submit$/.test(r.url()) && r.method() === 'POST' && posts.push(r.url());
+      page.on('request', onRequest);
+      await page.locator('.nick-input').focus();
+      await page.keyboard.press('Enter'); // the phone keyboard's Done key
+      await sleep(600);
+      check('on a phone, the keyboard\'s Done key only closes the keyboard: nothing is submitted without ACCEPT RULES & SUBMIT',
+        posts.length === 0 && !(await page.evaluate(() => document.activeElement?.classList.contains('nick-input'))) && (await menuItems(page, 'result')).page === 'result' && (await rankedState(page)).phase !== 'accepted', `posts=${posts.length}`);
+      const label = (await menuItems(page, 'result')).items.find((i) => i.id === 'submit')?.label;
+      check('the phone result page offers ACCEPT RULES & SUBMIT', label === 'ACCEPT RULES & SUBMIT', label);
+      page.off('request', onRequest);
+    }
     await page.evaluate(() => document.querySelector('.nick-input').blur());
     await tapItem('submit', 'result');
     await page.waitForFunction(() => ['accepted', 'rejected', 'failed'].includes(window.__ASTEROIDS_RANKED__?.phase), null, { timeout: 40000 });

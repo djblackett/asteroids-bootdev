@@ -7,6 +7,12 @@ import type { MenuContext, PageNav } from '../context';
 import type { PageDef } from '../menuView';
 import { MenuButton, MenuField, MIN_TARGET, TEXT, type FieldInput, type PageKit } from '../widgets';
 import { CENTER_X } from './common';
+import { RULES_PAGE } from './privacy';
+
+/** The submit action names what it does: accepting the leaderboard rules is part of submitting. */
+export const ACCEPT_AND_SUBMIT = 'ACCEPT RULES & SUBMIT';
+/** The rules in one line, beside the button; the full text is the LEADERBOARD RULES page. */
+export const RULES_SUMMARY = 'RULES: NO HATEFUL, SEXUAL, THREATENING OR HARASSING NAMES, IMPERSONATION OR PERSONAL INFO.';
 
 /** What the ranked result page needs from the game scene. */
 export interface RankedResultContext {
@@ -117,12 +123,17 @@ export function buildRankedResultPage(kit: PageKit, ctx: RankedResultContext, na
         if (problem) ctx.input.announce(problem);
       });
       const top = 340;
+      // Explicit acceptance: the only way to submit is this button (or Enter on a keyboard, shown as its hint). Its label states what it
+      // does, the rules are summarised right below it and one tap away in full, and SKIP needs no acceptance. Asked on every submission,
+      // so nothing is stored. The phone keyboard's Done key only closes the keyboard (GameScene), because "Done" is not an acceptance.
       const submit = (): void => void flow.submit(ctx.input.value);
-      new MenuButton(kit, { id: 'submit', rect: { x: CENTER_X - 300, y: top, w: 392, h: MIN_TARGET }, label: 'SUBMIT SCORE', primary: true, onTap: submit, size: 30, hint: ctx.inputMode.isTouch ? undefined : 'ENTER' });
-      new MenuButton(kit, { id: 'skip', rect: { x: CENTER_X + 108, y: top, w: 192, h: MIN_TARGET }, label: 'SKIP', onTap: () => flow.skip(), size: 30 });
-      kit.text(CENTER_X, 467, 'SUBMIT MAKES YOUR NICKNAME AND SCORE PUBLIC.', { size: 24, originX: 0.5, originY: 0.5, color: COLORS.hint });
-      kit.text(CENTER_X, 505, 'BY SUBMITTING YOU ACCEPT THE LEADERBOARD RULES.', { size: 24, originX: 0.5, originY: 0.5, color: COLORS.hint });
-      new MenuButton(kit, { id: 'privacy', rect: { x: CENTER_X - 300, y: 550, w: 600, h: MIN_TARGET }, label: 'PRIVACY / LEADERBOARD RULES', onTap: () => { ctx.input.hide(); nav.open('privacy'); }, size: 26 });
+      new MenuButton(kit, { id: 'submit', rect: { x: CENTER_X - 360, y: top, w: 500, h: MIN_TARGET }, label: ACCEPT_AND_SUBMIT, primary: true, onTap: submit, size: 28, hint: ctx.inputMode.isTouch ? undefined : 'ENTER' });
+      new MenuButton(kit, { id: 'skip', rect: { x: CENTER_X + 156, y: top, w: 204, h: MIN_TARGET }, label: 'SKIP', onTap: () => flow.skip(), size: 30 });
+      kit.text(CENTER_X, 457, 'SUBMITTING MAKES YOUR NICKNAME AND SCORE PUBLIC.', { size: 24, originX: 0.5, originY: 0.5, color: COLORS.hint });
+      const rules = kit.text(CENTER_X, 495, RULES_SUMMARY, { size: 22, originX: 0.5, originY: 0.5, color: COLORS.hint });
+      if (rules.width > 1160) rules.setScale(1160 / rules.width);
+      new MenuButton(kit, { id: 'rules', rect: { x: CENTER_X - 360, y: 540, w: 400, h: MIN_TARGET }, label: 'LEADERBOARD RULES', onTap: () => { ctx.input.hide(); nav.open(RULES_PAGE); }, size: 26 });
+      new MenuButton(kit, { id: 'privacy', rect: { x: CENTER_X + 56, y: 540, w: 304, h: MIN_TARGET }, label: 'PRIVACY', onTap: () => { ctx.input.hide(); nav.open('privacy'); }, size: 26 });
       return { defaultFocus: 'nickname', signature };
     }
 

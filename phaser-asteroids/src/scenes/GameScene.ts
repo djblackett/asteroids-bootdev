@@ -538,7 +538,11 @@ export class GameScene extends Phaser.Scene {
     this.nicknameInput = new NicknameInput(
       this.game,
       startingNickname(search),
-      () => void this.rankedFlow?.submit(this.nicknameInput?.value ?? ''),
+      // Enter on a keyboard is the visible shortcut of ACCEPT RULES & SUBMIT (its ENTER hint). On a touch screen the keyboard's Done key
+      // only closes the keyboard: the player then accepts with the button, which says what submitting means.
+      () => {
+        if (!getInputMode(this).isTouch) void this.rankedFlow?.submit(this.nicknameInput?.value ?? '');
+      },
       document,
       !this.touchUi,
     );

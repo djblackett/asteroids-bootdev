@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="How Hull &amp; Havoc handles your information: what the game stores, what ranked play sends, what the leaderboard shows, and how to ask for removal.">
+  <title>Hull &amp; Havoc — Privacy Policy</title>
+  <link rel="icon" type="image/png" href="../favicon.png">
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #1b1f24;
+      --muted: #4a5360;
+      --accent: #0b5cad;
+      --rule: #d0d7de;
+      --panel: #f4f6f8;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1419;
+        --fg: #e6e9ed;
+        --muted: #aab3bf;
+        --accent: #7db8f5;
+        --rule: #2d3640;
+        --panel: #182029;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font: 1.0625rem/1.65 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    main { max-width: 46rem; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+    h1 { font-size: 1.9rem; line-height: 1.25; margin: 0.5rem 0 0.25rem; }
+    h2 { font-size: 1.35rem; line-height: 1.3; margin: 2.25rem 0 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--rule); }
+    p, ul, ol, table { margin: 0.75rem 0; }
+    ul, ol { padding-left: 1.4rem; }
+    li { margin: 0.35rem 0; }
+    a { color: var(--accent); text-underline-offset: 0.15em; }
+    a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+    .meta { color: var(--muted); margin: 0; }
+    .summary { background: var(--panel); border: 1px solid var(--rule); border-radius: 0.5rem; padding: 0.25rem 1rem 0.5rem; margin-top: 1.5rem; }
+    .summary h2 { border-top: 0; margin-top: 0.75rem; }
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; min-width: 30rem; }
+    caption { text-align: left; font-weight: 600; padding-bottom: 0.4rem; }
+    th, td { text-align: left; vertical-align: top; padding: 0.5rem 0.6rem; border: 1px solid var(--rule); }
+    thead th { background: var(--panel); }
+    footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: 0.95rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <p><a href="../">&larr; Back to the game</a></p>
+    <h1>Hull &amp; Havoc — Privacy Policy</h1>
+    <p class="meta">Last updated: <time datetime="2026-11-12">12 November 2026</time></p>
+    <p class="meta">Operator: David Andrea &middot; Contact: <a href="mailto:privacy@davidandrea.ca">privacy@davidandrea.ca</a></p>
+
+    <section class="summary" aria-labelledby="summary-h">
+      <h2 id="summary-h">The short version</h2>
+      <ul>
+        <li>Hull &amp; Havoc has no accounts, no advertising and no analytics or tracking libraries.</li>
+        <li>You can play Practice without uploading gameplay or submitting a score. Ranked play and the online leaderboard are optional.</li>
+        <li>If you submit a ranked score, your nickname and score become public on the leaderboard.</li>
+        <li>To check that a score is genuine, the game sends the server a record of your controls for that run. The server keeps the result, not the full recording.</li>
+        <li>We keep a scrambled (hashed) version of your IP address to limit abuse. We do not store the raw address in our own database.</li>
+        <li>To ask for a leaderboard entry to be removed, or to ask any privacy question, email <a href="mailto:privacy@davidandrea.ca">privacy@davidandrea.ca</a>.</li>
+      </ul>
+    </section>
+
+    <h2 id="about">About this policy</h2>
+    <p>This policy covers the Hull &amp; Havoc game (Android package <code>ca.davidandrea.spacearcade</code>) and its web version, together with the online leaderboard service they use. The game is run by David Andrea, who is the person responsible for the information described here.</p>
+
+    <h2 id="practice">Playing without going online</h2>
+    <p>Practice mode does not upload your gameplay. The game may still contact the leaderboard service in the background, for example to show public scores or to refresh scores you previously saved on your device, so Practice is not a promise that no network requests are made.</p>
+
+    <h2 id="ranked">Ranked play and score submission</h2>
+    <p>Starting a ranked run asks the server for a challenge. If you then choose to submit your result, the game sends:</p>
+    <ul>
+      <li>the nickname you chose (or none, which is shown as &ldquo;Anonymous&rdquo;);</li>
+      <li>a replay of the run, meaning the changes in your movement, aiming and action controls over time;</li>
+      <li>game and rules versions, game configuration, timing, and the result the game claims;</li>
+      <li>the type of controls you used (for example keyboard, gamepad or touch). This is informational and does not affect your rank.</li>
+    </ul>
+    <p>The server replays your inputs itself to confirm the score. The full replay is processed in memory and is not stored. We keep the verified result and details of the run, plus a fingerprint (hash) of the submission that is used to detect duplicates and problems.</p>
+    <p>You can skip submitting at any time.</p>
+
+    <h2 id="public">What is public</h2>
+    <p>When a score is accepted, the leaderboard shows its <strong>nickname, score, completion date, simulated duration, rules version, ending reason</strong> and a score identifier. Please choose a nickname that does not reveal personal information. Other people can see and copy public entries, and we cannot remove copies that others make.</p>
+    <p>Other details of a run, such as control type, kill counts and moderation notes, are kept private.</p>
+
+    <h2 id="ip">IP addresses and Cloudflare</h2>
+    <p>The leaderboard runs on Cloudflare (a Worker and a database). Like any online service, Cloudflare processes network requests, which include your IP address and ordinary request details such as your browser or device type and the address requested. Cloudflare may use this technical data to run and secure its own service. See <a href="https://www.cloudflare.com/privacypolicy/" rel="noopener">Cloudflare&rsquo;s privacy policy</a>.</p>
+    <p>Our own database does not store your raw IP address. Instead it stores a salted hash derived from it, used to rate-limit requests and handle abuse. The same secret salt is used each time, so entries from the same address can be linked to each other. A hash is pseudonymous, not guaranteed anonymous. A hash is stored with ranked challenges and with reports.</p>
+    <p>We do not sell your data and we do not use it for advertising.</p>
+
+    <h2 id="device">Information stored on your device</h2>
+    <p>The game keeps these in local storage on your device: audio, input, movement and vibration settings; your most recent accepted nickname; up to 20 of your accepted scores (with their identifiers); and the list of nicknames you have blocked. None of it expires on its own. To remove it, clear the app&rsquo;s storage in Android settings, or clear site data in your browser. This does not remove anything stored on the server. Android backup is turned off for the app; whether data moves with a device-to-device transfer can depend on the phone maker.</p>
+    <p>If you play the web version, the page and its files are delivered by GitHub Pages, which, like any web host, receives standard request information. This privacy page is hosted there too. The Android app includes its game files and does not download them from GitHub.</p>
+
+    <h2 id="retention">How long we keep information</h2>
+    <div class="table-wrap">
+      <table>
+        <caption>Retention on the leaderboard service</caption>
+        <thead>
+          <tr><th scope="col">Information</th><th scope="col">How long</th></tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Verified leaderboard entries and their linked run records</th><td>Kept indefinitely by default, including entries that moderators have hidden. They have no automatic deletion date. We keep verified scores and the run records linked to them to preserve the leaderboard&rsquo;s history and integrity, and so that results can be checked again later. An entry can be removed through moderation or on request, and we may adopt a different storage period in a later version of this policy.</td></tr>
+          <tr><th scope="row">Unfinished ranked challenges</th><td>A challenge normally expires after one hour. A daily cleanup deletes unfinished challenges more than one day after they expire.</td></tr>
+          <tr><th scope="row">Rejected submissions</th><td>Deleted by the daily cleanup more than 30 days after rejection.</td></tr>
+          <tr><th scope="row">Request counters used for rate limiting</th><td>Deleted by the daily cleanup once their hourly window began more than two hours earlier.</td></tr>
+          <tr><th scope="row">Reports about nicknames or scores</th><td>Deleted by the daily cleanup after 30 days, or earlier if the reported entry is erased.</td></tr>
+          <tr><th scope="row">Moderation decision records</th><td>No automatic expiry. If the related entry is erased, the record is kept without its link to that entry.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The cleanup runs once a day and depends on that scheduled job running successfully, so deletion can occur somewhat later than the times above.</p>
+    <p><strong>Backups and logs.</strong> Cloudflare may keep logs and database recovery history for its own periods, separately from the live database. Removing something from the live database does not instantly remove it from those provider records, and we do not control how long they are kept. When we erase a leaderboard entry we do not promise immediate removal from backups or logs.</p>
+
+    <h2 id="moderation">Nicknames, reports and moderation</h2>
+    <p>Nicknames are screened automatically, before a score is accepted, against a short list of unacceptable English words. This is a first-pass filter only, not a guarantee that every unsuitable name is caught.</p>
+    <p>From the High Scores menu, choose <strong>Report / Block</strong> to report a nickname or score. A report records the reported entry, a reason you choose from a fixed list, a salted hash of your IP address, the time, and whether it has been reviewed. You cannot type free text into a report. Reports are private and go only to the operator.</p>
+    <p>A person (the operator) reviews reports and flagged scores when they need attention. The leaderboard is not monitored continuously or in real time, so there can be a delay before anything is reviewed, and a report can reach its 30-day retention limit before it has been looked at. Sending a report does not automatically hide or remove anything; only the operator can change an entry.</p>
+    <p>The operator can replace a displayed nickname, hide or restore an entry, or remove it if it breaks the rules below. When a name is replaced, the verified score stays and the original name remains private until the entry is erased. Scores with unusual patterns may also be flagged for human review. Decisions are recorded as a fixed action and category, a time and a link to the entry, without copying names or reporter details.</p>
+    <p><strong>Blocking</strong> only works on your own device: it hides entries that use that nickname for you. Nicknames are not accounts, so blocking also hides other people who use the same name and cannot follow someone who changes names.</p>
+
+    <h3 id="rules">Leaderboard rules</h3>
+    <p>Before a score is submitted, the game shows a summary of these rules with a link to the full text, and you submit by choosing <strong>Accept rules &amp; submit</strong>. Doing so means you accept public display of the entry and these rules. You can always skip submitting instead. Do not use hateful, sexual, threatening or harassing nicknames, impersonate other people, or reveal personal information about anyone. We may replace names, and hide or remove entries that break these rules.</p>
+
+    <h2 id="requests">Your requests: removal, access, correction and questions</h2>
+    <p>There are no accounts, so there is nothing to log into or delete. Email <a href="mailto:privacy@davidandrea.ca">privacy@davidandrea.ca</a> to:</p>
+    <ul>
+      <li>ask for a leaderboard entry or its run data to be removed;</li>
+      <li>ask what information we hold about your submissions, or for a copy of it;</li>
+      <li>ask for information to be corrected where it is inaccurate and correction applies (for example, a nickname that was replaced by mistake);</li>
+      <li>appeal a moderation decision;</li>
+      <li>ask how long information is kept or how it is used, or anything else about privacy or security.</li>
+    </ul>
+    <p>Please include the score identifier if you have it, plus the nickname, score and approximate date. Because there are no accounts and nicknames are not unique, we can only find entries from the details you give us, and we may not be able to confirm that an entry is yours. We may ask for more context before acting, so that we do not disclose, change or remove someone else&rsquo;s entry, and we may be unable to complete a request if we cannot reasonably identify the information. Hiding an entry is not the same as erasing it, and removal is done by the operator.</p>
+    <p>Please send only the information needed for your request, and never a password. Your email address and anything you write are visible to us, and your message stays in the mailbox of our email provider. We have not set a fixed deletion period for correspondence and will keep it only as long as needed to handle your request and any follow-up.</p>
+
+    <h2 id="security">Security</h2>
+    <p>Traffic between the game and the leaderboard uses HTTPS. Administration of the service requires a secret credential. No system for transmitting or storing data can be guaranteed to be completely secure.</p>
+
+    <h2 id="changes">Changes to this policy</h2>
+    <p>If our practices change, we will update this page and its &ldquo;Last updated&rdquo; date. The shorter privacy screens inside the game are a summary of this policy and may not include every detail; if they differ, this page is the fuller version.</p>
+
+    <footer>
+      <p>Hull &amp; Havoc &middot; Operator: David Andrea &middot; <a href="mailto:privacy@davidandrea.ca">privacy@davidandrea.ca</a></p>
+    </footer>
+  </main>
+</body>
+</html>

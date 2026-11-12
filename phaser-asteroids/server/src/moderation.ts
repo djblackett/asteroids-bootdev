@@ -24,8 +24,18 @@ export async function reportScore(db: Db, scoreId: string, reporterHash: string,
   }
 }
 
-export async function pruneReports(db: Db, now: number): Promise<number> {
-  return (await db.run('DELETE FROM score_reports WHERE created_at < ?', [now - 30 * 86_400_000])).changes;
+/** Published retention for reports: deleted by the daily cleanup once older than this, open or resolved. */
+export const REPORT_RETENTION_MS = 30 * 86_400_000;
+
+/**
+ * Daily retention cleanup. `unresolved` counts the deleted reports that were still open, so expiry without review is announced
+ * in the moderation digest instead of passing silently. The retention period itself is unchanged.
+ */
+export async function pruneReports(db: Db, now: number): Promise<{ deleted: number; unresolved: number }> {
+  const cutoff = now - REPORT_RETENTION_MS;
+  const open = await db.first<{ n: number }>("SELECT COUNT(*) AS n FROM score_reports WHERE created_at < ? AND status = 'open'", [cutoff]);
+  const deleted = (await db.run('DELETE FROM score_reports WHERE created_at < ?', [cutoff])).changes;
+  return { deleted, unresolved: Math.min(open?.n ?? 0, deleted) };
 }
 
 /** Operator-only erasure: atomic, scores before their FK parent; related reports cascade. */
@@ -116,9 +126,12 @@ export async function setScoreVisibility(db: Db, id: string, visible: boolean, r
   return true;
 }
 
+/** The console's "Needs review" view (alias `s` = scores). The daily digest counts exactly these entries. */
+export const QUEUE_SQL = `(EXISTS (SELECT 1 FROM score_reports r WHERE r.score_id = s.id AND r.status = 'open') OR (${SUSPICIOUS_SQL} AND s.suspicion_reviewed = 0))`;
+
 export async function adminScores(db: Db, filter: string, before: number | null, id: string | null) {
   const filters: Record<string, string> = {
-    queue: `(EXISTS (SELECT 1 FROM score_reports r WHERE r.score_id = s.id AND r.status = 'open') OR (${SUSPICIOUS_SQL} AND s.suspicion_reviewed = 0))`,
+    queue: QUEUE_SQL,
     hidden: "s.visibility = 'hidden'", all: '1=1',
   };
   if (!Object.hasOwn(filters, filter)) throw new ApiError(400, 'invalid_filter', 'Choose queue, hidden or all');

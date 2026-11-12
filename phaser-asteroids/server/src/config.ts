@@ -1,6 +1,7 @@
 import type { GameConfig } from '../../src/core/gameConfig';
 import { FIXED_TICK_RATE, GAMEPLAY_RULES_VERSION } from '../../src/replay/constants';
 import type { D1Like } from './d1';
+import type { DigestEnv } from './digest';
 
 /**
  * The only gameplay configuration a ranked run may use: the classic one-player game. The server issues it with every
@@ -17,8 +18,11 @@ export const RANKED_CONFIG: Readonly<GameConfig> = Object.freeze({
 export const RANKED_RULES_VERSION = GAMEPLAY_RULES_VERSION;
 export const RANKED_TICK_RATE = FIXED_TICK_RATE;
 
-/** Bindings and variables the Worker receives (see wrangler.toml). Everything except `DB` is optional so local runs need no setup. */
-export interface Env {
+/**
+ * Bindings and variables the Worker receives (see wrangler.toml). Everything except `DB` is optional so local runs need no setup.
+ * The moderation digest settings (RESEND_API_KEY, MODERATION_DIGEST_*) are declared in digest.ts.
+ */
+export interface Env extends DigestEnv {
   DB: D1Like;
   /** Comma-separated browser origins allowed to call the API, e.g. `https://djblackett.github.io`. Empty: no browser origin is allowed. */
   ALLOWED_ORIGINS?: string;

@@ -54,3 +54,9 @@ migrations_dir = "migrations"
 [env.production.vars]
 # GitHub Pages, and the Android app (its page origin is set by server.hostname in ../capacitor.config.ts; see ../docs/android.md).
 ALLOWED_ORIGINS = "https://djblackett.github.io,https://spacearcade.davidandrea.ca"
+# Daily moderation digest (src/digest.ts; ../../docs/leaderboard-moderation.md#daily-moderation-digest). The sender below is on
+# notify.davidandrea.ca (verified in Resend). The digest stays disabled until RESEND_API_KEY is also set with
+# `wrangler secret put RESEND_API_KEY --env production`. Do not add RESEND_API_KEY to the required secrets above.
+MODERATION_DIGEST_TO = "privacy@davidandrea.ca"
+MODERATION_DASHBOARD_URL = "https://asteroids-leaderboard.davejandrea.workers.dev/admin"
+MODERATION_DIGEST_FROM = "Hull & Havoc <moderation@notify.davidandrea.ca>"

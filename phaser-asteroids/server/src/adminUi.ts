@@ -2,7 +2,7 @@
 export function adminPage(): Response {
   const nonce = crypto.randomUUID();
   return new Response(`<!doctype html><html lang="en"><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Orbital Impact moderation</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Hull &amp; Havoc moderation</title>
 <style nonce="${nonce}">
 body{font:16px system-ui;background:#101927;color:#e8eef8;max-width:1100px;margin:2rem auto;padding:0 1rem}
 button,input,select{font:inherit;padding:.6rem;margin:.3rem;color:inherit;background:#24344b;border:1px solid #8295af;border-radius:4px}

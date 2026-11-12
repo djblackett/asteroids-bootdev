@@ -49,9 +49,9 @@ describe('private leaderboard moderation and erasure', () => {
     await report(id);
     h.clock.advance(29 * 86_400_000);
     await report(id);
-    expect(await pruneReports(h.db, h.clock.now())).toBe(0);
+    expect(await pruneReports(h.db, h.clock.now())).toEqual({ deleted: 0, unresolved: 0 });
     h.clock.advance(2 * 86_400_000);
-    expect(await pruneReports(h.db, h.clock.now())).toBe(1);
+    expect(await pruneReports(h.db, h.clock.now())).toEqual({ deleted: 1, unresolved: 1 });
   });
 
   it('requires admin authorization, preserves hide/unhide, then atomically erases score, run and reports', async () => {

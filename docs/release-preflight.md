@@ -1,6 +1,34 @@
-# Orbital Impact production release preflight and runbook
+# Hull & Havoc production release preflight and runbook
 
-Audit: 2026-11-04. **Blocked for production release pending external gates.** **[Stage 1](#stage-1-production-d1-backup-and-migrations) (production D1 backup + migrations 0003/0004) is prepared and locally rehearsed, awaiting explicit operator authorization.** Local preparation is verified; production backup/export/restore, migrations, deployment, credentials changes and Play upload were not performed. This replaces the historical 2026-10-22 preflight. See [operator workflow](leaderboard-moderation.md), [test evidence](play-release-validation.md), [data inventory](play-data-inventory.md), [policy draft](privacy-policy-draft.md) and [Android signing/build/Play instructions](../phaser-asteroids/docs/google-play-release.md).
+The game was called *Orbital Impact* in records before 2026-11-12; the name changed to **Hull & Havoc** on `release/hull-and-havoc-rc`. Infrastructure names (repository, package `ca.davidandrea.spacearcade`, Worker and D1 `asteroids-leaderboard`, URLs) are unchanged.
+
+Audit: 2026-11-04. **Backend released; Android/Play still blocked pending external gates.** [Stage 1](#stage-1-production-result-2026-11-04) (production D1 backup + migrations 0003/0004) executed 2026-11-04 18:04-18:06 UTC. [Stage 2](#stage-2-production-worker-deployment-2026-11-04) (moderation Worker via main CI) executed 2026-11-04 18:30-18:33 UTC and verified. No restore, credentials change, production moderation write or Play upload was performed. **Present requirements are in [Current status](#current-status-2026-11-12) below.** Every later section is a dated record: where it describes Stage 1/2, migrations or the Worker deployment as pending, that is the pre-execution plan, kept for reference and for future migrations. This replaces the historical 2026-10-22 preflight. See [operator workflow](leaderboard-moderation.md), [test evidence](play-release-validation.md), [data inventory](play-data-inventory.md), [policy draft](privacy-policy-draft.md) and [Android signing/build/Play instructions](../phaser-asteroids/docs/google-play-release.md).
+
+## Current status (2026-11-12)
+
+Release candidate branch **`release/hull-and-havoc-rc`**: `release/android-device-prep` → `feature/moderation-digest` → merge of `feature/privacy-policy-page` → branding and digest fixes. Its verification is recorded in [play-release-validation.md](play-release-validation.md#release-candidate-hull--havoc-2026-11-12). Nothing was pushed, deployed or uploaded. Merging it to `main` deploys the Worker **and publishes the privacy page on GitHub Pages**, so it waits for policy approval.
+
+### Satisfied or verified
+
+- **Backend:** D1 ledger 0001-0004 and Worker `c2aef78f` (100%, sole version since 2026-11-04 18:32 UTC). Re-checked read-only on 2026-11-12 (`rows_written: 0`): 43 scores (0 hidden; 2 new accepted scores since Stage 2), 43 runs (all accepted), 0 reports, 0 audit rows.
+- **Daily cron:** previously unobserved; **now verified indirectly.** Cloudflare request analytics show exactly one invocation of `c2aef78f` in the 07:00 UTC hour on each day from 2026-11-05 through 2026-11-12 (8/8), all `success`, and **0 errors on any invocation since deployment**. D1 shows the cleanup's effects: the 3 issued runs and the `admin-fail` counter present after Stage 2 are gone, and only the scheduled handler deletes such rows (erasure removes accepted runs only; the audit log is empty). Limits: the dedicated `workersInvocationsScheduled` dataset returned no rows, so the cron trigger name is inferred from timing; report pruning ran over 0 reports, so it deleted nothing observable.
+- **Android identity and build:** package `ca.davidandrea.spacearcade`, `1.0`/code `1`, rules `1.2.0`/schema `1` recorded in `server/rules/released.json`, target/compile 36, min 24. Permissions INTERNET, VIBRATE and the signature-only AndroidX receiver; backup and cleartext disabled; release not debuggable; no `.so` files. Unsigned release AAB/APK rebuilt on 2026-11-12 are **byte-identical** to the 2026-11-04 audit artifacts (`8CC0A4F8…`, `284F84C1…`). Release tasks still refuse to run without upload signing unless the audit flag is set. No ads/analytics SDKs; no accounts, so account deletion is not applicable.
+- **Guards added 2026-11-12:** without `-Unsigned`, `scripts/inspect-android-release.ps1` refuses debug-key or unsigned artifacts and bundled draft privacy text; both modes refuse debuggable APKs. Covered by `tests/androidRelease.test.ts`.
+
+### Confirmed blockers for internal testing
+
+1. **Privacy policy:** contact **privacy@davidandrea.ca** (confirmed). A public page is prepared at `phaser-asteroids/public/privacy/index.html` for the proposed URL `https://djblackett.github.io/asteroids-bootdev/privacy/` (not published; GitHub Pages still shows the old placeholder build). The bundled screen keeps its `DRAFT PRIVACY POLICY - REVIEW PENDING` marker, so the signed-release inspector still refuses it. Open wording questions are in [privacy-policy-publication.md](privacy-policy-publication.md#unresolved-need-your-decision-before-publishing). Approval remains an owner decision.
+2. **Signing:** no upload key exists in this environment; Play App Signing is not enrolled; no signed AAB exists. Confirm in Console that version code 1 is unused.
+3. **Physical device:** not yet tested. A sideload build and [checklist](../phaser-asteroids/docs/phone-test-checklist.md) are ready. ADB saw a Samsung SM-S901E only briefly over a local bridge (then `offline`), so nothing was installed or queried.
+4. **Play Console setup:** app record, app name (launcher now **Hull & Havoc** on the RC branch), icon/splash/listing assets, and the declarations Console lists as outstanding (privacy policy URL, ads, content rating, target audience, app access). Data safety is exempt for internal-only testing.
+
+### Requires manual verification or an owner decision
+
+- Moderation coverage: the initial review of existing names ([workflow step 2](leaderboard-moderation.md#daily-solo-administrator-workflow)) is still to do. Decide whether nickname-only blocking and submit-as-acceptance satisfy Play UGC for an accountless app ([readiness assessment](leaderboard-moderation.md#google-play-ugc-readiness-rechecked-2026-11-12)).
+- **Daily moderation digest** (on the RC branch, tested locally): needs migration **0005** applied to production D1 (additive), a Resend-verified sender (`MODERATION_DIGEST_FROM`) and the `RESEND_API_KEY` secret. Disabled and harmless until then; deploying the code before 0005 is safe. Ordered steps: [digest activation runbook](digest-activation-runbook.md). Report-retention options A-D await an owner decision ([policy](leaderboard-moderation.md#report-retention-and-review-policy)).
+- Provider retention (Workers logs/observability, Time Travel window, export copies) for the privacy text.
+- A 16 KB-page device or emulator, a Play-delivered install/update, and a tablet/large screen.
+- Existing installs: no build has been distributed (`distributed: null`), so the only possible prior installs are developer builds signed with the same local debug key. See checklist section 9.
 
 ## Release identity and assessment
 
@@ -79,7 +107,7 @@ Neither migration has a down migration. Schema rollback discards new moderation 
 
 ## Stage 1: production D1 backup and migrations
 
-**Status: prepared and rehearsed locally on 2026-11-04 ([evidence](#stage-1-local-rehearsal-evidence)). Not executed. Requires explicit operator authorization.** Stage 1 writes only to the production D1 (0003, then 0004) and to a protected local directory. It never deploys, rolls back or reconfigures the Worker. The deployed Worker `004624cd` serves throughout. Deploying the updated Worker is Stage 2, a separate approval.
+**Executed 2026-11-04 ([result](#stage-1-production-result-2026-11-04)).** The status line that follows is the pre-execution record: *prepared and rehearsed locally on 2026-11-04 ([evidence](#stage-1-local-rehearsal-evidence)). Not executed. Requires explicit operator authorization.* Stage 1 writes only to the production D1 (0003, then 0004) and to a protected local directory. It never deploys, rolls back or reconfigures the Worker. The deployed Worker `004624cd` serves throughout. Deploying the updated Worker is Stage 2, a separate approval.
 
 ### Before you start
 
@@ -466,9 +494,33 @@ Remove-Item -LiteralPath $RolloutDir -Recurse -Force   # staged copies of commit
 - **Guards:** setup refused a backup directory inside the repository and a session with `CI` set. A first attempt from a deep scratch path failed inside workerd on the local D1 path, which is why setup now enforces the 100-character limit on `$BackupDir`.
 - **Not provable locally:** the real remote export format (for example whether it emits `_cf_KV`, or DDL text that differs from `sqlite_master`), remote atomicity of a failed migration, export/restore permissions, and Time Travel restore. Steps 4-5 test the first on real data before any write. The others stay inferred.
 
+### Stage 1 production result (2026-11-04)
+
+Executed with operator authorization 18:04:20-18:06:01 UTC from `549729f`, through the blocks above. Step 4 output was URL-redacted, and the step 6/8 interactive `y` check was replaced by an automated exactly-one-pending-file assertion. All steps passed. Ledger 0001-0004 (0003 at 18:05:23, 0004 at 18:05:36). 41 scores (0 hidden), 44 runs (41 accepted). Every backed-up score and accepted run unchanged, FK check empty, Worker `004624cd` unchanged at 100% throughout. The record JSON (all three bookmarks, counts, hashes), the SHA-256-verified export and two local D1 copies are in the protected release directory outside Git (`stage1-record-20261104-180420.json`). The export hash was re-verified before Stage 2.
+
+## Stage 2: production Worker deployment (2026-11-04)
+
+Executed with operator authorization. Evidence: protected release directory, `stage2\stage2-record-20261104.json` (no secrets).
+
+| Item | Result |
+| --- | --- |
+| Release content | **Verified:** `origin/main..dev` = `91c349c`, `f540caf`, `1a6eb98`, `946d845`, `549729f` (the last two docs-only despite the `549729f` message). `phaser-asteroids/` identical between `1a6eb98` and `549729f`. No change to `wrangler.toml`, workflows, `server/rules` or gameplay/scoring code. Client changes limited to privacy/report/block UI and `cache: 'no-store'` reads. Android changes are signing/backup config, not built by CI. |
+| Pre-deploy production state (read-only) | **Verified:** account/D1 `cf4833f7-…`, ledger 0001-0004, 0004 schema checks, FK empty, 41/44/41, all Stage 1 backup rows unchanged, `004624cd` 100%, no workflow running. |
+| Local verification at `549729f` (clean detached worktree) | **Verified:** `npm ci` (both), unit 67 files / 1,667 tests, both typechecks, build, android-build 8/8, node tests, rules guard (0 changes since `c1871a9`), `test:release:migrations` 40/40 (historical client/Worker), `worker-e2e` 33/33, `moderation-admin` 28/28, `ranked-ui` 99/99, `menu` 127/127, production dry-run 140.51 KiB with `DB`. Built client has no admin token/salt value, admin routes or admin code; the only `Bearer` is the existing run-challenge header. |
+| Merge | `main` fast-forwarded to `532f8fb`, then `git merge --no-ff dev` gave **`85698345c0760c02055036e241d7b8ca4137abcb`**, tree `175aa8cd…` identical to `549729f`. Pushed 18:30:51 UTC (one push, one run). |
+| GitHub Actions | **Run [41887905781](https://github.com/djblackett/asteroids-bootdev/actions/runs/41887905781)**, attempt 1, success: validate 18:30:59-18:32:13, Worker (stale guard, `wrangler deploy --env production`, production-health) 18:32:16-18:32:35, Pages 18:32:39-18:33:12. |
+| Cloudflare | Deployment `e4ea95c8-9e6f-4cb6-9741-d9e99a706230` (18:32:30 UTC), version **`c2aef78f-ec27-4118-bd2c-a13f59b7313b` at 100%**. Bindings `DB`=`cf4833f7-…`, `ALLOWED_ORIGINS`, secrets `ADMIN_TOKEN`/`IP_HASH_SALT` (names only). Cron `17 7 * * *` unchanged. Rollback target `004624cd` still listed; not used. |
+| Public API (31/31) | **Verified:** health unchanged (rules 1.2.0, schema 1, supported [1.2.0], maxTicks 72000, 1200 s). Both boards 200 with unchanged top-level and entry fields; all 41 all-time and the weekly entries identical to the pre-deploy snapshot (ids, ranks, names, scores); paging OK; all 41 details 200 with public shape; unknown id 404. **`Cache-Control: no-store`** on boards and details, no `CF-Cache-Status`. CORS unchanged: both origins echoed, preflight headers identical, foreign preflight 403. No moderation-only fields in public bodies. No score or report was submitted. |
+| Admin (19/19) | **Verified:** `GET /admin` 200 HTML, nonce CSP (`default-src 'none'`, `connect-src 'self'`, `frame-ancestors 'none'`), per-response nonce, inline-only assets, no external resources, no-store, `X-Frame-Options: DENY`, no-referrer, no CORS. Foreign `Origin` → 403 `origin_not_allowed` (writes nothing). **One** unauthenticated request → generic 401 (wrote the single `admin-fail` counter row). Authenticated GETs with the DPAPI-backed token (memory only, never printed): queue 200 no-store with 0 entries (no reports, no integrity flags), all-entries 41 visible / none renamed, hidden view empty, audit empty, per-entry history empty, no hashes/tokens exposed, GET on moderate route 405. No moderation mutation sent. The console's empty-state rendering was not driven in a live browser; it is covered by `moderation-admin` locally. |
+| D1 after deploy (read-only) | **Verified:** ledger 0001-0004, 41/0/44/41, reports 0, audit 0, FK empty, Stage 1 backup rows unchanged. `rate_limits` = 1 (the `admin-fail` row above). |
+| Logs/health | **Verified:** `wrangler tail` during sample reads: 11 events, all 200/`ok`, 0 exceptions. Analytics since 18:00 UTC: `004624cd` 79 requests / 0 errors, `c2aef78f` 79 / 0. **Limitation:** no Workers observability/Logpush configured, so there is no retained log history; the new scheduled handler (with report pruning) first runs 2026-11-05 07:17 UTC and was not observed. |
+| GitHub Pages | Published the same build. **Note:** the public web game now shows the bundled Privacy screen marked `DRAFT PRIVACY POLICY - REVIEW PENDING` with `[PRIVACY CONTACT PENDING]`. |
+
+Remaining after Stage 2: confirm the first cron run with reports pruning (check analytics or tail around 07:17 UTC); replace the draft privacy text and contact (now visible on the web build); old-device Android compatibility (no ADB device was available); all Play/signing/policy gates in [section 4](#4-android-and-play). Worker rollback: `rollback 004624cd-b03e-4c2e-8bfc-1e8abb29ef9e` is schema-compatible, but it removes reports, admin and `no-store`.
+
 ## Deployment sequence
 
-Production commands below are **instructions for a separately approved operator rollout**. None ran except the recorded public health GET and local compilation. Execute stages separately, check native exit codes and save evidence. Do not paste this whole document as a script.
+Production commands below are **instructions for a separately approved operator rollout**. For this release, steps 1-3 were carried out on 2026-11-04 through Stage 1 and Stage 2 (records above). The sequence stays as the template for future backend releases. Execute stages separately, check native exit codes and save evidence. Do not paste this whole document as a script.
 
 ### 1. Pre-deployment
 
@@ -537,7 +589,7 @@ Run full submission/moderation in the isolated suites or separately provisioned 
 
 Use the [existing build/signing procedure](../phaser-asteroids/docs/google-play-release.md). Rebuild/sync after approved text edits; Gradle alone does not rebuild the game. Verify package `ca.davidandrea.spacearcade`, native `1.0` / code `1`, frozen rules `1.2.0` / schema `1`, release registry and `.env.android` HTTPS endpoint. Determine next unused code from Console, preserve distributed records, record final AAB hash/certificate. No ID/branding/version changed here.
 
-Prioritized remaining blockers:
+Prioritized remaining blockers (as of 2026-11-04 before Stage 1; superseded by [Current status](#current-status-2026-11-12), where item 2's backup, migrations, deployment and cron are resolved):
 
 1. **Blocked / human policy:** `[PUBLIC EMAIL PENDING]`, approved public policy URL/text, provider/correspondence retention, moderation coverage/appeals/erasure process, audience/rating and interpretation of name-based blocking/submit acceptance. Reporting/local blocking source does not establish Play compliance. No accounts: account-deletion UI is **Not applicable**; operational data-removal contact remains required.
 2. **Requires manual verification / Cloudflare:** backup, actual pending migrations and authorized backend deployment, cache/CORS/admin/cron/logging/incident owner. Backend before app: suspicious_score requires updated Worker.

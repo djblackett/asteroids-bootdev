@@ -747,6 +747,87 @@ async function run() {
   // =====================================================================================================
   // 7. A controller
   // =====================================================================================================
+  // VIEW FULL POLICY on the offline privacy pages. The real site is never contacted: every request to it is answered by a stub.
+  console.log('\n--- full privacy policy link ---');
+  {
+    const POLICY = 'https://djblackett.github.io/asteroids-bootdev/privacy/';
+    const stubPolicy = (ctx) => ctx.route('https://djblackett.github.io/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>stub policy</title><h1>stub</h1>' }));
+    /** Runs `act`, expects exactly one new tab, and returns its URL and whether it can reach the game window. */
+    const popupFrom = async (p, act) => {
+      const [tab] = await Promise.all([p.context.waitForEvent('page', { timeout: 5000 }), act()]);
+      await tab.waitForLoadState('domcontentloaded').catch(() => undefined);
+      const out = { url: tab.url(), opener: await tab.evaluate(() => window.opener === null ? 'none' : 'linked').catch(() => '?') };
+      await tab.close();
+      return out;
+    };
+    const statusLine = async (p, scene = 'StartScene') => (await p.words(scene)).find((t) => /OPENED IN A NEW TAB|BLOCKED THE NEW TAB|OPENING YOUR BROWSER/.test(t)) ?? '';
+
+    // Desktop, mouse and keyboard.
+    const d = await open();
+    await stubPolicy(d.context);
+    await d.goto();
+    await d.tap('privacy');
+    const pages = [];
+    for (let i = 1; i <= 4; i++) {
+      const snap = await d.menu();
+      pages.push([snap.page, snap.items.some((x) => x.id === 'privacy-full' && x.label === 'VIEW FULL POLICY')]);
+      if (i < 4) await d.tap('privacy-next');
+    }
+    check('every offline privacy page offers VIEW FULL POLICY', pages.every(([, has]) => has), JSON.stringify(pages));
+    for (let i = 0; i < 3; i++) await d.tap('back');
+    check('the summary pages still work offline-style: BACK walks back to page 1', (await d.menu()).page === 'privacy');
+    const byMouse = await popupFrom(d, () => d.tap('privacy-full'));
+    check('a click opens the canonical policy URL in a new tab, with no link back to the game window', byMouse.url === POLICY && byMouse.opener === 'none', JSON.stringify(byMouse));
+    check('the game stays on the privacy page and says the tab opened', (await d.menu()).page === 'privacy' && (await d.scene()) === 'StartScene' && /OPENED IN A NEW TAB/.test(await statusLine(d)));
+    check('the keyboard reaches VIEW FULL POLICY with the arrow keys', await d.focus('privacy-full'));
+    const byKey = await popupFrom(d, () => d.key('Enter'));
+    check('Enter on the focused VIEW FULL POLICY opens the same URL', byKey.url === POLICY, byKey.url);
+    await d.page.evaluate(() => { window.open = () => null; }); // a pop-up blocker
+    await d.tap('privacy-full');
+    const blocked = await statusLine(d);
+    check('a blocked tab leaves the game where it was and shows the address instead', /BLOCKED THE NEW TAB/.test(blocked) && blocked.includes('djblackett.github.io/asteroids-bootdev/privacy/') && (await d.menu()).page === 'privacy', blocked);
+    check('no page errors on the privacy pages', d.problems.length === 0, d.problems.join(' | '));
+    await d.context.close();
+
+    // Phone, touch.
+    const ph = await open({ w: 844, h: 390, touch: true });
+    await stubPolicy(ph.context);
+    await ph.goto();
+    await ph.tap('privacy');
+    const byTouch = await popupFrom(ph, () => ph.tap('privacy-full'));
+    check('[phone 844x390] a tap on VIEW FULL POLICY opens the canonical URL', byTouch.url === POLICY, byTouch.url);
+    const scale = (await ph.canvas()).scale;
+    const btn = await ph.item('privacy-full');
+    check('[phone 844x390] VIEW FULL POLICY is at least 44 CSS px', Math.min(btn.w, btn.h) * scale >= 44, `${(Math.min(btn.w, btn.h) * scale).toFixed(1)}px`);
+    await ph.context.close();
+
+    // Controller.
+    const g = await open({ pad: true });
+    await stubPolicy(g.context);
+    await g.goto();
+    await g.padPut({});
+    await sleep(300);
+    await g.key('Shift');
+    await g.padTap(BTN.A); // joins Player 1
+    const padFocus = async (id) => {
+      for (let i = 0; i < 14; i++) {
+        const snap = await g.menu();
+        if (snap.focus === id) return true;
+        const here = snap.items.find((x) => x.id === snap.focus);
+        const there = snap.items.find((x) => x.id === id);
+        if (!here || !there) return false;
+        const dy = there.y - here.y;
+        await g.padTap(Math.abs(dy) > 30 ? (dy > 0 ? BTN.DOWN : BTN.UP) : there.x > here.x ? BTN.RIGHT : BTN.LEFT);
+      }
+      return false;
+    };
+    const reached = (await padFocus('privacy')) && (await g.padTap(BTN.A), await sleep(300), (await g.menu()).page === 'privacy') && (await padFocus('privacy-full'));
+    check('the D-pad reaches PRIVACY and then VIEW FULL POLICY', reached, JSON.stringify(await g.menu().then((m) => [m.page, m.focus])));
+    const byPad = reached ? await popupFrom(g, () => g.padTap(BTN.A)) : { url: '' };
+    check('A on VIEW FULL POLICY opens the canonical URL', byPad.url === POLICY, byPad.url);
+    await g.context.close();
+  }
+
   console.log('\n--- controller navigation ---');
   const pd = await open({ pad: true });
   await pd.goto();

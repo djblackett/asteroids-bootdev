@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">phaser-asteroids</string>
-    <string name="title_activity_main">phaser-asteroids</string>
+    <string name="app_name">Hull &amp; Havoc</string>
+    <string name="title_activity_main">Hull &amp; Havoc</string>
     <string name="package_name">ca.davidandrea.spacearcade</string>
     <string name="custom_url_scheme">ca.davidandrea.spacearcade</string>
 </resources>
