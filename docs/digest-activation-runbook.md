@@ -244,7 +244,7 @@ Save-Record
 
 ## 9. Configure the sender and release (needs policy approval)
 
-1. On the release branch, in `phaser-asteroids/server/wrangler.toml` under `[env.production.vars]`, replace the commented line with your verified sender:
+1. **Done 2026-11-12 on `feature/privacy-play-ux`.** On the release branch, in `phaser-asteroids/server/wrangler.toml` under `[env.production.vars]`, replace the commented line with your verified sender:
    `MODERATION_DIGEST_FROM = "Hull & Havoc <moderation@notify.davidandrea.ca>"`
    `MODERATION_DIGEST_TO` (`privacy@davidandrea.ca`) and `MODERATION_DASHBOARD_URL` are already set. Commit.
 2. Run the local verification listed in [play-release-validation.md](play-release-validation.md#release-candidate-hull--havoc-2026-11-12) on that commit, including `npx wrangler deploy --env production --dry-run` from `phaser-asteroids/server`.

@@ -1,11 +1,11 @@
 # Hull & Havoc privacy policy: publication record
 
-Prepared 2026-11-12 on branch `feature/privacy-policy-page`; integrated into `release/hull-and-havoc-rc` the same day; wording and in-game access revised on `feature/privacy-play-ux` (see [Review remediation](#review-remediation-2026-11-12)). **Not published. Not approved.** Nothing was pushed, merged, deployed or uploaded.
+Prepared 2026-11-12 on branch `feature/privacy-policy-page`; integrated into `release/hull-and-havoc-rc` the same day; wording and in-game access revised on `feature/privacy-play-ux` (see [Review remediation](#review-remediation-2026-11-12)). **Approved by the owner 2026-11-12; not yet published.** The approval commit sets the date and removes the in-game DRAFT line (see [Approval record](#approval-record-2026-11-12)). The page goes public when that commit reaches `main`.
 
 - Public page source: `phaser-asteroids/public/privacy/index.html` (standalone, no scripts or third-party resources; Vite copies `public/` unchanged to `dist/privacy/index.html`).
 - Proposed URL: `https://djblackett.github.io/asteroids-bootdev/privacy/`
 - Contact: `privacy@davidandrea.ca`. Name: Hull & Havoc. Package ID: `ca.davidandrea.spacearcade` (unchanged).
-- Offline copy: `phaser-asteroids/src/ui/menu/pages/privacy.ts` (still carries the `DRAFT PRIVACY POLICY - REVIEW PENDING` marker, so the signed-release inspector keeps refusing it; it now also shows the URL above).
+- Offline copy: `phaser-asteroids/src/ui/menu/pages/privacy.ts` (approved copy; the DRAFT line is replaced by a plain `PRIVACY POLICY` heading. The inspector's marker list is kept, so a reintroduced draft is still refused; it also shows the URL above).
 - Guards: `tests/privacyPage.test.ts` (content, no placeholders/secrets/external resources) and `scripts/pages-check.mjs` check 4 (served at `/asteroids-bootdev/privacy/` and `/privacy/`).
 
 ## Fact check (page statement → evidence)
@@ -97,6 +97,13 @@ All local; the policy site was stubbed in the browser tests, and no production d
 2. On the day you approve, in **one commit**: set both the visible date and `<time datetime="YYYY-MM-DD">` in `public/privacy/index.html` to the approval date, and remove the `DRAFT PRIVACY POLICY - REVIEW PENDING` line from `privacy.ts`. **Keep** the inspector's marker list (`scripts/inspect-android-release.ps1`): it still refuses any build that reintroduces the marker, and `tests/androidRelease.test.ts` passes with no marker present.
 3. The page becomes public when that commit reaches `main` (Pages deploy). If publication happens on a later day than approval, use the publication day instead, so the date never precedes public availability.
 4. Later changes: update the date only when the published meaning changes, in the same commit as the change.
+
+## Approval record (2026-11-12)
+
+- The owner approved the policy wording and the ACCEPT RULES & SUBMIT flow on 2026-11-12.
+- The "Last updated" date is `2026-11-12` (visible text and `<time datetime>`). **If the merge to `main` happens on a later day, change both to the merge day in a final commit before merging**, so the date never precedes publication.
+- `privacy.ts`: the DRAFT line became the heading `PRIVACY POLICY` (same line count, so the page layout checks still apply). `scripts/inspect-android-release.ps1` keeps both markers; `tests/androidRelease.test.ts` now also asserts the approved copy contains none of them.
+- Production sender set in `server/wrangler.toml`: `MODERATION_DIGEST_FROM = "Hull & Havoc <moderation@notify.davidandrea.ca>"`. The digest stays disabled until `RESEND_API_KEY` is installed (runbook step 11).
 
 ## Remaining decisions (owner)
 

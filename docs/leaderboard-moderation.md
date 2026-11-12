@@ -107,7 +107,7 @@ It contains **no nicknames, score IDs, reporter or IP hashes, tokens or replay d
 | Name | Kind | Value |
 | --- | --- | --- |
 | `RESEND_API_KEY` | secret | Resend API key, *sending access* restricted to the sender domain. Never in Git, `wrangler.toml`, Vite or CI variables. Not added to `secrets.required`, so deploys still work without it. |
-| `MODERATION_DIGEST_FROM` | var | Sender on a Resend-verified domain, e.g. `Hull & Havoc <moderation@SUBDOMAIN.davidandrea.ca>`. **Not yet chosen**; commented out in `wrangler.toml`. |
+| `MODERATION_DIGEST_FROM` | var | Sender on a Resend-verified domain, `Hull & Havoc <moderation@notify.davidandrea.ca>` (set in `[env.production.vars]` 2026-11-12; `notify.davidandrea.ca` is verified in Resend). |
 | `MODERATION_DIGEST_TO` | var | `privacy@davidandrea.ca` (set in `[env.production.vars]`). |
 | `MODERATION_DASHBOARD_URL` | var | `https://asteroids-leaderboard.davejandrea.workers.dev/admin` (set). |
 

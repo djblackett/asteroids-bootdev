@@ -5,8 +5,8 @@ import { COLORS } from '../../text';
 import { MenuButton, MIN_TARGET } from '../widgets';
 import { CENTER_X, pageTitle } from './common';
 
-// Review copy, bundled offline. Operator confirmed 2026-11-04; public contact confirmed 2026-11-12. The policy text is still
-// awaiting approval: keep the DRAFT marker (the signed-release inspector refuses it) until docs/privacy-policy-draft.md is approved.
+// Approved copy, bundled offline (owner approved the wording 2026-11-12). Never reintroduce a review marker such as "DRAFT" or
+// "PENDING": scripts/inspect-android-release.ps1 refuses signed builds that carry one, and tests/androidRelease.test.ts keeps it so.
 // Keep it consistent with the full policy, public/privacy/index.html (tests/privacyPage.test.ts compares the key facts).
 export const PRIVACY_CONTACT = 'privacy@davidandrea.ca';
 /** The one canonical address of the full policy (GitHub Pages; served from public/privacy/index.html). */
@@ -15,7 +15,7 @@ export const PRIVACY_POLICY_URL = 'https://djblackett.github.io/asteroids-bootde
 export const RULES_PAGE = 'privacy-3';
 export const PRIVACY_PAGES = [
   [
-    'DRAFT PRIVACY POLICY - REVIEW PENDING',
+    'PRIVACY POLICY',
     'Hull & Havoc / ca.davidandrea.spacearcade',
     'Operator: David Andrea. No accounts, ads or analytics SDKs.',
     'Ranked play sends game inputs, versions, timing and control type',

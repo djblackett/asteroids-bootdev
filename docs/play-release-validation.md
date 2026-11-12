@@ -30,7 +30,7 @@ Branch `release/hull-and-havoc-rc` (local only; nothing pushed, deployed, migrat
 Established by inspection or test:
 - Package `ca.davidandrea.spacearcade`, version 1.0 (1), rules 1.2.0 frozen; launcher label Hull & Havoc; permissions INTERNET and VIBRATE only (the digest added none).
 - Privacy URL `https://djblackett.github.io/asteroids-bootdev/privacy/` is used consistently in the page, the offline screens and the Play guide. It is **not live** until a release to `main`.
-- Draft gate intact: the offline screen keeps `DRAFT PRIVACY POLICY - REVIEW PENDING`, and the signed-mode inspector refuses it. Upload-key procedure (`ASTEROIDS_UPLOAD_*`, signed-mode inspector) unchanged.
+- Draft gate: the policy was approved 2026-11-12 and the offline screen no longer carries `DRAFT PRIVACY POLICY - REVIEW PENDING`. The signed-mode inspector still lists both markers and refuses any build that reintroduces one. Upload-key procedure (`ASTEROIDS_UPLOAD_*`, signed-mode inspector) unchanged.
 - Reporting, blocking and the `/admin` workflow pass their suites. Gameplay requests do not depend on email.
 
 Unresolved interpretation (not established; see [UGC readiness](leaderboard-moderation.md#google-play-ugc-readiness-rechecked-2026-11-12)):

@@ -66,6 +66,15 @@ describe('Android app configuration', () => {
     for (const line of draftLines) expect(listed, `inspector does not refuse "${line}"`).toContain(line);
   });
 
+  it('the approved bundled privacy copy carries none of the markers the inspector refuses', () => {
+    // The policy was approved on 2026-11-12. The inspector keeps its marker list so a reintroduced draft is still refused.
+    const inspector = read('scripts/inspect-android-release.ps1');
+    const listed = [...(inspector.match(/\$draftPolicyMarkers = @\(([^)]*)\)/)?.[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1]!);
+    expect(listed).toEqual(expect.arrayContaining(['[PRIVACY CONTACT PENDING]', 'DRAFT PRIVACY POLICY - REVIEW PENDING']));
+    const source = read('src/ui/menu/pages/privacy.ts');
+    for (const marker of listed) expect(source, `privacy copy still contains "${marker}"`).not.toContain(marker);
+  });
+
   it('the release inspector refuses debuggable output and checks signatures outside -Unsigned', () => {
     const inspector = read('scripts/inspect-android-release.ps1');
     expect(inspector).toContain("'^application-debuggable'");
